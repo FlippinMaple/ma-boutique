@@ -22,3 +22,11 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Ne jamais suivre ces fichiers sensibles
+.env
+server/.env
+.env.local
+node_modules/
+dist/
+build/
