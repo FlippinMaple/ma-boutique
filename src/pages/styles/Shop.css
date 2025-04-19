@@ -1,0 +1,153 @@
+/* === CONTAINER === */
+.shop-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+.shop-search {
+  margin-bottom: 30px;
+  padding: 10px;
+  width: 100%;
+  max-width: 400px;
+  border-radius: 8px;
+  border: 1px solid #ccc;
+  display: block;
+  margin-inline: auto;
+}
+
+.shop-grid {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 24px;
+}
+
+/* === CARD === */
+.shop-card {
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background-color: #fff;
+  padding: 16px;
+  width: 230px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  transition: transform 0.2s ease-in-out;
+  cursor: pointer;
+  position: relative;
+}
+
+.shop-card:hover {
+  transform: scale(1.02);
+}
+
+.shop-image {
+  width: 100%;
+  height: auto;
+  border-radius: 6px;
+}
+
+/* === TEXT === */
+.shop-title {
+  margin: 10px 0 5px 0;
+  text-align: center;
+}
+
+.shop-price {
+  color: #444;
+  font-weight: bold;
+}
+
+/* === BOUTONS === */
+.shop-btn {
+  margin-top: 8px;
+  padding: 6px 10px;
+  width: 100%;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  color: white;
+}
+
+.btn-add {
+  background-color: #0d6efd;
+}
+
+.btn-remove,
+.btn-increase {
+  background-color: #f1f1f1;
+  color: #333;
+  border: 1px solid #ccc;
+}
+
+.btn-remove:hover,
+.btn-increase:hover {
+  background-color: #ddd;
+}
+
+.btn-details {
+  background-color: #6c757d;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  text-decoration: none;
+}
+
+/* === QUANTITÉ === */
+.shop-quantity-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.shop-qty-btn {
+  background-color: #f1f1f1;
+  color: #333;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+  padding: 4px 8px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.shop-qty-btn:hover {
+  background-color: #ddd;
+}
+
+.shop-qty-count {
+  font-size: 14px;
+  font-weight: bold;
+  min-width: 24px;
+  text-align: center;
+}
+
+/* === ZOOM PREVIEW (LOUPE CENTRALE) === */
+.zoom-preview {
+  display: none;
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 10000;
+  background: rgba(0, 0, 0, 0.85);
+  padding: 20px;
+  border-radius: 12px;
+  box-shadow: 0 0 30px rgba(0, 0, 0, 0.5);
+}
+
+.zoom-preview.show {
+  display: block;
+}
+
+.zoom-preview img {
+  max-width: 90vw;
+  max-height: 90vh;
+  border-radius: 10px;
+  object-fit: contain;
+}

@@ -1,0 +1,12 @@
+{
+  "pablo-tee-001": {
+    "badges": ["Nouveau", "Édition limitée"],
+    "views_count": 152,
+    "add_to_cart_count": 42,
+    "promo": {
+      "active": true,
+      "discount_percent": 15
+    },
+    "collection": "Pablo Poussin"
+  }
+}
