@@ -39,6 +39,9 @@ const Header = () => {
           </span>
         )}
       </Link>
+      <li>
+        <Link to="/register">Créer un compte</Link>
+      </li>
     </header>
   );
 };

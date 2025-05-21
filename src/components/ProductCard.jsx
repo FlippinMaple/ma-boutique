@@ -4,12 +4,27 @@ const ProductCard = ({ product }) => {
   const { addToCart } = useCart();
 
   const handleClick = () => {
+    if (!product.variants || product.variants.length === 0) {
+      console.warn('⛔ Aucun variant pour le produit:', product);
+      return;
+    }
+
+    const variant = product.variants[0];
+    console.log('🧪 Variant reçu dans ProductCard:', variant);
+    console.log('📛 variant_id:', variant.variant_id);
+
     const item = {
-      id: product.id,
-      name: product.display_name,
-      price: product.price || 29.99,
-      image: product.image_url
+      id: variant.id, // ID local DB (nécessaire pour enregistrement DB locale)
+      variant_id: variant.variant_id, // Court ID Printful (nécessaire pour Printful)
+      printful_variant_id: variant.printful_variant_id, // si tu veux vraiment le garder aussi
+      name: product.name,
+      price: variant.price || 29.99,
+      image: variant.image || product.image,
+      quantity: 1
     };
+
+    console.log('🛒 Item préparé pour le panier:', item);
+
     addToCart(item);
   };
 
@@ -25,8 +40,8 @@ const ProductCard = ({ product }) => {
       }}
     >
       <img
-        src={product.image_url}
-        alt={product.display_name}
+        src={product.image || (product.variants?.[0]?.image ?? '')}
+        alt={product.name}
         style={{
           width: '100%',
           height: 'auto',
@@ -34,9 +49,11 @@ const ProductCard = ({ product }) => {
           marginBottom: '1rem'
         }}
       />
-      <h4 style={{ margin: 0 }}>{product.display_name}</h4>
+      <h4 style={{ margin: 0 }}>{product.name}</h4>
       <p style={{ margin: '0.5rem 0' }}>
-        {product.price ? `${product.price.toFixed(2)} $` : 'Prix non dispo'}
+        {product.variants?.[0]?.price
+          ? `${Number(product.variants[0].price).toFixed(2)} $`
+          : 'Prix non dispo'}
       </p>
       <button
         onClick={handleClick}

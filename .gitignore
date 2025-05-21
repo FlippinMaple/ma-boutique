@@ -23,10 +23,22 @@ dist-ssr
 *.sln
 *.sw?
 
-# Ne jamais suivre ces fichiers sensibles
+
+
+# Ignore les fichiers d'environnement
 .env
-server/.env
 .env.local
+.env.production
+.env.development
+
+# Ignore les dossiers node_modules
 node_modules/
+
+# Ignore les fichiers de build
 dist/
 build/
+
+# Mac / Windows / Linux system files
+.DS_Store
+Thumbs.db
+ma-boutique.git/

@@ -1,78 +1,38 @@
 import { useEffect, useState } from 'react';
 import axios from 'axios';
-import { useCart } from '../CartContext';
 import { useLocation, Link } from 'react-router-dom';
-import { showAddToCartToast } from '../utils/alerts';
 import './styles/Shop.css';
 
 const Shop = () => {
   const [products, setProducts] = useState([]);
   const [search, setSearch] = useState('');
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
-  const { addToCart, removeFromCart, cartItems } = useCart();
+  const [previewImage, setPreviewImage] = useState(null);
+  const [previewLoaded, setPreviewLoaded] = useState(false);
   const location = useLocation();
 
   const highlightId = new URLSearchParams(location.search).get('highlight');
 
-  // 🔄 Gestion responsive de isMobile
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth <= 768);
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // 🔍 Loupe (desktop seulement)
-  useEffect(() => {
-    if (isMobile) return;
-
-    const preview = document.createElement('div');
-    preview.className = 'zoom-preview';
-    document.body.appendChild(preview);
-
-    const handleMouseEnter = (e) => {
-      const src = e.target.getAttribute('src');
-      preview.innerHTML = `<img src="${src}" alt="Zoom" />`;
-      preview.classList.add('show');
-    };
-
-    const handleMouseLeave = () => {
-      preview.classList.remove('show');
-    };
-
-    const images = document.querySelectorAll('.shop-image.zoomable');
-    images.forEach((img) => {
-      img.addEventListener('mouseenter', handleMouseEnter);
-      img.addEventListener('mouseleave', handleMouseLeave);
-    });
-
-    return () => {
-      images.forEach((img) => {
-        img.removeEventListener('mouseenter', handleMouseEnter);
-        img.removeEventListener('mouseleave', handleMouseLeave);
-      });
-      document.body.removeChild(preview);
-    };
-  }, [isMobile]);
-
-  // 🛍️ Chargement des produits
   useEffect(() => {
     const fetchProducts = async () => {
       try {
-        const res = await axios.get(
-          'http://localhost:4242/store/full-products',
-          {
-            params: search ? { q: search } : {}
-          }
-        );
-        setProducts(res.data.result);
+        const res = await axios.get('http://localhost:4242/api/products', {
+          params: search ? { q: search } : {}
+        });
+        setProducts(res.data);
       } catch (err) {
-        console.error('Erreur de chargement :', err);
+        console.error('❌ Erreur axios :', err);
       }
     };
     fetchProducts();
   }, [search]);
 
-  // ✨ Highlight du produit
   useEffect(() => {
     if (highlightId) {
       const el = document.getElementById(`product-${highlightId}`);
@@ -83,10 +43,45 @@ const Shop = () => {
     }
   }, [products, highlightId]);
 
+  useEffect(() => {
+    if (previewImage && isMobile) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+  }, [previewImage, isMobile]);
+
+  const handleOverlayLeave = (e) => {
+    const related = e.relatedTarget;
+    if (
+      related &&
+      (related.classList?.contains('shop-card') ||
+        related.classList?.contains('shop-image'))
+    ) {
+      return;
+    }
+    setPreviewImage(null);
+    setPreviewLoaded(false);
+  };
+
+  useEffect(() => {
+    if (highlightId && !products.some((p) => p.id === Number(highlightId))) {
+      const url = new URL(window.location.href);
+      url.searchParams.delete('highlight');
+      window.history.replaceState({}, '', url);
+    }
+  }, [products, highlightId]);
+
   return (
     <div className="shop-container">
       <h1>Ma boutique</h1>
-
+      <Link
+        to="/preview-order"
+        className="shop-btn btn-details"
+        style={{ marginBottom: '1rem', display: 'inline-block' }}
+      >
+        🧾 Aperçu de la commande
+      </Link>
       <input
         type="text"
         placeholder="Rechercher un produit..."
@@ -97,8 +92,7 @@ const Shop = () => {
 
       <div className="shop-grid">
         {products.map((product) => {
-          const itemInCart = cartItems.find((item) => item.id === product.id);
-
+          const firstVariant = product.variants?.[0];
           return (
             <div
               key={product.id}
@@ -107,82 +101,87 @@ const Shop = () => {
             >
               <div className="shop-image-wrapper">
                 <img
-                  src={product.image}
+                  src={firstVariant?.image || product.image}
                   alt={product.name}
                   className={`shop-image ${!isMobile ? 'zoomable' : ''}`}
+                  onMouseEnter={() => {
+                    if (!isMobile) {
+                      setPreviewImage(firstVariant?.image || product.image);
+                      setPreviewLoaded(false);
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!isMobile) {
+                      const related = e.relatedTarget;
+                      if (
+                        related &&
+                        (related.classList?.contains('image-preview') ||
+                          related.classList?.contains('image-preview-overlay'))
+                      ) {
+                        return;
+                      }
+                      setPreviewImage(null);
+                      setPreviewLoaded(false);
+                    }
+                  }}
+                  onClick={() => {
+                    if (isMobile) {
+                      setPreviewImage(firstVariant?.image || product.image);
+                      setPreviewLoaded(true);
+                    }
+                  }}
                 />
               </div>
               <h3 className="shop-title">{product.name}</h3>
-              <p className="shop-price">{product.price.toFixed(2)} $</p>
 
-              {!itemInCart ? (
-                <button
-                  className="shop-btn btn-add"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    addToCart({
-                      id: product.id,
-                      name: product.name,
-                      price: product.price,
-                      image: product.image,
-                      quantity: 1
-                    });
-                    showAddToCartToast();
-                  }}
-                >
-                  ➕ Ajouter au panier
-                </button>
-              ) : (
-                <div className="shop-quantity-controls">
-                  <button
-                    className="shop-qty-btn"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      removeFromCart(product.id);
-                    }}
-                  >
-                    ➖
-                  </button>
-                  <span className="shop-qty-count">{itemInCart.quantity}</span>
-                  <button
-                    className="shop-qty-btn"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      addToCart({
-                        id: product.id,
-                        name: product.name,
-                        price: product.price,
-                        image: product.image,
-                        quantity: 1
-                      });
-                      showAddToCartToast();
-                    }}
-                  >
-                    ➕
-                  </button>
-                </div>
-              )}
+              <p style={{ margin: '4px 0', fontWeight: 'bold' }}>
+                {firstVariant?.price
+                  ? `${Number(firstVariant.price).toFixed(2)} $`
+                  : 'Prix non dispo'}
+              </p>
 
               <Link
                 to={`/product/${product.id}`}
                 onClick={(e) => e.stopPropagation()}
                 className="shop-btn btn-details"
               >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="16"
-                  height="16"
-                  fill="white"
-                  viewBox="0 0 16 16"
-                >
-                  <path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.397l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85zm-5.242.656a5 5 0 1 1 0-10 5 5 0 0 1 0 10z" />
-                </svg>
-                Détails
+                🔍 Détails
               </Link>
             </div>
           );
         })}
       </div>
+
+      {previewImage && !isMobile && (
+        <div
+          className="image-preview-overlay"
+          onMouseLeave={handleOverlayLeave}
+          onMouseEnter={() => setPreviewLoaded(true)}
+          style={{
+            opacity: previewLoaded ? 1 : 0,
+            visibility: previewLoaded ? 'visible' : 'hidden'
+          }}
+        >
+          <img
+            src={previewImage}
+            alt="Zoom"
+            className="image-preview"
+            onLoad={() => setPreviewLoaded(true)}
+          />
+        </div>
+      )}
+
+      {previewImage && isMobile && (
+        <div className="image-preview-overlay image-preview-blur">
+          <button
+            className="close-button"
+            onClick={() => setPreviewImage(null)}
+          >
+            ✕
+          </button>
+          <img src={previewImage} alt="Zoom" className="image-preview" />
+        </div>
+      )}
     </div>
   );
 };

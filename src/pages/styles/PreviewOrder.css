@@ -1,0 +1,59 @@
+/* src/components/styles/PreviewOrder.css */
+.preview-container {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+.preview-items {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.preview-item {
+  display: flex;
+  gap: 1rem;
+  padding: 1rem;
+  border: 1px solid #ccc;
+  border-radius: 10px;
+  background-color: #fafafa;
+}
+
+.preview-image {
+  width: 120px;
+  height: auto;
+  border-radius: 8px;
+  object-fit: cover;
+}
+
+.preview-details {
+  flex-grow: 1;
+}
+
+.preview-details h3 {
+  margin: 0 0 0.5rem;
+}
+
+.preview-details p {
+  margin: 0.2rem 0;
+}
+
+.preview-total {
+  text-align: right;
+  margin-top: 2rem;
+  font-size: 1.2rem;
+  font-weight: bold;
+}
+
+.btn-commander {
+  margin-top: 1.5rem;
+  padding: 10px 20px;
+  background-color: #0d6efd;
+  color: white;
+  text-decoration: none;
+  border-radius: 8px;
+  display: inline-block;
+  font-weight: bold;
+  text-align: center;
+}
