@@ -1,108 +1,134 @@
-import { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 
 const ShippingOptions = ({ cartItems, shippingInfo, onShippingSelected }) => {
   const [rates, setRates] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [selectedOption, setSelectedOption] = useState(null);
+  const [selectedRate, setSelectedRate] = useState(null);
 
   useEffect(() => {
     const fetchRates = async () => {
       if (
-        !shippingInfo ||
-        !shippingInfo.address1?.trim() ||
-        !shippingInfo.city?.trim() ||
-        !shippingInfo.state?.trim() ||
-        !shippingInfo.country?.trim() ||
-        !shippingInfo.zip?.trim()
+        !shippingInfo.name ||
+        !shippingInfo.address1 ||
+        !shippingInfo.city ||
+        !shippingInfo.state ||
+        !shippingInfo.country ||
+        !shippingInfo.zip
       ) {
-        console.log('⛔ Infos de livraison incomplètes.');
         return;
       }
-
-      const items = cartItems
-        .filter((item) => item.variant_id && item.quantity > 0)
-        .map((item) => ({
-          variant_id: Number(item.variant_id),
-          quantity: item.quantity
-        }));
-
-      if (items.length === 0) {
-        console.log('⛔ Aucun item valide dans le panier.');
-        return;
-      }
-
-      setLoading(true);
 
       try {
-        console.log('🔍 Payload envoyé à Printful:', {
-          recipient: shippingInfo,
-          items
-        });
-
-        const res = await axios.post(
+        const response = await axios.post(
           'http://localhost:4242/api/shipping-rates',
           {
             recipient: shippingInfo,
-            items
+            items: cartItems.map((item) => ({
+              variant_id: item.variant_id,
+              quantity: item.quantity
+            }))
           }
         );
 
-        setRates(res.data);
-      } catch (err) {
-        console.error(
-          'Erreur lors de la récupération des tarifs de livraison',
-          err.response?.data || err.message
-        );
-      }
+        const rawRates = response?.data;
 
-      setLoading(false);
+        if (!Array.isArray(rawRates)) {
+          console.warn(
+            '⚠️ Aucun tarif reçu ou format inattendu :',
+            response.data
+          );
+          setRates([]);
+          return;
+        }
+
+        const validRates = rawRates.filter((rate) =>
+          ['flat', 'express'].some((label) =>
+            rate.name.toLowerCase().includes(label)
+          )
+        );
+
+        setRates(validRates);
+
+        if (validRates.length > 0) {
+          setSelectedRate(validRates[0]);
+          onShippingSelected(validRates[0]);
+        }
+      } catch (error) {
+        console.error('Erreur lors de la récupération des tarifs :', error);
+        setRates([]);
+      }
     };
 
     fetchRates();
-  }, [cartItems, shippingInfo]);
-  <button
-    onClick={() => {
-      console.log('📦 Cart Items:', cartItems);
-      console.log('📮 Shipping Info:', shippingInfo);
-    }}
-  >
-    🔍 Debug données
-  </button>;
+  }, [cartItems, shippingInfo, onShippingSelected]);
 
-  const handleSelect = (option) => {
-    setSelectedOption(option);
-    onShippingSelected(option);
+  const handleSelect = (rate) => {
+    setSelectedRate(rate);
+    onShippingSelected(rate);
   };
 
   return (
-    <div>
-      <h4>Options de livraison :</h4>
-      {loading && <p>Chargement des tarifs...</p>}
-      {!loading && rates.length === 0 && (
-        <p>Aucune option de livraison disponible. Vérifie l’adresse.</p>
-      )}
+    <div style={{ marginTop: '1.5rem' }}>
+      <h3 style={{ marginBottom: '1rem' }}>Méthode de livraison</h3>
+      {rates.length === 0 ? (
+        <p>Aucune option disponible pour cette adresse.</p>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          {rates.map((rate, index) => {
+            const isSelected = selectedRate?.id === rate.id;
+            const isFlat = rate.name.toLowerCase().includes('flat');
 
-      <ul style={{ paddingLeft: 0 }}>
-        {rates.map((rate) => (
-          <li
-            key={rate.id}
-            style={{ listStyle: 'none', marginBottom: '0.5rem' }}
-          >
-            <label>
-              <input
-                type="radio"
-                name="shipping"
-                value={rate.id}
-                checked={selectedOption?.id === rate.id}
-                onChange={() => handleSelect(rate)}
-              />
-              <strong> {rate.name}</strong> – {rate.rate} {rate.currency} (
-              {rate.min_delivery_days}-{rate.max_delivery_days} jours)
-            </label>
-          </li>
-        ))}
-      </ul>
+            return (
+              <div
+                key={index}
+                onClick={() => handleSelect(rate)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '1rem',
+                  border: `2px solid ${isSelected ? '#28a745' : '#ccc'}`,
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  backgroundColor: isSelected ? '#f4fff7' : '#fff',
+                  transition: 'all 0.2s ease'
+                }}
+              >
+                <div>
+                  <strong>{rate.name}</strong>{' '}
+                  {isFlat && (
+                    <span
+                      style={{
+                        backgroundColor: '#28a745',
+                        color: '#fff',
+                        fontSize: '0.75rem',
+                        padding: '2px 6px',
+                        borderRadius: '12px',
+                        marginLeft: '0.5rem'
+                      }}
+                    >
+                      Recommandé
+                    </span>
+                  )}
+                  <div
+                    style={{
+                      fontSize: '0.9rem',
+                      color: '#555',
+                      marginTop: '4px'
+                    }}
+                  >
+                    Livraison estimée :{' '}
+                    {rate.estimated_delivery || 'non précisée'}
+                  </div>
+                </div>
+                <div style={{ fontWeight: 'bold', fontSize: '1rem' }}>
+                  {parseFloat(rate.rate).toFixed(2)} CAD
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 };

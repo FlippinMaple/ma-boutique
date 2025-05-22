@@ -8,6 +8,7 @@ import {
   showEmptyCartAlert
 } from '../utils/alerts';
 import ShippingOptions from '../components/ShippingOptions';
+import Swal from 'sweetalert2';
 
 const Checkout = () => {
   const { cartItems, removeFromCart, clearCart, addToCart } = useCart();
@@ -33,7 +34,6 @@ const Checkout = () => {
     }
   }, [cartItems, navigate]);
 
-  // 🛒 Panier abandonné (optionnel, à garder si utile)
   useEffect(() => {
     const handleBeforeUnload = async () => {
       if (cartItems.length > 0 && userEmail) {
@@ -54,6 +54,7 @@ const Checkout = () => {
 
   const handleCheckout = async () => {
     if (cartItems.length === 0) return;
+
     if (
       !userEmail ||
       !shipping.name ||
@@ -61,9 +62,12 @@ const Checkout = () => {
       !shipping.city ||
       !shipping.state ||
       !shipping.country ||
-      !shipping.zip
+      !shipping.zip ||
+      !shippingRate
     ) {
-      alert('Veuillez remplir tous les champs de livraison.');
+      alert(
+        'Veuillez remplir tous les champs de livraison et sélectionner un mode de livraison.'
+      );
       return;
     }
 
@@ -73,38 +77,58 @@ const Checkout = () => {
     setLoading(true);
 
     try {
+      const preparedItems = cartItems.map((item) => {
+        const prepared = {
+          id: item.id,
+          name: item.name,
+          price: item.price,
+          image: item.image,
+          quantity: item.quantity,
+          color: item.color,
+          size: item.size,
+          printful_variant_id: item.printful_variant_id, // ✅ Long ID
+          variant_id: item.variant_id // ✅ Court ID
+        };
+        console.log('🔍 Article préparé pour checkout :', prepared);
+        return prepared;
+      });
+
+      const payload = {
+        items: preparedItems,
+        customer_email: userEmail,
+        shipping,
+        shipping_rate: shippingRate
+      };
+
+      console.log('✅ Payload envoyé au backend :', payload);
+
       const response = await axios.post(
         'http://localhost:4242/create-checkout-session',
-        {
-          items: cartItems.map((item) => ({
-            ...item,
-            printful_variant_id: item.variant_id
-          })),
-          customer_email: userEmail,
-          shipping
-        }
+        payload
       );
 
-      if (response.data.url) {
+      if (response.data?.url) {
         window.location.href = response.data.url;
+      } else {
+        console.error('❌ Aucune URL de Stripe reçue :', response.data);
+        showCheckoutError();
       }
     } catch (error) {
-      console.error('Erreur lors du checkout Stripe :', error);
+      console.error(
+        '❌ Erreur lors du checkout Stripe :',
+        error.response?.data || error.message
+      );
 
       const message =
         error?.response?.data?.error ||
         'Une erreur est survenue lors de la commande.';
 
-      if (message.includes("n'est plus disponible")) {
-        await Swal.fire({
-          icon: 'error',
-          title: 'Produit hors stock',
-          text: message,
-          confirmButtonText: 'Retour'
-        });
-      } else {
-        showCheckoutError();
-      }
+      await Swal.fire({
+        icon: 'error',
+        title: 'Erreur de paiement',
+        text: message,
+        confirmButtonText: 'Retour'
+      });
     }
 
     setLoading(false);
@@ -130,7 +154,6 @@ const Checkout = () => {
           required
         />
       </div>
-      {/* Champs adresse de livraison */}
       <div style={{ marginBottom: '1rem' }}>
         <input
           placeholder="Nom complet"
@@ -174,8 +197,6 @@ const Checkout = () => {
           required
         >
           <option value="">Sélectionner une province ou un état</option>
-
-          {/* Si shipping.country === 'CA' */}
           {shipping.country === 'CA' && (
             <>
               <option value="AB">Alberta</option>
@@ -193,8 +214,6 @@ const Checkout = () => {
               <option value="YT">Yukon</option>
             </>
           )}
-
-          {/* Si shipping.country === 'US' */}
           {shipping.country === 'US' && (
             <>
               <option value="AL">Alabama</option>
@@ -298,11 +317,18 @@ const Checkout = () => {
               </div>
             </div>
           ))}
-          <ShippingOptions
-            cartItems={cartItems}
-            shippingInfo={shipping}
-            onShippingSelected={setShippingRate}
-          />
+          {shipping.name &&
+            shipping.address1 &&
+            shipping.city &&
+            shipping.state &&
+            shipping.country &&
+            shipping.zip && (
+              <ShippingOptions
+                cartItems={cartItems}
+                shippingInfo={shipping}
+                onShippingSelected={setShippingRate}
+              />
+            )}
 
           <hr />
           <p>
@@ -325,19 +351,28 @@ const Checkout = () => {
           <button onClick={clearCart}>Vider le panier</button>
           <button
             onClick={handleCheckout}
-            disabled={loading}
-            style={{ marginLeft: '1rem' }}
+            disabled={loading || cartItems.length === 0 || !shippingRate}
+            style={{
+              marginLeft: '1rem',
+              padding: '10px 20px',
+              backgroundColor: '#28a745',
+              color: '#fff',
+              border: 'none',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              fontWeight: 'bold',
+              fontSize: '16px'
+            }}
           >
             Payer maintenant
           </button>
 
-          {/* 🔧 TEST CALCUL LIVRAISON */}
           <button
             onClick={async () => {
               const payload = {
                 recipient: shipping,
                 items: cartItems.map((item) => ({
-                  variant_id: item.variant_id, // ✅ court ID
+                  variant_id: item.variant_id,
                   quantity: item.quantity
                 }))
               };
@@ -371,7 +406,11 @@ const Checkout = () => {
           </button>
         </div>
       )}
-      {loading && <div>Traitement en cours...</div>}
+      {loading && (
+        <div style={{ marginTop: '1rem', color: '#007bff' }}>
+          🔄 Redirection vers Stripe...
+        </div>
+      )}
     </div>
   );
 };

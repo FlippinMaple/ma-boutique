@@ -344,49 +344,92 @@ app.get('/api/products/:id', async (req, res) => {
 // ====================
 // ROUTE: Stripe Checkout Session
 app.post('/create-checkout-session', async (req, res) => {
-  console.log('📦 Données reçues pour checkout :', {
-    items,
-    customer_email,
-    shipping,
-    billing
-  });
+  const { items, customer_email, shipping, billing, shipping_rate } = req.body;
 
-  const { items, customer_email, shipping, billing } = req.body;
+  console.log('✅ Données reçues pour checkout :');
+  console.log('📦 items:', items);
+  console.log('📧 email:', customer_email);
+  console.log('🚚 shipping:', shipping);
+  console.log('💸 shipping_rate:', shipping_rate);
+
   try {
-    // Vérifie la dispo de chaque item
-    for (const item of items) {
-      const { printful_variant_id } = item;
-      if (!printful_variant_id) continue; // sécurité
+    const line_items = [];
 
+    for (const item of items) {
+      const { printful_variant_id, price, name, image, quantity } = item;
+
+      if (!printful_variant_id || isNaN(Number(printful_variant_id))) {
+        console.warn(
+          `❌ variant_id manquant ou invalide pour l’item ${item.id}`
+        );
+        continue;
+      }
+      console.log(
+        `🔍 Vérification Printful pour variant ID ${printful_variant_id}`
+      );
+
+      // ✅ Vérifie la dispo via /sync/variant/
       const response = await axios.get(
-        `https://api.printful.com/products/variant/${printful_variant_id}`,
+        `https://api.printful.com/sync/variant/${printful_variant_id}`,
         {
           headers: {
-            Authorization: `Bearer ${process.env.PRINTFUL_API_KEY}`
+            Authorization: `Bearer ${process.env.PRINTFUL_API_KEY}`,
+            'X-PF-Store-Id': process.env.PRINTFUL_STORE_ID
           }
         }
       );
 
-      const status = response.data?.result?.availability_status;
-      if (status !== 'in_stock') {
+      const status = response.data?.result?.sync_variant?.availability_status;
+      if (status !== 'active') {
+        console.warn(
+          `⚠️ Produit indisponible (ID ${printful_variant_id}) : ${status}`
+        );
         return res.status(400).json({
-          error: `Le produit "${item.name}" n'est plus disponible.`
+          error: `Le produit "${
+            item.name || `#${item.id}`
+          }" n'est plus disponible.`
         });
       }
+
+      // ✅ Ajoute le produit à Stripe
+      line_items.push({
+        price_data: {
+          currency: 'cad',
+          product_data: {
+            name:
+              typeof name === 'string' && name.trim() !== ''
+                ? name.trim()
+                : `Produit #${item.id}`,
+            images: image ? [image] : []
+          },
+          unit_amount: !isNaN(Number(price))
+            ? Math.round(Number(price) * 100)
+            : 1000
+        },
+        quantity: quantity || 1
+      });
     }
 
-    const line_items = items.map((item) => ({
-      price_data: {
-        currency: 'cad',
-        product_data: {
-          name: item.name,
-          images: [item.image]
+    // ✅ Ajoute la livraison si sélectionnée
+    if (
+      shipping_rate &&
+      typeof shipping_rate.name === 'string' &&
+      shipping_rate.name.trim() !== '' &&
+      !isNaN(Number(shipping_rate.rate))
+    ) {
+      line_items.push({
+        price_data: {
+          currency: 'cad',
+          product_data: {
+            name: `Livraison (${shipping_rate.name.trim()})`
+          },
+          unit_amount: Math.round(Number(shipping_rate.rate) * 100)
         },
-        unit_amount: Math.round(item.price * 100)
-      },
-      quantity: item.quantity
-    }));
+        quantity: 1
+      });
+    }
 
+    // ✅ Création de la session Stripe
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
       line_items,
@@ -403,7 +446,7 @@ app.post('/create-checkout-session', async (req, res) => {
 
     res.json({ url: session.url });
   } catch (error) {
-    console.error('Erreur Stripe:', error);
+    console.error('Erreur Stripe:', error?.response?.data || error.message);
     res
       .status(500)
       .json({ error: 'Erreur lors de la création de la session.' });
