@@ -13,7 +13,6 @@ const PreviewOrder = () => {
           customer_email: userEmail,
           cart_contents: JSON.stringify(cartItems)
         });
-        console.log('🛒 Panier abandonné loggé');
       }
     }, 60000); // 1 minute d'inactivité
 

@@ -6,7 +6,6 @@ export const logAbandonedCart = async (email, cartItems) => {
       customer_email: email,
       cart_contents: JSON.stringify(cartItems)
     });
-    console.log('🛒 Panier abandonné loggé');
   } catch (err) {
     console.error('Erreur de log du panier abandonné:', err);
   }

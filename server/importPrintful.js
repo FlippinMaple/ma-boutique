@@ -133,7 +133,6 @@ async function importProducts() {
       }
     }
 
-    console.log('✅ Import Printful terminé.');
     process.exit(0);
   } catch (err) {
     if (err.response) {
