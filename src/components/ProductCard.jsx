@@ -10,8 +10,6 @@ const ProductCard = ({ product }) => {
     }
 
     const variant = product.variants[0];
-    console.log('🧪 Variant reçu dans ProductCard:', variant);
-    console.log('📛 variant_id:', variant.variant_id);
 
     const item = {
       id: variant.id, // ID local DB (nécessaire pour enregistrement DB locale)
@@ -22,8 +20,6 @@ const ProductCard = ({ product }) => {
       image: variant.image || product.image,
       quantity: 1
     };
-
-    console.log('🛒 Item préparé pour le panier:', item);
 
     addToCart(item);
   };

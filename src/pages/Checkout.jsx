@@ -89,7 +89,6 @@ const Checkout = () => {
           printful_variant_id: item.printful_variant_id, // ✅ Long ID
           variant_id: item.variant_id // ✅ Court ID
         };
-        console.log('🔍 Article préparé pour checkout :', prepared);
         return prepared;
       });
 
@@ -99,8 +98,6 @@ const Checkout = () => {
         shipping,
         shipping_rate: shippingRate
       };
-
-      console.log('✅ Payload envoyé au backend :', payload);
 
       const response = await axios.post(
         'http://localhost:4242/create-checkout-session',
@@ -377,14 +374,11 @@ const Checkout = () => {
                 }))
               };
 
-              console.log('🔍 Payload envoyé à Printful:', payload);
-
               try {
                 const res = await axios.post(
                   'http://localhost:4242/api/shipping-rates',
                   payload
                 );
-                console.log('📦 Tarifs de livraison reçus:', res.data);
               } catch (err) {
                 console.error(
                   '❌ Erreur retour Printful:',

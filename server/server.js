@@ -46,7 +46,6 @@ app.post(
       const shipping_cost = session.total_details?.amount_shipping
         ? session.total_details.amount_shipping / 100
         : 0;
-      console.log('📦 Shipping cost détecté :', shipping_cost);
 
       const total = cart_items.reduce(
         (sum, item) => sum + item.price * item.quantity,
@@ -99,7 +98,6 @@ app.post(
               }
             }
           );
-          console.log('✅ Commande envoyée à Printful!', response.data);
         } catch (err) {
           console.error('❌ Erreur envoi Printful:', err.response?.data || err);
         }
@@ -346,12 +344,6 @@ app.get('/api/products/:id', async (req, res) => {
 app.post('/create-checkout-session', async (req, res) => {
   const { items, customer_email, shipping, billing, shipping_rate } = req.body;
 
-  console.log('✅ Données reçues pour checkout :');
-  console.log('📦 items:', items);
-  console.log('📧 email:', customer_email);
-  console.log('🚚 shipping:', shipping);
-  console.log('💸 shipping_rate:', shipping_rate);
-
   try {
     const line_items = [];
 
@@ -364,9 +356,6 @@ app.post('/create-checkout-session', async (req, res) => {
         );
         continue;
       }
-      console.log(
-        `🔍 Vérification Printful pour variant ID ${printful_variant_id}`
-      );
 
       // ✅ Vérifie la dispo via /sync/variant/
       const response = await axios.get(
@@ -612,11 +601,6 @@ app.post('/api/shipping-rates', async (req, res) => {
       zip: recipient.zip,
       email: recipient.email || ''
     };
-
-    console.log('🔍 Payload envoyé à Printful:\n', {
-      recipient: transformedRecipient,
-      items: printfulItems
-    });
 
     const response = await axios.post(
       'https://api.printful.com/shipping/rates',
