@@ -1,24 +1,21 @@
 import { useState, useEffect } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useCart } from '../CartContext';
-import { showAddToCartToast } from '../utils/alerts';
 import axios from 'axios';
 import './styles/ProductDetail.css';
-import { useNavigate } from 'react-router-dom';
 
 const ProductDetail = () => {
   const { id } = useParams();
-  const { addToCart } = useCart();
+  const { validateStockBeforeAdd } = useCart(); // ✅ utilise validateStockBeforeAdd
   const [product, setProduct] = useState(null);
   const [selectedColor, setSelectedColor] = useState('');
   const [selectedSize, setSelectedSize] = useState('');
   const [selectedVariant, setSelectedVariant] = useState(null);
-  const [isAvailable, setIsAvailable] = useState(false);
+  const [availableStock, setAvailableStock] = useState(null);
   const [quantity, setQuantity] = useState(1);
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
-  // Charge produit + variantes
   useEffect(() => {
     const fetchProduct = async () => {
       try {
@@ -43,7 +40,6 @@ const ProductDetail = () => {
     fetchProduct();
   }, [id]);
 
-  // Met à jour variante sélectionnée
   useEffect(() => {
     if (!product) return;
     const variant = (product.variants || []).find(
@@ -53,20 +49,6 @@ const ProductDetail = () => {
   }, [product, selectedColor, selectedSize]);
 
   useEffect(() => {
-    const fetchProduct = async () => {
-      try {
-        const res = await axios.get('http://localhost:4242/api/products/' + id);
-        setProduct(res.data);
-      } catch (err) {
-        console.error('❌ Erreur chargement produit:', err);
-        navigate('/shop'); // 🚀 Redirige automatiquement
-      }
-    };
-    fetchProduct();
-  }, [id]);
-
-  // Vérifie disponibilité via ton serveur
-  useEffect(() => {
     const fetchAvailability = async () => {
       if (selectedVariant?.printful_variant_id) {
         setLoading(true);
@@ -74,13 +56,14 @@ const ProductDetail = () => {
           const res = await axios.get(
             `http://localhost:4242/api/printful-stock/${selectedVariant.printful_variant_id}`
           );
-          setIsAvailable(res.data.status === 'in_stock');
+          const stock = res.data.available ?? 0;
+          setAvailableStock(stock);
         } catch {
-          setIsAvailable(false);
+          setAvailableStock(0);
         }
         setLoading(false);
       } else {
-        setIsAvailable(false);
+        setAvailableStock(0);
       }
     };
     fetchAvailability();
@@ -95,7 +78,8 @@ const ProductDetail = () => {
     ...new Set((product.variants || []).map((v) => v.size).filter(Boolean))
   ];
 
-  const canAddToCart = !!selectedVariant && isAvailable && quantity > 0;
+  const canAddToCart =
+    !!selectedVariant && availableStock >= quantity && quantity > 0;
 
   return (
     <div className="product-detail">
@@ -112,7 +96,6 @@ const ProductDetail = () => {
       <h2>{product.name}</h2>
       <p>{product.description}</p>
 
-      {/* Sélection couleur */}
       <div style={{ margin: '10px 0' }}>
         <span>Couleur :</span>
         {colors.map((color) => (
@@ -135,7 +118,6 @@ const ProductDetail = () => {
         ))}
       </div>
 
-      {/* Sélection taille */}
       <div style={{ margin: '10px 0' }}>
         <span>Taille :</span>
         {sizes.map((size) => (
@@ -158,30 +140,43 @@ const ProductDetail = () => {
         ))}
       </div>
 
-      {/* Quantité */}
       <div style={{ margin: '10px 0' }}>
         <span>Quantité :</span>
         <input
           type="number"
           value={quantity}
           min={1}
-          max={isAvailable ? 10 : 1}
+          max={availableStock || 1}
           onChange={(e) =>
-            setQuantity(Math.max(1, Math.min(Number(e.target.value), 10)))
+            setQuantity(
+              Math.max(1, Math.min(Number(e.target.value), availableStock || 1))
+            )
           }
           style={{ width: 60 }}
-          disabled={!canAddToCart}
+          disabled={!selectedVariant}
         />
-        <span style={{ color: '#888', fontSize: 13 }}>
+        <span
+          style={{
+            color:
+              loading || availableStock === null
+                ? '#888'
+                : availableStock <= 10
+                ? 'red'
+                : 'green',
+            fontSize: 13,
+            marginLeft: 8
+          }}
+        >
           {loading
             ? '(Vérification...)'
-            : isAvailable
-            ? 'Disponible'
-            : 'Indisponible'}
+            : availableStock === 0
+            ? 'Indisponible'
+            : availableStock <= 10
+            ? `Stock limité : seulement ${availableStock}`
+            : 'Disponible'}
         </span>
       </div>
 
-      {/* Prix */}
       <div style={{ fontWeight: 'bold', margin: '12px 0' }}>
         Prix:{' '}
         {selectedVariant
@@ -189,10 +184,11 @@ const ProductDetail = () => {
           : 'Sélectionne une variante'}
       </div>
 
-      {/* Ajouter au panier */}
       <button
         onClick={() => {
-          addToCart({
+          if (!selectedVariant) return;
+
+          validateStockBeforeAdd({
             id: selectedVariant.id,
             name: product.name,
             price: Number(selectedVariant.price),
@@ -201,10 +197,8 @@ const ProductDetail = () => {
             color: selectedVariant.color,
             size: selectedVariant.size,
             printful_variant_id: selectedVariant.printful_variant_id,
-            variant_id: selectedVariant.variant_id // ✅ ajoute ceci
+            variant_id: selectedVariant.variant_id
           });
-
-          showAddToCartToast();
         }}
         disabled={!canAddToCart}
         className="shop-btn"

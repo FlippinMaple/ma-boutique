@@ -1,58 +1,60 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { jwtDecode } from 'jwt-decode'; // <-- CORRECT
+import { jwtDecode } from 'jwt-decode';
+import { capitalizeSmart } from '../utils/textHelpers';
+import { toast } from 'react-hot-toast'; // ✅ Import du toast
 
 const Dashboard = () => {
   const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true); // Pour gérer l'état de chargement
+  const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
   useEffect(() => {
-    const token = localStorage.getItem('authToken'); // Récupérer le token JWT
+    const token = localStorage.getItem('authToken');
 
     if (!token) {
-      // Si aucun token n'est trouvé, rediriger vers la page de connexion
+      toast.error('Session expirée. Veuillez vous reconnecter.');
       navigate('/login');
     } else {
       try {
-        // Décoder le token avec jwt-decode
         const decoded = jwtDecode(token);
 
-        // Vérifier l'expiration du token
         if (decoded.exp * 1000 < Date.now()) {
-          // Si le token est expiré, le supprimer du localStorage et rediriger vers la page de connexion
+          toast.error('Session expirée. Veuillez vous reconnecter.');
           localStorage.removeItem('authToken');
           navigate('/login');
         } else {
-          // Si le token est valide, stocker les informations de l'utilisateur
           setUser(decoded);
         }
       } catch (error) {
+        toast.error('Token invalide. Veuillez vous reconnecter.');
         console.error('Token invalide ou expiré:', error);
-        navigate('/login'); // Rediriger vers la page de connexion si le token est invalide
+        navigate('/login');
       }
     }
 
-    setLoading(false); // Fin du chargement après la vérification
+    setLoading(false);
   }, [navigate]);
 
   const handleLogout = () => {
-    localStorage.removeItem('authToken'); // Supprimer le token du localStorage
-    localStorage.removeItem('refreshToken'); // Supprimer le refresh token, si utilisé
-    navigate('/login'); // Rediriger vers la page de connexion
+    localStorage.removeItem('authToken');
+    localStorage.removeItem('refreshToken');
+    toast('Déconnexion effectuée. 👋');
+    navigate('/login');
   };
 
-  if (loading) {
-    return <div>Chargement...</div>; // Affichage pendant la vérification du token
-  }
+  if (loading) return <div>Chargement...</div>;
 
-  if (!user) {
-    return <div>Session expirée, veuillez vous reconnecter.</div>; // Si le token est expiré ou invalide
-  }
+  if (!user) return null; // L'erreur a déjà été toatée + redirection faite
+
+  const displayFirst = capitalizeSmart(user.first_name || '');
+  const displayLast = capitalizeSmart(user.last_name || '');
 
   return (
     <div>
-      <h2>Bienvenue, {user.name}</h2>
+      <h2>
+        Bienvenue, {displayFirst} {displayLast}
+      </h2>
       <p>Bienvenue sur votre tableau de bord sécurisé !</p>
       <button onClick={handleLogout}>Se déconnecter</button>
     </div>

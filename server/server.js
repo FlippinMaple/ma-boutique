@@ -4,10 +4,13 @@ import express from 'express';
 import bodyParser from 'body-parser';
 import cors from 'cors';
 import Stripe from 'stripe';
-import mysql from 'mysql2/promise';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import axios from 'axios';
+import syncPrintfulOrderStatus from './utils/syncPrintful.js';
+import cron from 'node-cron';
+import { logToDatabase, purgeOldLogs } from './utils/logger.js';
+import { pool } from './db.js';
 
 const app = express();
 app.use(cors());
@@ -17,6 +20,7 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
   apiVersion: '2022-11-15'
 });
 
+// === Stripe Webhook ===
 app.post(
   '/webhook',
   bodyParser.raw({ type: 'application/json' }),
@@ -33,47 +37,73 @@ app.post(
 
     if (event.type === 'checkout.session.completed') {
       const session = event.data.object;
-      const shipping =
-        session.metadata && session.metadata.shipping
-          ? JSON.parse(session.metadata.shipping)
-          : null;
+      const shipping = session.metadata?.shipping
+        ? JSON.parse(session.metadata.shipping)
+        : null;
+      console.log(
+        '📦 session.metadata.cart_items brut:',
+        session.metadata.cart_items
+      );
 
-      const cart_items =
-        session.metadata && session.metadata.cart_items
-          ? JSON.parse(session.metadata.cart_items)
-          : [];
+      const cart_items = session.metadata?.cart_items
+        ? JSON.parse(session.metadata.cart_items)
+        : [];
 
+      const total = session.amount_total / 100;
       const shipping_cost = session.total_details?.amount_shipping
         ? session.total_details.amount_shipping / 100
         : 0;
-
-      const total = cart_items.reduce(
-        (sum, item) => sum + item.price * item.quantity,
-        0
-      );
-
       const customer_email =
         session.customer_email || (shipping && shipping.email);
 
-      // Insère dans 'orders'
-      const [orderResult] = await pool.execute(
-        `INSERT INTO orders (customer_email, status, total, shipping_cost, created_at, updated_at)
-     VALUES (?, ?, ?, ?, NOW(), NOW())`,
-        [customer_email, 'paid', total + shipping_cost, shipping_cost]
+      const [[existingOrder]] = await pool.query(
+        `SELECT id FROM orders WHERE customer_email = ? AND status = 'pending' ORDER BY created_at DESC LIMIT 1`,
+        [customer_email]
       );
 
-      const order_id = orderResult.insertId;
+      let orderId;
+      if (existingOrder) {
+        orderId = existingOrder.id;
+        await pool.execute(
+          `UPDATE orders SET status = ?, total = ?, shipping_cost = ?, updated_at = NOW() WHERE id = ?`,
+          ['paid', total, shipping_cost, orderId]
+        );
+      } else {
+        const [orderResult] = await pool.execute(
+          `INSERT INTO orders (customer_email, status, total, shipping_cost, created_at, updated_at)
+           VALUES (?, ?, ?, ?, NOW(), NOW())`,
+          [customer_email, 'paid', total, shipping_cost]
+        );
+        orderId = orderResult.insertId;
+      }
 
-      // Insère chaque item
+      if (!orderId) {
+        console.error('❌ Aucun orderId généré, insertion annulée.');
+        return res.status(500).json({ error: 'Erreur création commande.' });
+      }
+
+      await pool.execute(`DELETE FROM order_items WHERE order_id = ?`, [
+        orderId
+      ]);
+
       for (const item of cart_items) {
+        if (!item.id || !item.quantity || !item.price) {
+          console.warn(`⚠️ Données manquantes pour item:`, item);
+          continue;
+        }
         await pool.execute(
           `INSERT INTO order_items (order_id, product_variant_id, quantity, price_at_purchase)
-             VALUES (?, ?, ?, ?)`,
-          [order_id, item.id, item.quantity, item.price]
+           VALUES (?, ?, ?, ?)`,
+          [orderId, item.id, item.quantity, item.price]
         );
       }
 
-      // 🛑 NE PAS envoyer la commande réelle si tu es en prod sans vouloir envoyer chez Printful :
+      await pool.execute(
+        `INSERT INTO order_status_history (order_id, old_status, new_status, changed_at)
+         VALUES (?, ?, ?, NOW())`,
+        [orderId, 'pending', 'paid']
+      );
+
       if (process.env.PRINTFUL_AUTOMATIC_ORDER === 'true') {
         try {
           const printfulItems = await mapCartToPrintfulVariants(cart_items);
@@ -90,7 +120,7 @@ app.post(
                 email: customer_email
               },
               items: printfulItems,
-              confirm: false // Important: TEST uniquement!
+              confirm: false
             },
             {
               headers: {
@@ -98,6 +128,12 @@ app.post(
               }
             }
           );
+          const printfulOrderId = response.data.result.id;
+          await pool.execute(
+            `UPDATE orders SET printful_order_id = ? WHERE id = ?`,
+            [printfulOrderId, orderId]
+          );
+          console.log(`✅ Printful order lié : ${printfulOrderId}`);
         } catch (err) {
           console.error('❌ Erreur envoi Printful:', err.response?.data || err);
         }
@@ -112,14 +148,27 @@ app.post(
   }
 );
 
-const pool = mysql.createPool({
-  host: process.env.MYSQL_HOST,
-  user: process.env.MYSQL_USER,
-  password: process.env.MYSQL_PASSWORD,
-  database: process.env.MYSQL_DATABASE,
-  waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0
+// === Debug route ===
+app.get('/api/debug-orders', async (req, res) => {
+  try {
+    const [orders] = await pool.query(
+      'SELECT * FROM orders ORDER BY id DESC LIMIT 10'
+    );
+    const [items] = await pool.query(
+      'SELECT * FROM order_items ORDER BY id DESC LIMIT 10'
+    );
+    const [statuses] = await pool.query(
+      'SELECT * FROM order_status_history ORDER BY id DESC LIMIT 10'
+    );
+    res.json({
+      orders,
+      order_items: items,
+      order_status_history: statuses
+    });
+  } catch (err) {
+    console.error('❌ Erreur récupération debug:', err);
+    res.status(500).json({ error: 'Erreur debug.' });
+  }
 });
 
 // ====================
@@ -142,28 +191,51 @@ const authProtect = async (req, res, next) => {
 // ====================
 // ROUTE: Register
 app.post('/api/register', async (req, res) => {
-  const { name, email, password } = req.body;
-  if (!name || !email || !password) {
-    return res.status(400).json({ error: 'Champs requis manquants.' });
+  let { first_name, last_name, email, password, is_subscribed } = req.body;
+
+  // 🧼 Normalisation → tout en minuscules
+  first_name = first_name.trim().toLowerCase();
+  last_name = last_name.trim().toLowerCase();
+  email = email.trim().toLowerCase();
+
+  if (!first_name || !last_name || !email || !password) {
+    return res.status(400).json({ error: 'Tous les champs sont requis.' });
   }
+
   try {
     const [existing] = await pool.execute(
       'SELECT id FROM customers WHERE email = ?',
       [email]
     );
+
     if (existing.length > 0) {
       return res.status(400).json({ error: 'Ce courriel est déjà utilisé.' });
     }
+
     const hashedPassword = await bcrypt.hash(password, 10);
+
     await pool.execute(
-      `INSERT INTO customers (name, email, password_hash, created_at, updated_at)
-       VALUES (?, ?, ?, NOW(), NOW())`,
-      [name, email, hashedPassword]
+      `INSERT INTO customers (
+        first_name,
+        last_name,
+        email,
+        password_hash,
+        is_subscribed,
+        created_at,
+        updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, NOW(), NOW())`,
+      [first_name, last_name, email, hashedPassword, !!is_subscribed]
     );
-    res.json({ success: true, message: 'Compte créé avec succès.' });
+
+    return res
+      .status(200)
+      .json({ success: true, message: 'Compte créé avec succès.' });
   } catch (err) {
-    console.error('❌ Erreur MySQL :', err);
-    res.status(500).json({ error: 'Erreur lors de l’inscription.' });
+    console.error('❌ Erreur serveur lors de l’inscription :', err);
+    return res
+      .status(500)
+      .json({ error: 'Erreur serveur lors de l’inscription.' });
   }
 });
 
@@ -171,41 +243,62 @@ app.post('/api/register', async (req, res) => {
 // ROUTE: Login
 app.post('/api/login', async (req, res) => {
   const { email, password } = req.body;
+
   if (!email || !password) {
     return res.status(400).json({ error: 'Champs requis manquants.' });
   }
+
+  const normalizedEmail = email.trim().toLowerCase();
+
   try {
     const [rows] = await pool.execute(
-      'SELECT id, name, password_hash FROM customers WHERE email = ?',
-      [email]
+      'SELECT id, first_name, last_name, password_hash FROM customers WHERE email = ?',
+      [normalizedEmail]
     );
+
     if (rows.length === 0) {
       return res.status(401).json({ error: 'Identifiants invalides.' });
     }
+
     const user = rows[0];
     const isMatch = await bcrypt.compare(password, user.password_hash);
+
     if (!isMatch) {
       return res.status(401).json({ error: 'Identifiants invalides.' });
     }
+
     const accessToken = jwt.sign(
-      { id: user.id, name: user.name, email },
+      {
+        id: user.id,
+        email: normalizedEmail,
+        first_name: user.first_name,
+        last_name: user.last_name
+      },
       process.env.JWT_SECRET,
       { expiresIn: '2h' }
     );
+
     const refreshToken = jwt.sign(
-      { id: user.id, email },
+      { id: user.id, email: normalizedEmail },
       process.env.JWT_REFRESH_SECRET,
       { expiresIn: '7d' }
     );
+
     await pool.execute(
       `REPLACE INTO refresh_tokens (user_id, refresh_token, expires_at)
        VALUES (?, ?, ?)`,
       [user.id, refreshToken, new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)]
     );
+
     res.json({
       accessToken,
       refreshToken,
-      user: { id: user.id, name: user.name, email }
+      user: {
+        id: user.id,
+        email: normalizedEmail,
+        first_name: user.first_name,
+        last_name: user.last_name
+      }
     });
   } catch (err) {
     console.error('❌ Erreur serveur :', err);
@@ -425,13 +518,64 @@ app.post('/create-checkout-session', async (req, res) => {
       mode: 'payment',
       customer_email,
       metadata: {
-        shipping: JSON.stringify(shipping),
-        billing: billing ? JSON.stringify(billing) : JSON.stringify(shipping),
-        cart_items: JSON.stringify(items)
+        customer_email,
+        shipping_country: shipping?.country,
+        shipping_state: shipping?.state,
+        shipping_postal: shipping?.zip
       },
       success_url: process.env.FRONTEND_URL + '/success',
       cancel_url: process.env.FRONTEND_URL + '/checkout'
     });
+
+    // ✅ Sauvegarde immédiate de la commande avant redirection
+    const orderTotal = line_items.reduce(
+      (sum, item) => sum + (item.price_data.unit_amount * item.quantity) / 100,
+      0
+    );
+
+    const shippingCost = shipping_rate ? parseFloat(shipping_rate.rate) : 0;
+
+    const [orderResult] = await pool.execute(
+      `INSERT INTO orders (customer_email, status, total, shipping_cost, created_at, updated_at)
+   VALUES (?, ?, ?, ?, NOW(), NOW())`,
+      [customer_email, 'pending', orderTotal, shippingCost]
+    );
+
+    const orderId = orderResult.insertId;
+    console.log('✅ Commande pré-enregistrée avec ID:', orderId);
+
+    // Ajoute chaque item du panier à la table order_items
+    for (const item of items) {
+      const {
+        variant_id,
+        printful_variant_id,
+        quantity,
+        price,
+        color,
+        size,
+        ...rest
+      } = item;
+
+      // Construit le champ meta JSON
+      const meta = {
+        ...(color && { color }),
+        ...(size && { size }),
+        ...rest
+      };
+
+      await pool.execute(
+        `INSERT INTO order_items (order_id, variant_id, printful_variant_id, quantity, price_at_purchase, meta)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+        [
+          orderId,
+          parseInt(variant_id),
+          parseInt(printful_variant_id),
+          parseInt(quantity),
+          parseFloat(price),
+          JSON.stringify(meta)
+        ]
+      );
+    }
 
     res.json({ url: session.url });
   } catch (error) {
@@ -442,11 +586,10 @@ app.post('/create-checkout-session', async (req, res) => {
   }
 });
 
-// === Fonction utilitaire pour matcher variantes locales et Printful ===
+// === Fonction pour mapper cart vers Printful ===
 async function mapCartToPrintfulVariants(cart_items) {
   if (!cart_items) return [];
   const variantIds = cart_items.map((item) => item.id);
-  // On suppose que tu stockes le printful_variant_id sur chaque ligne de product_variants
   const [variants] = await pool.query(
     `SELECT id, printful_variant_id FROM product_variants WHERE id IN (${variantIds
       .map(() => '?')
@@ -534,8 +677,7 @@ app.get('/api/user-info', authProtect, (req, res) => {
   });
 });
 
-// ====================
-// ROUTE: Vérification disponibilité Printful
+// ✅ Mise à jour de la route « /api/printful-stock/:variantId » pour retourner la quantité disponible
 app.get('/api/printful-stock/:variantId', async (req, res) => {
   const { variantId } = req.params;
   try {
@@ -544,18 +686,21 @@ app.get('/api/printful-stock/:variantId', async (req, res) => {
       {
         headers: {
           Authorization: `Bearer ${process.env.PRINTFUL_API_KEY}`,
-          'X-PF-Store-Id': process.env.PRINTFUL_STORE_ID // si requis
+          'X-PF-Store-Id': process.env.PRINTFUL_STORE_ID
         }
       }
     );
 
     const status =
       response.data?.result?.sync_variant?.availability_status || 'unknown';
-    const isAvailable = status === 'active';
+
+    const isAvailable = status === 'active' || status === 'not_synced';
+    const availableQuantity = isAvailable ? 999 : 0;
 
     res.json({
       status: isAvailable ? 'in_stock' : 'unavailable',
-      rawStatus: status
+      rawStatus: status,
+      available: availableQuantity
     });
   } catch (error) {
     console.error(
@@ -626,6 +771,124 @@ app.post('/api/shipping-rates', async (req, res) => {
       .status(500)
       .json({ error: 'Impossible d’obtenir les options de livraison.' });
   }
+});
+
+// === Fonction utilitaire pour mettre à jour le statut ===
+async function updateOrderStatus(orderId, newStatus) {
+  try {
+    const [[order]] = await pool.query(
+      'SELECT status FROM orders WHERE id = ?',
+      [orderId]
+    );
+    if (!order) {
+      console.warn(`⚠️ Commande ID ${orderId} non trouvée.`);
+      return;
+    }
+
+    const oldStatus = order.status;
+
+    // Historise toujours, même si pas de changement
+    await pool.execute(
+      `INSERT INTO order_status_history (order_id, old_status, new_status, changed_at)
+       VALUES (?, ?, ?, NOW())`,
+      [orderId, oldStatus, newStatus]
+    );
+
+    if (oldStatus === newStatus) {
+      console.log(
+        `ℹ️ Statut inchangé pour commande #${orderId} (${newStatus})`
+      );
+      return;
+    }
+
+    await pool.execute(
+      'UPDATE orders SET status = ?, updated_at = NOW() WHERE id = ?',
+      [newStatus, orderId]
+    );
+
+    console.log(
+      `✅ Statut mis à jour : #${orderId} ${oldStatus} → ${newStatus}`
+    );
+  } catch (err) {
+    console.error(`❌ Erreur mise à jour statut pour #${orderId}:`, err);
+  }
+}
+
+// === CRON Printful sync ===
+const CRON_STATUS_SCHEDULE = process.env.CRON_STATUS_SCHEDULE || '0 2 * * *'; // par défaut à 2h du matin
+const CRON_PURGE_LOG_SCHEDULE =
+  process.env.CRON_PURGE_LOG_SCHEDULE || '0 0 * * *'; // par défaut à minuit
+const LOG_RETENTION_DAYS = parseInt(process.env.LOG_RETENTION_DAYS, 10) || 7; // par défaut garde 7 jours
+cron.schedule(CRON_STATUS_SCHEDULE, async () => {
+  console.log('⏰ Début du cron de synchronisation des statuts Printful');
+  await logToDatabase('⏰ Début du cron Printful', 'info');
+
+  try {
+    const [orders] = await pool.query(
+      `SELECT id, printful_order_id, status FROM orders WHERE printful_order_id IS NOT NULL AND status NOT IN ('shipped', 'canceled')`
+    );
+
+    for (const order of orders) {
+      const response = await axios.get(
+        `https://api.printful.com/orders/@${order.printful_order_id}`,
+        {
+          headers: {
+            Authorization: `Bearer ${process.env.PRINTFUL_API_KEY}`
+          }
+        }
+      );
+
+      const printfulStatus = response.data?.result?.status;
+      if (!printfulStatus) {
+        console.warn(`⚠️ Aucun statut Printful reçu pour #${order.id}`);
+        continue;
+      }
+
+      let mappedStatus;
+      switch (printfulStatus) {
+        case 'draft':
+          mappedStatus = 'pending';
+          break;
+        case 'pending':
+          mappedStatus = 'in_production';
+          break;
+        case 'fulfilled':
+          mappedStatus = 'shipped';
+          break;
+        case 'canceled':
+          mappedStatus = 'canceled';
+          break;
+        default:
+          mappedStatus = 'unknown';
+      }
+
+      if (order.status !== mappedStatus) {
+        await updateOrderStatus(order.id, mappedStatus);
+        await logToDatabase(
+          `✅ Statut maj commande ${order.id}: ${order.status} → ${mappedStatus}`,
+          'info'
+        );
+      } else {
+        await logToDatabase(
+          `ℹ️ Pas de changement commande ${order.id} (statut: ${order.status})`,
+          'info'
+        );
+      }
+    }
+
+    console.log('✅ Cron terminé : statuts synchronisés');
+    await logToDatabase('✅ Cron terminé : statuts synchronisés', 'info');
+  } catch (err) {
+    console.error('❌ Erreur dans le cron:', err);
+    await logToDatabase(`❌ Erreur cron: ${err.message}`, 'error');
+  }
+});
+
+// 🧹 Cron pour purge des anciens logs
+cron.schedule(CRON_PURGE_LOG_SCHEDULE, async () => {
+  console.log('🧹 Cron minuit : purge des anciens logs');
+  await logToDatabase('🧹 Cron minuit : purge des anciens logs', 'info');
+  await purgeOldLogs(LOG_RETENTION_DAYS);
 });
 
 app.listen(4242, () => {

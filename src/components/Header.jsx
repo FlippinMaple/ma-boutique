@@ -4,8 +4,10 @@ import { useEffect, useRef, useState } from 'react';
 import './styles/Header.css';
 
 const Header = () => {
-  const { cartItems } = useCart();
-  const totalQuantity = cartItems.reduce((sum, item) => sum + item.quantity, 0);
+  const { cart } = useCart();
+  const totalQuantity = Array.isArray(cart)
+    ? cart.reduce((acc, item) => acc + item.quantity, 0)
+    : 0;
 
   const badgeRef = useRef(null);
   const [animate, setAnimate] = useState(false);

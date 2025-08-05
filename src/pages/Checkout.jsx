@@ -1,17 +1,15 @@
 import { useCart } from '../CartContext';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
-import { useEffect, useState } from 'react';
-import {
-  showCheckoutConfirm,
-  showCheckoutError,
-  showEmptyCartAlert
-} from '../utils/alerts';
+import { useEffect, useState, useRef } from 'react';
 import ShippingOptions from '../components/ShippingOptions';
-import Swal from 'sweetalert2';
+import toast from 'react-hot-toast';
+import { formatEmail, capitalizeSmart } from '../utils/textHelpers';
+import { provincesCA, statesUS } from '../utils/regionOptions';
 
 const Checkout = () => {
-  const { cartItems, removeFromCart, clearCart, addToCart } = useCart();
+  const { cart, removeFromCart, clearCart, addToCart } = useCart();
+
   const [userEmail, setUserEmail] = useState('');
   const [shipping, setShipping] = useState({
     name: '',
@@ -24,37 +22,37 @@ const Checkout = () => {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const [shippingRate, setShippingRate] = useState(null);
+  const hasRedirected = useRef(false);
 
   useEffect(() => {
-    if (cartItems.length === 0) {
-      showEmptyCartAlert();
+    if (!Array.isArray(cart) || cart.length === 0) {
+      hasRedirected.current = true;
+      toast.error('Ton panier est vide. Redirection...');
       setTimeout(() => {
         navigate('/shop');
-      }, 2600);
+      }, 2500);
     }
-  }, [cartItems, navigate]);
+  }, [cart, navigate]);
 
   useEffect(() => {
     const handleBeforeUnload = async () => {
-      if (cartItems.length > 0 && userEmail) {
+      const emailClean = formatEmail(userEmail);
+      if (cart.length > 0 && emailClean) {
         await axios.post('/api/log-abandoned-cart', {
-          customer_email: userEmail,
-          cart_contents: JSON.stringify(cartItems)
+          customer_email: emailClean,
+          cart_contents: JSON.stringify(cart)
         });
       }
     };
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, [cartItems, userEmail]);
+  }, [cart, userEmail]);
 
-  const total = cartItems.reduce(
-    (sum, item) => sum + (Number(item.price) || 0) * (item.quantity || 1),
-    0
-  );
+  const total = Array.isArray(cart)
+    ? cart.reduce((sum, item) => sum + item.price * item.quantity, 0)
+    : 0;
 
-  const handleCheckout = async () => {
-    if (cartItems.length === 0) return;
-
+  const validateCheckout = () => {
     if (
       !userEmail ||
       !shipping.name ||
@@ -62,40 +60,46 @@ const Checkout = () => {
       !shipping.city ||
       !shipping.state ||
       !shipping.country ||
-      !shipping.zip ||
-      !shippingRate
+      !shipping.zip
     ) {
-      alert(
-        'Veuillez remplir tous les champs de livraison et sélectionner un mode de livraison.'
-      );
-      return;
+      toast.error('Tous les champs de livraison doivent être remplis.');
+      return false;
     }
+    if (!shippingRate) {
+      toast.error('Veuillez sélectionner un mode de livraison.');
+      return false;
+    }
+    return true;
+  };
 
-    const result = await showCheckoutConfirm();
-    if (!result.isConfirmed) return;
+  const handleCheckout = async () => {
+    if (!validateCheckout()) return;
+
+    const confirmed = window.confirm('Confirmer le paiement ?');
+    if (!confirmed) return;
 
     setLoading(true);
 
     try {
-      const preparedItems = cartItems.map((item) => {
-        const prepared = {
-          id: item.id,
-          name: item.name,
-          price: item.price,
-          image: item.image,
-          quantity: item.quantity,
-          color: item.color,
-          size: item.size,
-          printful_variant_id: item.printful_variant_id, // ✅ Long ID
-          variant_id: item.variant_id // ✅ Court ID
-        };
-        return prepared;
-      });
+      const preparedItems = cart.map((item) => ({
+        id: item.id,
+        name: capitalizeSmart(item.name),
+        price: item.price,
+        image: item.image,
+        quantity: item.quantity,
+        color: item.color,
+        size: item.size,
+        printful_variant_id: item.printful_variant_id,
+        variant_id: item.variant_id
+      }));
 
       const payload = {
         items: preparedItems,
-        customer_email: userEmail,
-        shipping,
+        customer_email: formatEmail(userEmail),
+        shipping: {
+          ...shipping,
+          name: capitalizeSmart(shipping.name)
+        },
         shipping_rate: shippingRate
       };
 
@@ -105,31 +109,23 @@ const Checkout = () => {
       );
 
       if (response.data?.url) {
+        toast.success('Redirection vers Stripe...');
         window.location.href = response.data.url;
       } else {
-        console.error('❌ Aucune URL de Stripe reçue :', response.data);
-        showCheckoutError();
+        toast.error('Erreur : aucune URL de paiement reçue.');
       }
-    } catch (error) {
+    } catch (err) {
       console.error(
-        '❌ Erreur lors du checkout Stripe :',
-        error.response?.data || error.message
+        'Stri­pe checkout error:',
+        err.response?.data || err.message
       );
-
-      const message =
-        error?.response?.data?.error ||
-        'Une erreur est survenue lors de la commande.';
-
-      await Swal.fire({
-        icon: 'error',
-        title: 'Erreur de paiement',
-        text: message,
-        confirmButtonText: 'Retour'
-      });
+      toast.error(err?.response?.data?.error || 'Erreur durant le paiement.');
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
   };
+
+  if (!Array.isArray(cart) || cart.length === 0) return null;
 
   return (
     <div style={{ padding: '2rem', maxWidth: '500px', margin: 'auto' }}>
@@ -151,6 +147,7 @@ const Checkout = () => {
           required
         />
       </div>
+
       <div style={{ marginBottom: '1rem' }}>
         <input
           placeholder="Nom complet"
@@ -194,77 +191,19 @@ const Checkout = () => {
           required
         >
           <option value="">Sélectionner une province ou un état</option>
-          {shipping.country === 'CA' && (
-            <>
-              <option value="AB">Alberta</option>
-              <option value="BC">Colombie-Britannique</option>
-              <option value="MB">Manitoba</option>
-              <option value="NB">Nouveau-Brunswick</option>
-              <option value="NL">Terre-Neuve-et-Labrador</option>
-              <option value="NS">Nouvelle-Écosse</option>
-              <option value="NT">Territoires du Nord-Ouest</option>
-              <option value="NU">Nunavut</option>
-              <option value="ON">Ontario</option>
-              <option value="PE">Île-du-Prince-Édouard</option>
-              <option value="QC">Québec</option>
-              <option value="SK">Saskatchewan</option>
-              <option value="YT">Yukon</option>
-            </>
-          )}
-          {shipping.country === 'US' && (
-            <>
-              <option value="AL">Alabama</option>
-              <option value="AK">Alaska</option>
-              <option value="AZ">Arizona</option>
-              <option value="AR">Arkansas</option>
-              <option value="CA">Californie</option>
-              <option value="CO">Colorado</option>
-              <option value="CT">Connecticut</option>
-              <option value="DE">Delaware</option>
-              <option value="FL">Floride</option>
-              <option value="GA">Géorgie</option>
-              <option value="HI">Hawaï</option>
-              <option value="ID">Idaho</option>
-              <option value="IL">Illinois</option>
-              <option value="IN">Indiana</option>
-              <option value="IA">Iowa</option>
-              <option value="KS">Kansas</option>
-              <option value="KY">Kentucky</option>
-              <option value="LA">Louisiane</option>
-              <option value="ME">Maine</option>
-              <option value="MD">Maryland</option>
-              <option value="MA">Massachusetts</option>
-              <option value="MI">Michigan</option>
-              <option value="MN">Minnesota</option>
-              <option value="MS">Mississippi</option>
-              <option value="MO">Missouri</option>
-              <option value="MT">Montana</option>
-              <option value="NE">Nebraska</option>
-              <option value="NV">Nevada</option>
-              <option value="NH">New Hampshire</option>
-              <option value="NJ">New Jersey</option>
-              <option value="NM">Nouveau-Mexique</option>
-              <option value="NY">New York</option>
-              <option value="NC">Caroline du Nord</option>
-              <option value="ND">Dakota du Nord</option>
-              <option value="OH">Ohio</option>
-              <option value="OK">Oklahoma</option>
-              <option value="OR">Oregon</option>
-              <option value="PA">Pennsylvanie</option>
-              <option value="RI">Rhode Island</option>
-              <option value="SC">Caroline du Sud</option>
-              <option value="SD">Dakota du Sud</option>
-              <option value="TN">Tennessee</option>
-              <option value="TX">Texas</option>
-              <option value="UT">Utah</option>
-              <option value="VT">Vermont</option>
-              <option value="VA">Virginie</option>
-              <option value="WA">Washington</option>
-              <option value="WV">Virginie-Occidentale</option>
-              <option value="WI">Wisconsin</option>
-              <option value="WY">Wyoming</option>
-            </>
-          )}
+          {shipping.country === 'CA' &&
+            provincesCA.map((prov) => (
+              <option key={prov.code} value={prov.code}>
+                {prov.name}
+              </option>
+            ))}
+
+          {shipping.country === 'US' &&
+            statesUS.map((state) => (
+              <option key={state.code} value={state.code}>
+                {state.name}
+              </option>
+            ))}
         </select>
         <input
           placeholder="Code postal"
@@ -275,131 +214,125 @@ const Checkout = () => {
         />
       </div>
 
-      {cartItems.length === 0 ? (
-        <p>Ton panier est vide.</p>
-      ) : (
-        <div>
-          {cartItems.map((item) => (
-            <div key={item.id} style={{ marginBottom: '1.5rem' }}>
-              <div
-                style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}
+      {cart.map((item) => (
+        <div
+          key={item.id}
+          style={{
+            marginBottom: '1.5rem',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '1rem'
+          }}
+        >
+          <img
+            src={item.image}
+            alt={item.name}
+            style={{ width: '60px', height: '60px', borderRadius: '6px' }}
+          />
+          <div>
+            <strong>{capitalizeSmart(item.name)}</strong>
+            <div className="shop-quantity-controls">
+              <button
+                className="shop-qty-btn"
+                onClick={() => removeFromCart(item.id)}
               >
-                <img
-                  src={item.image}
-                  alt={item.name}
-                  style={{ width: '60px', height: '60px', borderRadius: '6px' }}
-                />
-                <div>
-                  <strong>{item.name}</strong>
-                  <div className="shop-quantity-controls">
-                    <button
-                      className="shop-qty-btn"
-                      onClick={() => removeFromCart(item.id)}
-                    >
-                      ➖
-                    </button>
-                    <span className="shop-qty-count">{item.quantity}</span>
-                    <button
-                      className="shop-qty-btn"
-                      onClick={() => addToCart({ ...item, quantity: 1 })}
-                    >
-                      ➕
-                    </button>
-                  </div>
-                  <p style={{ marginTop: '5px' }}>
-                    {(Number(item.price) || 0).toFixed(2)} $ x {item.quantity} ={' '}
-                    {((Number(item.price) || 0) * item.quantity).toFixed(2)} $
-                  </p>
-                </div>
-              </div>
+                ➖
+              </button>
+              <span className="shop-qty-count">{item.quantity}</span>
+              <button
+                className="shop-qty-btn"
+                onClick={() => addToCart({ ...item, quantity: 1 })}
+              >
+                ➕
+              </button>
             </div>
-          ))}
-          {shipping.name &&
-            shipping.address1 &&
-            shipping.city &&
-            shipping.state &&
-            shipping.country &&
-            shipping.zip && (
-              <ShippingOptions
-                cartItems={cartItems}
-                shippingInfo={shipping}
-                onShippingSelected={setShippingRate}
-              />
-            )}
-
-          <hr />
-          <p>
-            <strong>Sous-total :</strong> {total.toFixed(2)} $
-          </p>
-          {shippingRate && (
-            <p>
-              <strong>Livraison ({shippingRate.name}) :</strong>{' '}
-              {parseFloat(shippingRate.rate).toFixed(2)} $
+            <p style={{ marginTop: '5px' }}>
+              {(Number(item.price) || 0).toFixed(2)} $ x {item.quantity} ={' '}
+              {((Number(item.price) || 0) * item.quantity).toFixed(2)} $
             </p>
-          )}
-          <p>
-            <strong>Total à payer :</strong>{' '}
-            {(
-              total + (shippingRate ? parseFloat(shippingRate.rate) : 0)
-            ).toFixed(2)}{' '}
-            $
-          </p>
-
-          <button onClick={clearCart}>Vider le panier</button>
-          <button
-            onClick={handleCheckout}
-            disabled={loading || cartItems.length === 0 || !shippingRate}
-            style={{
-              marginLeft: '1rem',
-              padding: '10px 20px',
-              backgroundColor: '#28a745',
-              color: '#fff',
-              border: 'none',
-              borderRadius: '8px',
-              cursor: 'pointer',
-              fontWeight: 'bold',
-              fontSize: '16px'
-            }}
-          >
-            Payer maintenant
-          </button>
-
-          <button
-            onClick={async () => {
-              const payload = {
-                recipient: shipping,
-                items: cartItems.map((item) => ({
-                  variant_id: item.variant_id,
-                  quantity: item.quantity
-                }))
-              };
-
-              try {
-                const res = await axios.post(
-                  'http://localhost:4242/api/shipping-rates',
-                  payload
-                );
-              } catch (err) {
-                console.error(
-                  '❌ Erreur retour Printful:',
-                  err.response?.data || err.message
-                );
-              }
-            }}
-            style={{
-              marginTop: '1rem',
-              backgroundColor: '#007bff',
-              color: '#fff',
-              padding: '8px 12px',
-              border: 'none',
-              borderRadius: '5px',
-              cursor: 'pointer'
-            }}
-          >
-            Tester le calcul des frais de livraison
-          </button>
+          </div>
         </div>
+      ))}
+
+      {shipping.name &&
+        shipping.address1 &&
+        shipping.city &&
+        shipping.state &&
+        shipping.country &&
+        shipping.zip && (
+          <ShippingOptions
+            cartItems={cart}
+            shippingInfo={shipping}
+            onShippingSelected={setShippingRate}
+          />
+        )}
+
+      <hr />
+      <p>
+        <strong>Sous-total :</strong> {total.toFixed(2)} $
+      </p>
+      {shippingRate && (
+        <p>
+          <strong>Livraison ({shippingRate.name}) :</strong>{' '}
+          {parseFloat(shippingRate.rate).toFixed(2)} $
+        </p>
       )}
+      <p>
+        <strong>Total à payer :</strong>{' '}
+        {(total + (shippingRate ? parseFloat(shippingRate.rate) : 0)).toFixed(
+          2
+        )}{' '}
+        $
+      </p>
+
+      <button onClick={clearCart}>Vider le panier</button>
+      <button
+        onClick={handleCheckout}
+        disabled={loading || !shippingRate}
+        style={{
+          marginLeft: '1rem',
+          padding: '10px 20px',
+          backgroundColor: '#28a745',
+          color: '#fff',
+          border: 'none',
+          borderRadius: '8px',
+          cursor: 'pointer',
+          fontWeight: 'bold',
+          fontSize: '16px'
+        }}
+      >
+        Payer maintenant
+      </button>
+      <button
+        onClick={async () => {
+          try {
+            await axios.post('http://localhost:4242/api/shipping-rates', {
+              recipient: shipping,
+              items: cart.map((item) => ({
+                variant_id: item.variant_id,
+                quantity: item.quantity
+              }))
+            });
+          } catch (err) {
+            console.error(
+              'Erreur sur test shipping :',
+              err.response?.data || err.message
+            );
+          }
+        }}
+        style={{
+          marginTop: '1rem',
+          backgroundColor: '#007bff',
+          color: '#fff',
+          padding: '8px 12px',
+          border: 'none',
+          borderRadius: '5px',
+          cursor: 'pointer'
+        }}
+      >
+        Tester le calcul des frais de livraison
+      </button>
+
       {loading && (
         <div style={{ marginTop: '1rem', color: '#007bff' }}>
           🔄 Redirection vers Stripe...
