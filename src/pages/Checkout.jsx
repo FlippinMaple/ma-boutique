@@ -125,8 +125,6 @@ const Checkout = () => {
     }
   };
 
-  if (!Array.isArray(cart) || cart.length === 0) return null;
-
   return (
     <div style={{ padding: '2rem', maxWidth: '500px', margin: 'auto' }}>
       <h2>Panier</h2>

@@ -22,6 +22,7 @@ import PreviewOrder from './pages/PreviewOrder';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
 import Login from './pages/Login';
+import ProtectedCheckoutRoute from './components/ProtectedCheckoutRoute';
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -82,7 +83,7 @@ function App() {
   return (
     <ModalProvider>
       <Router>
-        <Header />
+        <Header onLogout={handleLogout} />
         <Toaster position="top-right" /> {/* ✅ Affichage global des toasts */}
         <Routes>
           <Route path="/" element={<Home />} />
@@ -93,7 +94,14 @@ function App() {
             element={isAuthenticated ? <Dashboard /> : <Navigate to="/login" />}
           />
           <Route path="/shop" element={<Shop />} />
-          <Route path="/checkout" element={<Checkout />} />
+          <Route
+            path="/checkout"
+            element={
+              <ProtectedCheckoutRoute>
+                <Checkout />
+              </ProtectedCheckoutRoute>
+            }
+          />
           <Route path="/success" element={<Success />} />
           <Route path="/cancel" element={<Cancel />} />
           <Route path="/product/:id" element={<ProductDetail />} />
