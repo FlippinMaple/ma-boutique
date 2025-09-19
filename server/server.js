@@ -4,13 +4,19 @@ import express from 'express';
 import bodyParser from 'body-parser';
 import cors from 'cors';
 import Stripe from 'stripe';
-import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import axios from 'axios';
 import syncPrintfulOrderStatus from './utils/syncPrintful.js';
 import cron from 'node-cron';
 import { logToDatabase, purgeOldLogs } from './utils/logger.js';
 import { pool } from './db.js';
+import { errorHandler } from './middlewares/errorHandler.js';
+
+//Routes imports
+import wishlistRoutes from './routes/wishlistRoutes.js';
+import authRoutes from './routes/authRoutes.js';
+import productsRoutes from './routes/productsRoutes.js';
+import checkoutRoutes from './routes/checkoutRoutes.js';
 
 const app = express();
 app.use(cors());
@@ -19,6 +25,18 @@ app.use(express.json());
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
   apiVersion: '2022-11-15'
 });
+
+//Auth routes
+app.use('/api/auth', authRoutes);
+
+//Products Route
+app.use('/api/products', productsRoutes);
+
+//Wishlist Route
+app.use('/api/wishlist', wishlistRoutes);
+
+//Checkout Route
+app.use('/api/create-checkout-session', checkoutRoutes);
 
 // === Stripe Webhook ===
 app.post(
@@ -190,401 +208,401 @@ const authProtect = async (req, res, next) => {
 
 // ====================
 // ROUTE: Register
-app.post('/api/register', async (req, res) => {
-  let { first_name, last_name, email, password, is_subscribed } = req.body;
+// app.post('/api/register', async (req, res) => {
+//   let { first_name, last_name, email, password, is_subscribed } = req.body;
 
-  // 🧼 Normalisation → tout en minuscules
-  first_name = first_name.trim().toLowerCase();
-  last_name = last_name.trim().toLowerCase();
-  email = email.trim().toLowerCase();
+//   // 🧼 Normalisation → tout en minuscules
+//   first_name = first_name.trim().toLowerCase();
+//   last_name = last_name.trim().toLowerCase();
+//   email = email.trim().toLowerCase();
 
-  if (!first_name || !last_name || !email || !password) {
-    return res.status(400).json({ error: 'Tous les champs sont requis.' });
-  }
+//   if (!first_name || !last_name || !email || !password) {
+//     return res.status(400).json({ error: 'Tous les champs sont requis.' });
+//   }
 
-  try {
-    const [existing] = await pool.execute(
-      'SELECT id FROM customers WHERE email = ?',
-      [email]
-    );
+//   try {
+//     const [existing] = await pool.execute(
+//       'SELECT id FROM customers WHERE email = ?',
+//       [email]
+//     );
 
-    if (existing.length > 0) {
-      return res.status(400).json({ error: 'Ce courriel est déjà utilisé.' });
-    }
+//     if (existing.length > 0) {
+//       return res.status(400).json({ error: 'Ce courriel est déjà utilisé.' });
+//     }
 
-    const hashedPassword = await bcrypt.hash(password, 10);
+//     const hashedPassword = await bcrypt.hash(password, 10);
 
-    await pool.execute(
-      `INSERT INTO customers (
-        first_name,
-        last_name,
-        email,
-        password_hash,
-        is_subscribed,
-        created_at,
-        updated_at
-      )
-      VALUES (?, ?, ?, ?, ?, NOW(), NOW())`,
-      [first_name, last_name, email, hashedPassword, !!is_subscribed]
-    );
+//     await pool.execute(
+//       `INSERT INTO customers (
+//         first_name,
+//         last_name,
+//         email,
+//         password_hash,
+//         is_subscribed,
+//         created_at,
+//         updated_at
+//       )
+//       VALUES (?, ?, ?, ?, ?, NOW(), NOW())`,
+//       [first_name, last_name, email, hashedPassword, !!is_subscribed]
+//     );
 
-    return res
-      .status(200)
-      .json({ success: true, message: 'Compte créé avec succès.' });
-  } catch (err) {
-    console.error('❌ Erreur serveur lors de l’inscription :', err);
-    return res
-      .status(500)
-      .json({ error: 'Erreur serveur lors de l’inscription.' });
-  }
-});
+//     return res
+//       .status(200)
+//       .json({ success: true, message: 'Compte créé avec succès.' });
+//   } catch (err) {
+//     console.error('❌ Erreur serveur lors de l’inscription :', err);
+//     return res
+//       .status(500)
+//       .json({ error: 'Erreur serveur lors de l’inscription.' });
+//   }
+// });
 
 // ====================
 // ROUTE: Login
-app.post('/api/login', async (req, res) => {
-  const { email, password } = req.body;
+// app.post('/api/login', async (req, res) => {
+//   const { email, password } = req.body;
 
-  if (!email || !password) {
-    return res.status(400).json({ error: 'Champs requis manquants.' });
-  }
+//   if (!email || !password) {
+//     return res.status(400).json({ error: 'Champs requis manquants.' });
+//   }
 
-  const normalizedEmail = email.trim().toLowerCase();
+//   const normalizedEmail = email.trim().toLowerCase();
 
-  try {
-    const [rows] = await pool.execute(
-      'SELECT id, first_name, last_name, password_hash FROM customers WHERE email = ?',
-      [normalizedEmail]
-    );
+//   try {
+//     const [rows] = await pool.execute(
+//       'SELECT id, first_name, last_name, password_hash FROM customers WHERE email = ?',
+//       [normalizedEmail]
+//     );
 
-    if (rows.length === 0) {
-      return res.status(401).json({ error: 'Identifiants invalides.' });
-    }
+//     if (rows.length === 0) {
+//       return res.status(401).json({ error: 'Identifiants invalides.' });
+//     }
 
-    const user = rows[0];
-    const isMatch = await bcrypt.compare(password, user.password_hash);
+//     const user = rows[0];
+//     const isMatch = await bcrypt.compare(password, user.password_hash);
 
-    if (!isMatch) {
-      return res.status(401).json({ error: 'Identifiants invalides.' });
-    }
+//     if (!isMatch) {
+//       return res.status(401).json({ error: 'Identifiants invalides.' });
+//     }
 
-    const accessToken = jwt.sign(
-      {
-        id: user.id,
-        email: normalizedEmail,
-        first_name: user.first_name,
-        last_name: user.last_name
-      },
-      process.env.JWT_SECRET,
-      { expiresIn: '2h' }
-    );
+//     const accessToken = jwt.sign(
+//       {
+//         id: user.id,
+//         email: normalizedEmail,
+//         first_name: user.first_name,
+//         last_name: user.last_name
+//       },
+//       process.env.JWT_SECRET,
+//       { expiresIn: '2h' }
+//     );
 
-    const refreshToken = jwt.sign(
-      { id: user.id, email: normalizedEmail },
-      process.env.JWT_REFRESH_SECRET,
-      { expiresIn: '7d' }
-    );
+//     const refreshToken = jwt.sign(
+//       { id: user.id, email: normalizedEmail },
+//       process.env.JWT_REFRESH_SECRET,
+//       { expiresIn: '7d' }
+//     );
 
-    await pool.execute(
-      `REPLACE INTO refresh_tokens (user_id, refresh_token, expires_at)
-       VALUES (?, ?, ?)`,
-      [user.id, refreshToken, new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)]
-    );
+//     await pool.execute(
+//       `REPLACE INTO refresh_tokens (user_id, refresh_token, expires_at)
+//        VALUES (?, ?, ?)`,
+//       [user.id, refreshToken, new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)]
+//     );
 
-    res.json({
-      accessToken,
-      refreshToken,
-      user: {
-        id: user.id,
-        email: normalizedEmail,
-        first_name: user.first_name,
-        last_name: user.last_name
-      }
-    });
-  } catch (err) {
-    console.error('❌ Erreur serveur :', err);
-    res.status(500).json({ error: 'Erreur lors de la connexion.' });
-  }
-});
+//     res.json({
+//       accessToken,
+//       refreshToken,
+//       user: {
+//         id: user.id,
+//         email: normalizedEmail,
+//         first_name: user.first_name,
+//         last_name: user.last_name
+//       }
+//     });
+//   } catch (err) {
+//     console.error('❌ Erreur serveur :', err);
+//     res.status(500).json({ error: 'Erreur lors de la connexion.' });
+//   }
+// });
 
 // ====================
 // ROUTE: Refresh Token
-app.post('/api/refresh-token', async (req, res) => {
-  const { refreshToken } = req.body;
-  if (!refreshToken) {
-    return res.status(403).json({ message: 'Refresh token manquant' });
-  }
-  try {
-    const [rows] = await pool.execute(
-      'SELECT * FROM refresh_tokens WHERE refresh_token = ?',
-      [refreshToken]
-    );
-    if (rows.length === 0) {
-      return res.status(403).json({ message: 'Refresh token invalide' });
-    }
-    const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
-    const { user_id } = rows[0];
-    const newAccessToken = jwt.sign(
-      { id: user_id, email: decoded.email },
-      process.env.JWT_SECRET,
-      { expiresIn: '2h' }
-    );
-    res.json({ accessToken: newAccessToken });
-  } catch (err) {
-    console.error('❌ Erreur lors du rafraîchissement du token :', err);
-    res.status(403).json({ message: 'Refresh token invalide ou expiré' });
-  }
-});
+// app.post('/api/refresh-token', async (req, res) => {
+//   const { refreshToken } = req.body;
+//   if (!refreshToken) {
+//     return res.status(403).json({ message: 'Refresh token manquant' });
+//   }
+//   try {
+//     const [rows] = await pool.execute(
+//       'SELECT * FROM refresh_tokens WHERE refresh_token = ?',
+//       [refreshToken]
+//     );
+//     if (rows.length === 0) {
+//       return res.status(403).json({ message: 'Refresh token invalide' });
+//     }
+//     const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
+//     const { user_id } = rows[0];
+//     const newAccessToken = jwt.sign(
+//       { id: user_id, email: decoded.email },
+//       process.env.JWT_SECRET,
+//       { expiresIn: '2h' }
+//     );
+//     res.json({ accessToken: newAccessToken });
+//   } catch (err) {
+//     console.error('❌ Erreur lors du rafraîchissement du token :', err);
+//     res.status(403).json({ message: 'Refresh token invalide ou expiré' });
+//   }
+// });
 
 // ====================
 // ROUTE: Logout
-app.post('/api/logout', async (req, res) => {
-  const { refreshToken } = req.body;
-  if (!refreshToken) {
-    return res.status(400).json({ message: 'Refresh token manquant' });
-  }
-  try {
-    await pool.execute('DELETE FROM refresh_tokens WHERE refresh_token = ?', [
-      refreshToken
-    ]);
-    res.json({ message: 'Déconnexion réussie' });
-  } catch (err) {
-    console.error('❌ Erreur lors de la déconnexion :', err);
-    res.status(500).json({ message: 'Erreur lors de la déconnexion' });
-  }
-});
+// app.post('/api/logout', async (req, res) => {
+//   const { refreshToken } = req.body;
+//   if (!refreshToken) {
+//     return res.status(400).json({ message: 'Refresh token manquant' });
+//   }
+//   try {
+//     await pool.execute('DELETE FROM refresh_tokens WHERE refresh_token = ?', [
+//       refreshToken
+//     ]);
+//     res.json({ message: 'Déconnexion réussie' });
+//   } catch (err) {
+//     console.error('❌ Erreur lors de la déconnexion :', err);
+//     res.status(500).json({ message: 'Erreur lors de la déconnexion' });
+//   }
+// });
 
 // ====================
 // ROUTE: Produits pour Shop.jsx (produits + variantes)
-app.get('/api/products', async (req, res) => {
-  try {
-    const [rows] = await pool.execute(
-      `SELECT p.id, p.name, p.description, p.image,
-       v.id as local_variant_id,
-       v.variant_id, -- 👈 court ID utilisé par Printful
-       v.printful_variant_id, -- 👈 long ID (optionnel mais utile)
-       v.price, v.size, v.color, v.image as variant_image
-FROM products p
-LEFT JOIN product_variants v ON v.product_id = p.id
-WHERE p.is_visible = 1
-ORDER BY p.id DESC
-`
-    );
+// app.get('/api/products', async (req, res) => {
+//   try {
+//     const [rows] = await pool.execute(
+//       `SELECT p.id, p.name, p.description, p.image,
+//        v.id as local_variant_id,
+//        v.variant_id, -- 👈 court ID utilisé par Printful
+//        v.printful_variant_id, -- 👈 long ID (optionnel mais utile)
+//        v.price, v.size, v.color, v.image as variant_image
+// FROM products p
+// LEFT JOIN product_variants v ON v.product_id = p.id
+// WHERE p.is_visible = 1
+// ORDER BY p.id DESC
+// `
+//     );
 
-    const productsMap = {};
-    rows.forEach((row) => {
-      if (!productsMap[row.id]) {
-        productsMap[row.id] = {
-          id: row.id,
-          name: row.name,
-          description: row.description,
-          image: row.image,
-          variants: []
-        };
-      }
-      if (row.local_variant_id) {
-        productsMap[row.id].variants.push({
-          id: row.local_variant_id, // ton ID local pour la DB
-          variant_id: row.variant_id, // le court ID Printful ⚠️
-          printful_variant_id: row.printful_variant_id, // long ID si tu veux
-          price: row.price,
-          size: row.size,
-          color: row.color,
-          image: row.variant_image
-        });
-      }
-    });
-    const products = Object.values(productsMap);
-    res.json(products);
-  } catch (err) {
-    console.error('❌ Erreur SQL /api/products:', err);
-    res.status(500).json({ error: 'Erreur serveur.' });
-  }
-});
+//     const productsMap = {};
+//     rows.forEach((row) => {
+//       if (!productsMap[row.id]) {
+//         productsMap[row.id] = {
+//           id: row.id,
+//           name: row.name,
+//           description: row.description,
+//           image: row.image,
+//           variants: []
+//         };
+//       }
+//       if (row.local_variant_id) {
+//         productsMap[row.id].variants.push({
+//           id: row.local_variant_id, // ton ID local pour la DB
+//           variant_id: row.variant_id, // le court ID Printful ⚠️
+//           printful_variant_id: row.printful_variant_id, // long ID si tu veux
+//           price: row.price,
+//           size: row.size,
+//           color: row.color,
+//           image: row.variant_image
+//         });
+//       }
+//     });
+//     const products = Object.values(productsMap);
+//     res.json(products);
+//   } catch (err) {
+//     console.error('❌ Erreur SQL /api/products:', err);
+//     res.status(500).json({ error: 'Erreur serveur.' });
+//   }
+// });
 
 // ====================
 // ROUTE: Détail d’un produit avec variantes (pour page de détail)
-app.get('/api/products/:id', async (req, res) => {
-  const productId = req.params.id;
-  try {
-    // Récupère le produit
-    const [[product]] = await pool.query(
-      `SELECT id, name, description, image FROM products WHERE id = ?`,
-      [productId]
-    );
-    if (!product) {
-      return res.status(404).json({ error: 'Produit non trouvé' });
-    }
+// app.get('/api/products/:id', async (req, res) => {
+//   const productId = req.params.id;
+//   try {
+//     // Récupère le produit
+//     const [[product]] = await pool.query(
+//       `SELECT id, name, description, image FROM products WHERE id = ?`,
+//       [productId]
+//     );
+//     if (!product) {
+//       return res.status(404).json({ error: 'Produit non trouvé' });
+//     }
 
-    // Récupère les variantes de ce produit
-    const [variants] = await pool.query(
-      `SELECT id, variant_id, printful_variant_id, color, size, price, image FROM product_variants WHERE product_id = ?`,
-      [productId]
-    );
+//     // Récupère les variantes de ce produit
+//     const [variants] = await pool.query(
+//       `SELECT id, variant_id, printful_variant_id, color, size, price, image FROM product_variants WHERE product_id = ?`,
+//       [productId]
+//     );
 
-    // Renvoie le produit + variantes
-    res.json({
-      ...product,
-      variants: variants || []
-    });
-  } catch (err) {
-    console.error('❌ Erreur SQL /api/products/:id:', err);
-    res.status(500).json({ error: 'Erreur serveur.' });
-  }
-});
+//     // Renvoie le produit + variantes
+//     res.json({
+//       ...product,
+//       variants: variants || []
+//     });
+//   } catch (err) {
+//     console.error('❌ Erreur SQL /api/products/:id:', err);
+//     res.status(500).json({ error: 'Erreur serveur.' });
+//   }
+// });
 
 // ====================
 // ROUTE: Stripe Checkout Session
-app.post('/create-checkout-session', async (req, res) => {
-  const { items, customer_email, shipping, billing, shipping_rate } = req.body;
+// app.post('/create-checkout-session', async (req, res) => {
+//   const { items, customer_email, shipping, billing, shipping_rate } = req.body;
 
-  try {
-    const line_items = [];
+//   try {
+//     const line_items = [];
 
-    for (const item of items) {
-      const { printful_variant_id, price, name, image, quantity } = item;
+//     for (const item of items) {
+//       const { printful_variant_id, price, name, image, quantity } = item;
 
-      if (!printful_variant_id || isNaN(Number(printful_variant_id))) {
-        console.warn(
-          `❌ variant_id manquant ou invalide pour l’item ${item.id}`
-        );
-        continue;
-      }
+//       if (!printful_variant_id || isNaN(Number(printful_variant_id))) {
+//         console.warn(
+//           `❌ variant_id manquant ou invalide pour l’item ${item.id}`
+//         );
+//         continue;
+//       }
 
-      // ✅ Vérifie la dispo via /sync/variant/
-      const response = await axios.get(
-        `https://api.printful.com/sync/variant/${printful_variant_id}`,
-        {
-          headers: {
-            Authorization: `Bearer ${process.env.PRINTFUL_API_KEY}`,
-            'X-PF-Store-Id': process.env.PRINTFUL_STORE_ID
-          }
-        }
-      );
+//       // ✅ Vérifie la dispo via /sync/variant/
+//       const response = await axios.get(
+//         `https://api.printful.com/sync/variant/${printful_variant_id}`,
+//         {
+//           headers: {
+//             Authorization: `Bearer ${process.env.PRINTFUL_API_KEY}`,
+//             'X-PF-Store-Id': process.env.PRINTFUL_STORE_ID
+//           }
+//         }
+//       );
 
-      const status = response.data?.result?.sync_variant?.availability_status;
-      if (status !== 'active') {
-        console.warn(
-          `⚠️ Produit indisponible (ID ${printful_variant_id}) : ${status}`
-        );
-        return res.status(400).json({
-          error: `Le produit "${
-            item.name || `#${item.id}`
-          }" n'est plus disponible.`
-        });
-      }
+//       const status = response.data?.result?.sync_variant?.availability_status;
+//       if (status !== 'active') {
+//         console.warn(
+//           `⚠️ Produit indisponible (ID ${printful_variant_id}) : ${status}`
+//         );
+//         return res.status(400).json({
+//           error: `Le produit "${
+//             item.name || `#${item.id}`
+//           }" n'est plus disponible.`
+//         });
+//       }
 
-      // ✅ Ajoute le produit à Stripe
-      line_items.push({
-        price_data: {
-          currency: 'cad',
-          product_data: {
-            name:
-              typeof name === 'string' && name.trim() !== ''
-                ? name.trim()
-                : `Produit #${item.id}`,
-            images: image ? [image] : []
-          },
-          unit_amount: !isNaN(Number(price))
-            ? Math.round(Number(price) * 100)
-            : 1000
-        },
-        quantity: quantity || 1
-      });
-    }
+//       // ✅ Ajoute le produit à Stripe
+//       line_items.push({
+//         price_data: {
+//           currency: 'cad',
+//           product_data: {
+//             name:
+//               typeof name === 'string' && name.trim() !== ''
+//                 ? name.trim()
+//                 : `Produit #${item.id}`,
+//             images: image ? [image] : []
+//           },
+//           unit_amount: !isNaN(Number(price))
+//             ? Math.round(Number(price) * 100)
+//             : 1000
+//         },
+//         quantity: quantity || 1
+//       });
+//     }
 
-    // ✅ Ajoute la livraison si sélectionnée
-    if (
-      shipping_rate &&
-      typeof shipping_rate.name === 'string' &&
-      shipping_rate.name.trim() !== '' &&
-      !isNaN(Number(shipping_rate.rate))
-    ) {
-      line_items.push({
-        price_data: {
-          currency: 'cad',
-          product_data: {
-            name: `Livraison (${shipping_rate.name.trim()})`
-          },
-          unit_amount: Math.round(Number(shipping_rate.rate) * 100)
-        },
-        quantity: 1
-      });
-    }
+//     // ✅ Ajoute la livraison si sélectionnée
+//     if (
+//       shipping_rate &&
+//       typeof shipping_rate.name === 'string' &&
+//       shipping_rate.name.trim() !== '' &&
+//       !isNaN(Number(shipping_rate.rate))
+//     ) {
+//       line_items.push({
+//         price_data: {
+//           currency: 'cad',
+//           product_data: {
+//             name: `Livraison (${shipping_rate.name.trim()})`
+//           },
+//           unit_amount: Math.round(Number(shipping_rate.rate) * 100)
+//         },
+//         quantity: 1
+//       });
+//     }
 
-    // ✅ Création de la session Stripe
-    const session = await stripe.checkout.sessions.create({
-      payment_method_types: ['card'],
-      line_items,
-      mode: 'payment',
-      customer_email,
-      metadata: {
-        customer_email,
-        shipping_country: shipping?.country,
-        shipping_state: shipping?.state,
-        shipping_postal: shipping?.zip
-      },
-      success_url: process.env.FRONTEND_URL + '/success',
-      cancel_url: process.env.FRONTEND_URL + '/checkout'
-    });
+//     // ✅ Création de la session Stripe
+//     const session = await stripe.checkout.sessions.create({
+//       payment_method_types: ['card'],
+//       line_items,
+//       mode: 'payment',
+//       customer_email,
+//       metadata: {
+//         customer_email,
+//         shipping_country: shipping?.country,
+//         shipping_state: shipping?.state,
+//         shipping_postal: shipping?.zip
+//       },
+//       success_url: process.env.FRONTEND_URL + '/success',
+//       cancel_url: process.env.FRONTEND_URL + '/checkout'
+//     });
 
-    // ✅ Sauvegarde immédiate de la commande avant redirection
-    const orderTotal = line_items.reduce(
-      (sum, item) => sum + (item.price_data.unit_amount * item.quantity) / 100,
-      0
-    );
+//     // ✅ Sauvegarde immédiate de la commande avant redirection
+//     const orderTotal = line_items.reduce(
+//       (sum, item) => sum + (item.price_data.unit_amount * item.quantity) / 100,
+//       0
+//     );
 
-    const shippingCost = shipping_rate ? parseFloat(shipping_rate.rate) : 0;
+//     const shippingCost = shipping_rate ? parseFloat(shipping_rate.rate) : 0;
 
-    const [orderResult] = await pool.execute(
-      `INSERT INTO orders (customer_email, status, total, shipping_cost, created_at, updated_at)
-   VALUES (?, ?, ?, ?, NOW(), NOW())`,
-      [customer_email, 'pending', orderTotal, shippingCost]
-    );
+//     const [orderResult] = await pool.execute(
+//       `INSERT INTO orders (customer_email, status, total, shipping_cost, created_at, updated_at)
+//    VALUES (?, ?, ?, ?, NOW(), NOW())`,
+//       [customer_email, 'pending', orderTotal, shippingCost]
+//     );
 
-    const orderId = orderResult.insertId;
-    console.log('✅ Commande pré-enregistrée avec ID:', orderId);
+//     const orderId = orderResult.insertId;
+//     console.log('✅ Commande pré-enregistrée avec ID:', orderId);
 
-    // Ajoute chaque item du panier à la table order_items
-    for (const item of items) {
-      const {
-        variant_id,
-        printful_variant_id,
-        quantity,
-        price,
-        color,
-        size,
-        ...rest
-      } = item;
+//     // Ajoute chaque item du panier à la table order_items
+//     for (const item of items) {
+//       const {
+//         variant_id,
+//         printful_variant_id,
+//         quantity,
+//         price,
+//         color,
+//         size,
+//         ...rest
+//       } = item;
 
-      // Construit le champ meta JSON
-      const meta = {
-        ...(color && { color }),
-        ...(size && { size }),
-        ...rest
-      };
+//       // Construit le champ meta JSON
+//       const meta = {
+//         ...(color && { color }),
+//         ...(size && { size }),
+//         ...rest
+//       };
 
-      await pool.execute(
-        `INSERT INTO order_items (order_id, variant_id, printful_variant_id, quantity, price_at_purchase, meta)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-        [
-          orderId,
-          parseInt(variant_id),
-          parseInt(printful_variant_id),
-          parseInt(quantity),
-          parseFloat(price),
-          JSON.stringify(meta)
-        ]
-      );
-    }
+//       await pool.execute(
+//         `INSERT INTO order_items (order_id, variant_id, printful_variant_id, quantity, price_at_purchase, meta)
+//      VALUES (?, ?, ?, ?, ?, ?)`,
+//         [
+//           orderId,
+//           parseInt(variant_id),
+//           parseInt(printful_variant_id),
+//           parseInt(quantity),
+//           parseFloat(price),
+//           JSON.stringify(meta)
+//         ]
+//       );
+//     }
 
-    res.json({ url: session.url });
-  } catch (error) {
-    console.error('Erreur Stripe:', error?.response?.data || error.message);
-    res
-      .status(500)
-      .json({ error: 'Erreur lors de la création de la session.' });
-  }
-});
+//     res.json({ url: session.url });
+//   } catch (error) {
+//     console.error('Erreur Stripe:', error?.response?.data || error.message);
+//     res
+//       .status(500)
+//       .json({ error: 'Erreur lors de la création de la session.' });
+//   }
+// });
 
 // === Fonction pour mapper cart vers Printful ===
 async function mapCartToPrintfulVariants(cart_items) {
@@ -772,6 +790,8 @@ app.post('/api/shipping-rates', async (req, res) => {
       .json({ error: 'Impossible d’obtenir les options de livraison.' });
   }
 });
+
+app.use(errorHandler);
 
 // === Fonction utilitaire pour mettre à jour le statut ===
 async function updateOrderStatus(orderId, newStatus) {

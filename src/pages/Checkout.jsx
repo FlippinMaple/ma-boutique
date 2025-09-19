@@ -7,6 +7,16 @@ import toast from 'react-hot-toast';
 import { formatEmail, capitalizeSmart } from '../utils/textHelpers';
 import { provincesCA, statesUS } from '../utils/regionOptions';
 
+const API_BASE = import.meta.env?.VITE_API_BASE || 'http://localhost:4242';
+
+const getAccessToken = () => {
+  try {
+    return localStorage.getItem('accessToken');
+  } catch {
+    return null;
+  }
+};
+
 const Checkout = () => {
   const { cart, removeFromCart, clearCart, addToCart } = useCart();
 
@@ -38,10 +48,14 @@ const Checkout = () => {
     const handleBeforeUnload = async () => {
       const emailClean = formatEmail(userEmail);
       if (cart.length > 0 && emailClean) {
-        await axios.post('/api/log-abandoned-cart', {
-          customer_email: emailClean,
-          cart_contents: JSON.stringify(cart)
-        });
+        try {
+          await axios.post(`${API_BASE}/api/log-abandoned-cart`, {
+            customer_email: emailClean,
+            cart_contents: JSON.stringify(cart)
+          });
+        } catch {
+          // on ignore volontairement les erreurs ici
+        }
       }
     };
     window.addEventListener('beforeunload', handleBeforeUnload);
@@ -103,9 +117,21 @@ const Checkout = () => {
         shipping_rate: shippingRate
       };
 
+      const token = getAccessToken();
+      if (!token) {
+        toast.error('Session expirée : reconnecte-toi.');
+        setLoading(false);
+        return;
+      }
+
       const response = await axios.post(
-        'http://localhost:4242/create-checkout-session',
-        payload
+        `${API_BASE}/api/create-checkout-session`,
+        payload,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        }
       );
 
       if (response.data?.url) {
@@ -116,7 +142,7 @@ const Checkout = () => {
       }
     } catch (err) {
       console.error(
-        'Stri­pe checkout error:',
+        'Stripe checkout error:',
         err.response?.data || err.message
       );
       toast.error(err?.response?.data?.error || 'Erreur durant le paiement.');
@@ -300,35 +326,6 @@ const Checkout = () => {
         }}
       >
         Payer maintenant
-      </button>
-      <button
-        onClick={async () => {
-          try {
-            await axios.post('http://localhost:4242/api/shipping-rates', {
-              recipient: shipping,
-              items: cart.map((item) => ({
-                variant_id: item.variant_id,
-                quantity: item.quantity
-              }))
-            });
-          } catch (err) {
-            console.error(
-              'Erreur sur test shipping :',
-              err.response?.data || err.message
-            );
-          }
-        }}
-        style={{
-          marginTop: '1rem',
-          backgroundColor: '#007bff',
-          color: '#fff',
-          padding: '8px 12px',
-          border: 'none',
-          borderRadius: '5px',
-          cursor: 'pointer'
-        }}
-      >
-        Tester le calcul des frais de livraison
       </button>
 
       {loading && (
