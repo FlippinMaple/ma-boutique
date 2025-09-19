@@ -12,7 +12,13 @@ export default defineConfig({
     fs: {
       strict: false
     },
-    // middlewareMode: true,
+    proxy: {
+      '/api': {
+        target: 'http://localhost:4242', // 👈 adapte ce port si besoin
+        changeOrigin: true,
+        secure: false
+      }
+    },
     setupMiddlewares(middlewares) {
       middlewares.use(history());
       return middlewares;

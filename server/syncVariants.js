@@ -2,17 +2,7 @@
 import dotenv from 'dotenv';
 dotenv.config();
 import axios from 'axios';
-import mysql from 'mysql2/promise';
-
-const pool = mysql.createPool({
-  host: process.env.MYSQL_HOST,
-  user: process.env.MYSQL_USER,
-  password: process.env.MYSQL_PASSWORD,
-  database: process.env.MYSQL_DATABASE,
-  waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0
-});
+import { pool } from './db.js';
 
 async function syncVariants() {
   try {
@@ -46,6 +36,7 @@ async function syncVariants() {
         'SELECT id FROM products WHERE name = ?',
         [sync_product.name]
       );
+
       let productId;
       if (existingProducts.length > 0) {
         productId = existingProducts[0].id;
@@ -62,6 +53,18 @@ async function syncVariants() {
       }
 
       for (const variant of sync_variants) {
+        console.log('🔍 VARIANT DEBUG:', {
+          printful_variant_id: variant.id,
+          variant_id: variant.variant_id,
+          external_id: variant.external_id,
+          size: variant.size,
+          color: variant.color,
+          retail_price: variant.retail_price
+        });
+
+        // ✅ On assume que toutes les variantes sont imprimables (POD)
+        const stock = 1;
+
         const [existingVariants] = await pool.query(
           'SELECT id FROM product_variants WHERE printful_variant_id = ?',
           [variant.id.toString()]
@@ -69,26 +72,30 @@ async function syncVariants() {
 
         if (existingVariants.length > 0) {
           await pool.query(
-            'UPDATE product_variants SET color = ?, size = ?, price = ?, image = ?, product_id = ?, updated_at = NOW() WHERE printful_variant_id = ?',
+            'UPDATE product_variants SET variant_id = ?, color = ?, size = ?, price = ?, image = ?, stock = ?, product_id = ?, updated_at = NOW() WHERE printful_variant_id = ?',
             [
+              variant.variant_id,
               variant.color,
               variant.size,
               variant.retail_price,
               variant.files?.[0]?.preview_url || '',
+              stock,
               productId,
               variant.id.toString()
             ]
           );
         } else {
           await pool.query(
-            'INSERT INTO product_variants (product_id, printful_variant_id, color, size, price, image, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())',
+            'INSERT INTO product_variants (product_id, printful_variant_id, variant_id, color, size, price, image, stock, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())',
             [
               productId,
               variant.id.toString(),
+              variant.variant_id,
               variant.color,
               variant.size,
               variant.retail_price,
-              variant.files?.[0]?.preview_url || ''
+              variant.files?.[0]?.preview_url || '',
+              stock
             ]
           );
         }

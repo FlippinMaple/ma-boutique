@@ -14,8 +14,10 @@
     "bcrypt": "^5.1.1",
     "jwt-decode": "^4.0.0",
     "lru-cache": "^11.1.0",
+    "lucide-react": "^0.523.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
+    "react-hot-toast": "^2.5.2",
     "react-router-dom": "^7.5.2",
     "rimraf": "^6.0.1",
     "sweetalert2": "^11.6.13"

@@ -1,69 +1,41 @@
-import { useCart } from '../CartContext';
+import React from 'react';
+import { useQuantityModal } from '../utils/modals';
 
 const ProductCard = ({ product }) => {
-  const { addToCart } = useCart();
+  const openQuantityModal = useQuantityModal();
 
   const handleClick = () => {
-    if (!product.variants || product.variants.length === 0) {
+    if (!product?.variants?.length) {
       console.warn('⛔ Aucun variant pour le produit:', product);
       return;
     }
 
-    const variant = product.variants[0];
+    const variant = product.variants[0]; // ← Tu peux adapter si sélection multiple plus tard
 
     const item = {
-      id: variant.id, // ID local DB (nécessaire pour enregistrement DB locale)
-      variant_id: variant.variant_id, // Court ID Printful (nécessaire pour Printful)
-      printful_variant_id: variant.printful_variant_id, // si tu veux vraiment le garder aussi
-      name: product.name,
-      price: variant.price || 29.99,
-      image: variant.image || product.image,
-      quantity: 1
+      ...product,
+      variant // ← On passe le variant directement
     };
 
-    addToCart(item);
+    openQuantityModal(item);
   };
 
   return (
-    <div
-      style={{
-        border: '1px solid #ccc',
-        borderRadius: '10px',
-        padding: '1rem',
-        width: '220px',
-        background: '#fff',
-        boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
-      }}
-    >
+    <div className="border border-gray-300 rounded-xl p-4 text-center">
       <img
-        src={product.image || (product.variants?.[0]?.image ?? '')}
+        src={product.image}
         alt={product.name}
-        style={{
-          width: '100%',
-          height: 'auto',
-          borderRadius: '6px',
-          marginBottom: '1rem'
-        }}
+        className="w-full h-64 object-cover rounded-md mb-4"
       />
-      <h4 style={{ margin: 0 }}>{product.name}</h4>
-      <p style={{ margin: '0.5rem 0' }}>
-        {product.variants?.[0]?.price
-          ? `${Number(product.variants[0].price).toFixed(2)} $`
-          : 'Prix non dispo'}
+      <h3 className="text-lg font-semibold">{product.name}</h3>
+      <p className="text-sm text-gray-500">
+        {product.variants[0]?.price || 29.99} $
       </p>
       <button
         onClick={handleClick}
-        style={{
-          backgroundColor: '#1f8ef1',
-          color: '#fff',
-          border: 'none',
-          padding: '0.5rem 1rem',
-          borderRadius: '6px',
-          cursor: 'pointer',
-          fontWeight: 'bold'
-        }}
+        className="mt-3 bg-black text-white py-2 px-4 rounded hover:bg-gray-800"
       >
-        Ajouter au panier
+        Ajouter
       </button>
     </div>
   );

@@ -1,80 +1,97 @@
-import { createContext, useContext, useState, useEffect } from 'react';
-import Swal from 'sweetalert2';
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import toast from 'react-hot-toast';
 
 const CartContext = createContext();
 
 export const CartProvider = ({ children }) => {
-  const [cartItems, setCartItems] = useState(() => {
-    const stored = localStorage.getItem('cartItems');
-    return stored ? JSON.parse(stored) : [];
-  });
-
-  const [userEmail, setUserEmail] = useState(() => {
-    return localStorage.getItem('userEmail') || '';
-  });
-
-  // ⏳ Sync avec localStorage
-  useEffect(() => {
-    localStorage.setItem('cartItems', JSON.stringify(cartItems));
-  }, [cartItems]);
+  const [cart, setCart] = useState([]);
 
   useEffect(() => {
-    if (userEmail) {
-      localStorage.setItem('userEmail', userEmail);
-    }
-  }, [userEmail]);
+    const savedCart = localStorage.getItem('cart');
+    if (savedCart) setCart(JSON.parse(savedCart));
+  }, []);
 
-  const addToCart = (product) => {
-    const quantityToAdd = product.quantity || 1;
+  useEffect(() => {
+    localStorage.setItem('cart', JSON.stringify(cart));
+  }, [cart]);
 
-    setCartItems((prev) => {
-      const exists = prev.find((item) => item.id === product.id);
-      if (exists) {
-        return prev.map((item) =>
-          item.id === product.id
-            ? { ...item, quantity: item.quantity + quantityToAdd }
-            : item
+  useEffect(() => {
+    console.log('🧾 Panier mis à jour :', cart);
+  }, [cart]);
+
+  const addToCart = (item) => {
+    const existingItem = cart.find((i) => i.id === item.id);
+
+    const updatedCart = existingItem
+      ? cart.map((i) =>
+          i.id === item.id ? { ...i, quantity: i.quantity + item.quantity } : i
+        )
+      : [...cart, item];
+
+    setCart(updatedCart);
+  };
+
+  const validateStockBeforeAdd = async (item) => {
+    try {
+      const res = await fetch(
+        `http://localhost:4242/api/printful-stock/${item.printful_variant_id}`
+      );
+      const data = await res.json();
+      const stockAvailable = data.available ?? 99;
+
+      // Rechercher s’il y en a déjà dans le panier
+      const existingItem = cart.find((i) => i.id === item.id);
+      const totalQuantity = existingItem
+        ? existingItem.quantity + item.quantity
+        : item.quantity;
+
+      if (totalQuantity > stockAvailable) {
+        toast.error(
+          `Désolé, il ne reste que ${stockAvailable} unités disponibles.`
         );
+        return;
       }
-      return [...prev, { ...product, quantity: quantityToAdd }];
-    });
-
-    Swal.fire({
-      toast: true,
-      position: 'top-end',
-      icon: 'success',
-      title: 'Ajouté au panier !',
-      showConfirmButton: false,
-      timer: 1500,
-      background: '#e6fffa',
-      color: '#1a202c'
-    });
+      console.log('🛒 Ajout au panier:', item);
+      addToCart(item);
+      toast.success('Ajouté au panier ! 🛒', {
+        duration: 1500,
+        position: 'top-right',
+        style: {
+          background: '#e6fffa',
+          color: '#1a202c'
+        }
+      });
+    } catch (error) {
+      console.error('Erreur de validation du stock:', error);
+      toast.error('Erreur lors de la validation du stock.');
+    }
   };
 
   const removeFromCart = (id) => {
-    setCartItems((prev) =>
-      prev
-        .map((item) =>
-          item.id === id ? { ...item, quantity: item.quantity - 1 } : item
-        )
-        .filter((item) => item.quantity > 0)
+    const updatedCart = cart.filter((item) => item.id !== id);
+    setCart(updatedCart);
+  };
+
+  const updateQuantity = (id, quantity) => {
+    const updatedCart = cart.map((item) =>
+      item.id === id ? { ...item, quantity } : item
     );
+    setCart(updatedCart);
   };
 
   const clearCart = () => {
-    setCartItems([]);
-    localStorage.removeItem('cartItems');
+    setCart([]);
   };
 
   return (
     <CartContext.Provider
       value={{
-        cartItems,
+        cart,
         addToCart,
+        validateStockBeforeAdd,
         removeFromCart,
-        clearCart,
-        userEmail,
-        setUserEmail
+        updateQuantity,
+        clearCart
       }}
     >
       {children}

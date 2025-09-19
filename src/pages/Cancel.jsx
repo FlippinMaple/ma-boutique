@@ -1,30 +1,30 @@
 import { useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import Swal from 'sweetalert2';
+import { toast } from 'react-hot-toast';
 
 const Cancel = () => {
   const navigate = useNavigate();
-  const hasShownAlert = useRef(false); // 🔒 Anti-double popup
+  const hasShownToast = useRef(false);
 
   useEffect(() => {
-    if (hasShownAlert.current) return;
-    hasShownAlert.current = true;
+    if (hasShownToast.current) return;
+    hasShownToast.current = true;
 
-    setTimeout(() => {
-      Swal.fire({
-        icon: 'error',
-        title: 'Transaction annulée ❌',
-        text: 'Retour à la boutique dans un instant...',
-        showConfirmButton: false,
-        timer: 3000,
-        timerProgressBar: true,
+    toast.error('Transaction annulée ❌ Retour à la boutique...', {
+      duration: 3000,
+      position: 'top-center',
+      style: {
         background: '#fff0f0',
         color: '#1a202c',
-        didClose: () => {
-          navigate('/shop');
-        }
-      });
-    }, 100);
+        fontWeight: '500'
+      }
+    });
+
+    const timer = setTimeout(() => {
+      navigate('/shop');
+    }, 3000);
+
+    return () => clearTimeout(timer); // Nettoyage
   }, [navigate]);
 
   return null;
