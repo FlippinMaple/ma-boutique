@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
-import axios from 'axios';
-import { useLocation, Link } from 'react-router-dom';
+import { useRef, useEffect, useState } from 'react';
+import api from '../utils/api';
+import { useLocation, Link, useNavigate } from 'react-router-dom';
+import toast from 'react-hot-toast'; // ✅ AJOUT
 import './styles/Shop.css';
 
 const Shop = () => {
@@ -10,6 +11,8 @@ const Shop = () => {
   const [previewImage, setPreviewImage] = useState(null);
   const [previewLoaded, setPreviewLoaded] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
+  const flashShownRef = useRef(false); // 🔒 bloque un second tir en dev
 
   const highlightId = new URLSearchParams(location.search).get('highlight');
 
@@ -19,10 +22,30 @@ const Shop = () => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  // ✅ Affiche le toast "Merci" si présent, puis nettoie l'URL
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const flash = params.get('flash');
+
+    if (flash === 'merci' && !flashShownRef.current) {
+      flashShownRef.current = true;
+      toast.success('🎉 Merci pour ton achat !', { id: 'purchase-thanks' }); // ✅ id fixe
+
+      params.delete('flash');
+      navigate(
+        {
+          pathname: location.pathname,
+          search: params.toString() ? `?${params.toString()}` : ''
+        },
+        { replace: true }
+      );
+    }
+  }, [location.pathname, location.search, navigate]);
+
   useEffect(() => {
     const fetchProducts = async () => {
       try {
-        const res = await axios.get('http://localhost:4242/api/products', {
+        const res = await api.get('/api/products', {
           params: search ? { q: search } : {}
         });
         setProducts(res.data);

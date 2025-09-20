@@ -1,8 +1,8 @@
-import axios from 'axios';
+import api from './api';
 
 export const logAbandonedCart = async (email, cartItems) => {
   try {
-    await axios.post('http://localhost:4242/api/log-abandoned-cart', {
+    await api.post('/api/log-abandoned-cart', {
       customer_email: email,
       cart_contents: JSON.stringify(cartItems)
     });

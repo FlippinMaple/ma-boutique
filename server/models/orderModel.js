@@ -57,7 +57,7 @@ export const insertOrderItem = async (
 ) => {
   await pool.query(
     `INSERT INTO order_items
-     (order_id, variant_id, printful_variant_id, quantity, price, meta)
+     (order_id, variant_id, printful_variant_id, quantity, price_at_purchase, meta)
      VALUES (?, ?, ?, ?, ?, ?)`,
     [
       order_id,

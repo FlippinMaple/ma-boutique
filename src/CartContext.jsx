@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
+import api from './utils/api';
 
 const CartContext = createContext();
 
@@ -33,10 +34,10 @@ export const CartProvider = ({ children }) => {
 
   const validateStockBeforeAdd = async (item) => {
     try {
-      const res = await fetch(
-        `http://localhost:4242/api/printful-stock/${item.printful_variant_id}`
+      const res = await api.get(
+        `/api/printful-stock/${item.printful_variant_id}`
       );
-      const data = await res.json();
+      const data = res.data;
       const stockAvailable = data.available ?? 99;
 
       // Rechercher s’il y en a déjà dans le panier

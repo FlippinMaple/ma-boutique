@@ -124,7 +124,7 @@ export const createCheckoutSession = async (req, res) => {
 
     for (const item of items) {
       const {
-        variant_id,
+        id: variantId,
         printful_variant_id,
         quantity,
         price,
@@ -141,7 +141,7 @@ export const createCheckoutSession = async (req, res) => {
 
       await insertOrderItem(
         orderId,
-        variant_id,
+        variantId,
         printful_variant_id,
         quantity,
         price,
@@ -149,7 +149,7 @@ export const createCheckoutSession = async (req, res) => {
       );
 
       await logInfo(
-        `Item ${variant_id} x${quantity} ajouté à la commande ${orderId} pour ${customer_email}`,
+        `Item ${variantId} x${quantity} ajouté à la commande ${orderId} pour ${customer_email}`,
         'checkout'
       );
     }

@@ -1,5 +1,5 @@
 import { useCart } from '../CartContext';
-import axios from 'axios';
+import api from '../utils/api'; // chemin corrigé
 import { useNavigate } from 'react-router-dom';
 import { useEffect, useState, useRef } from 'react';
 import ShippingOptions from '../components/ShippingOptions';
@@ -7,11 +7,9 @@ import toast from 'react-hot-toast';
 import { formatEmail, capitalizeSmart } from '../utils/textHelpers';
 import { provincesCA, statesUS } from '../utils/regionOptions';
 
-const API_BASE = import.meta.env?.VITE_API_BASE || 'http://localhost:4242';
-
-const getAccessToken = () => {
+const getAuthToken = () => {
   try {
-    return localStorage.getItem('accessToken');
+    return localStorage.getItem('authToken');
   } catch {
     return null;
   }
@@ -49,7 +47,7 @@ const Checkout = () => {
       const emailClean = formatEmail(userEmail);
       if (cart.length > 0 && emailClean) {
         try {
-          await axios.post(`${API_BASE}/api/log-abandoned-cart`, {
+          await api.post('/api/log-abandoned-cart', {
             customer_email: emailClean,
             cart_contents: JSON.stringify(cart)
           });
@@ -117,22 +115,7 @@ const Checkout = () => {
         shipping_rate: shippingRate
       };
 
-      const token = getAccessToken();
-      if (!token) {
-        toast.error('Session expirée : reconnecte-toi.');
-        setLoading(false);
-        return;
-      }
-
-      const response = await axios.post(
-        `${API_BASE}/api/create-checkout-session`,
-        payload,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`
-          }
-        }
-      );
+      const response = await api.post('/api/create-checkout-session', payload);
 
       if (response.data?.url) {
         toast.success('Redirection vers Stripe...');
