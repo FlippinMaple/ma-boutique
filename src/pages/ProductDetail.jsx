@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { useCart } from '../CartContext';
-import axios from 'axios';
+import api from '../utils/api';
 import './styles/ProductDetail.css';
 
 const ProductDetail = () => {
@@ -14,14 +14,11 @@ const ProductDetail = () => {
   const [availableStock, setAvailableStock] = useState(null);
   const [quantity, setQuantity] = useState(1);
   const [loading, setLoading] = useState(false);
-  const navigate = useNavigate();
 
   useEffect(() => {
     const fetchProduct = async () => {
       try {
-        const res = await axios.get(
-          'http://localhost:4242/api/products/details/' + id
-        );
+        const res = await api.get(`/api/products/details/${id}`);
         const productData = res.data;
         setProduct(productData);
 
@@ -55,8 +52,8 @@ const ProductDetail = () => {
       if (selectedVariant?.printful_variant_id) {
         setLoading(true);
         try {
-          const res = await axios.get(
-            `http://localhost:4242/api/printful-stock/${selectedVariant.printful_variant_id}`
+          const res = await api.get(
+            `/api/printful-stock/${selectedVariant.printful_variant_id}`
           );
           const stock = res.data.available ?? 0;
           setAvailableStock(stock);

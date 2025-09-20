@@ -18,7 +18,7 @@ export const createStripeCheckoutSession = async ({
       shipping_state: shipping?.state,
       shipping_postal: shipping?.zip
     },
-    success_url: `${process.env.FRONTEND_URL}/success`,
+    success_url: `${process.env.FRONTEND_URL}/success?session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${process.env.FRONTEND_URL}/checkout`
   });
 };

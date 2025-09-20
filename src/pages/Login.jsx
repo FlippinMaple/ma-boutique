@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import axios from 'axios';
+import api from '../utils/api';
 import { formatEmail } from '../utils/textHelpers'; // ✅
 import { toast } from 'react-hot-toast'; // ✅
 
@@ -19,7 +19,7 @@ const Login = () => {
     setLoading(true);
 
     try {
-      const response = await axios.post('http://localhost:4242/api/login', {
+      const response = await api.post('/api/auth/login', {
         email: formatEmail(email),
         password
       });

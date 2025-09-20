@@ -3,6 +3,8 @@ import toast from 'react-hot-toast';
 import { CheckCircle, XCircle, Loader2, User, Mail, Lock } from 'lucide-react';
 import './styles/Register.css';
 import { formatEmail, capitalizeSmart } from '../utils/textHelpers';
+import api from '../utils/api';
+import { useNavigate } from 'react-router-dom';
 
 const Register = () => {
   const [firstName, setFirstName] = useState('');
@@ -14,6 +16,7 @@ const Register = () => {
   const [acceptedCGU, setAcceptedCGU] = useState(false);
   const [consentLoi25, setConsentLoi25] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const navigate = useNavigate();
 
   const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
   const emailMatch = email === confirmEmail && confirmEmail.length > 0;
@@ -60,44 +63,32 @@ const Register = () => {
     setIsSubmitting(true);
 
     try {
-      const response = await fetch('/api/register/', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          first_name: capitalizeSmart(firstName),
-          last_name: capitalizeSmart(lastName),
-          email: formatEmail(email),
-          password,
-          is_subscribed: consentLoi25
-        })
+      const response = await api.post('/api/auth/register', {
+        first_name: capitalizeSmart(firstName),
+        last_name: capitalizeSmart(lastName),
+        email: formatEmail(email),
+        password,
+        is_subscribed: consentLoi25
       });
 
-      if (response.ok) {
-        toast.success('Votre compte a été créé avec succès.');
-        setFirstName('');
-        setLastName('');
-        setEmail('');
-        setConfirmEmail('');
-        setPassword('');
-        setConfirmPassword('');
-        setAcceptedCGU(false);
-        setConsentLoi25(false);
-      } else {
-        const text = await response.text();
-        let data;
-        try {
-          data = JSON.parse(text);
-        } catch {
-          data = {};
-        }
+      // Axios renvoie directement le JSON dans response.data
+      toast.success(
+        response.data.message || 'Votre compte a été créé avec succès.'
+      );
 
-        toast.error(
-          data.error ||
-            data.message ||
-            text ||
-            'Une erreur inconnue est survenue.'
-        );
-      }
+      toast.success('Votre compte a été créé avec succès.');
+      setFirstName('');
+      setLastName('');
+      setEmail('');
+      setConfirmEmail('');
+      setPassword('');
+      setConfirmPassword('');
+      setAcceptedCGU(false);
+      setConsentLoi25(false);
+
+      setTimeout(() => {
+        navigate('/login'); // ou '/dashboard' selon le flux désiré
+      }, 2000);
     } catch (err) {
       toast.error(err.message || 'Impossible de contacter le serveur.');
     } finally {

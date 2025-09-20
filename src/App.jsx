@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   BrowserRouter as Router,
   Routes,
@@ -6,9 +6,9 @@ import {
   Navigate
 } from 'react-router-dom';
 import { jwtDecode } from 'jwt-decode';
-import axios from 'axios';
+import api from './utils/api';
 import toast, { Toaster } from 'react-hot-toast'; // ✅ toast + composant
-import { ModalProvider } from './context/ModalContext'; // ← AJOUT ICI
+import { ModalProvider } from './context/ModalContext';
 
 // Pages et composants
 import Header from './components/Header';
@@ -28,48 +28,81 @@ function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const token = localStorage.getItem('authToken');
-    const refreshToken = localStorage.getItem('refreshToken');
+  // 🔒 Gardes anti-doublons (React 18 StrictMode / effets concurrents)
+  const initRanRef = useRef(false);
+  const refreshingRef = useRef(false);
 
-    if (token) {
-      try {
-        const decoded = jwtDecode(token);
-
-        if (decoded.exp * 1000 > Date.now()) {
-          setIsAuthenticated(true);
-        } else {
-          refreshAccessToken(refreshToken);
-        }
-      } catch (error) {
-        console.error('Erreur de décodage du token', error);
-        setIsAuthenticated(false);
-        toast.error('Le token est invalide. Veuillez vous reconnecter.');
-      }
-    } else {
-      setIsAuthenticated(false);
-    }
-
-    setLoading(false);
-  }, []);
-
+  // 🔁 Rafraîchir le token d'accès sans dupliquer les toasts / requêtes
   const refreshAccessToken = async (refreshToken) => {
+    if (refreshingRef.current) return null; // déjà en cours → on sort
+    refreshingRef.current = true;
+
     try {
-      const response = await axios.post(
-        'http://localhost:4242/api/refresh-token',
-        { refreshToken }
-      );
-      localStorage.setItem('authToken', response.data.accessToken);
+      if (!refreshToken) throw new Error('No refresh token');
+      const { data } = await api.post('/api/auth/refresh-token', {
+        refreshToken
+      });
+
+      localStorage.setItem('authToken', data.accessToken);
       setIsAuthenticated(true);
-      toast.success('Token renouvelé avec succès !');
+
+      // ✅ id fixe → pas de doublon même si ré-exécuté
+      toast.success('Session renouvelée ✔️', { id: 'refresh-ok' });
+
+      return data.accessToken;
     } catch (error) {
       console.error('Erreur lors du rafraîchissement du token', error);
       toast.error(
-        'Erreur lors du renouvellement du token. Veuillez vous reconnecter.'
+        'Erreur lors du renouvellement du token. Veuillez vous reconnecter.',
+        { id: 'refresh-fail' }
       );
       setIsAuthenticated(false);
+      return null;
+    } finally {
+      refreshingRef.current = false;
     }
   };
+
+  // 🔐 Initialisation auth (protégée contre le double-run en dev)
+  useEffect(() => {
+    if (initRanRef.current) return; // évite double exécution en dev
+    initRanRef.current = true;
+
+    (async () => {
+      try {
+        const token = localStorage.getItem('authToken');
+        const refreshToken = localStorage.getItem('refreshToken');
+
+        if (token) {
+          let valid = false;
+          try {
+            const decoded = jwtDecode(token);
+            valid = decoded?.exp * 1000 > Date.now();
+          } catch {
+            valid = false;
+          }
+
+          if (valid) {
+            setIsAuthenticated(true);
+          } else if (refreshToken) {
+            await refreshAccessToken(refreshToken);
+          } else {
+            setIsAuthenticated(false);
+            toast.error('Session expirée. Connecte-toi de nouveau.', {
+              id: 'session-expired'
+            });
+          }
+        } else {
+          setIsAuthenticated(false);
+        }
+      } catch (error) {
+        console.error('Init auth error:', error);
+        setIsAuthenticated(false);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleLogout = () => {
     localStorage.removeItem('authToken');
@@ -84,7 +117,8 @@ function App() {
     <ModalProvider>
       <Router>
         <Header onLogout={handleLogout} />
-        <Toaster position="top-right" /> {/* ✅ Affichage global des toasts */}
+        {/* ✅ Un seul Toaster global */}
+        <Toaster position="top-right" />
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/register" element={<Register />} />

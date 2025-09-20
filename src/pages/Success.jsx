@@ -1,32 +1,49 @@
-import { useEffect, useRef } from 'react';
+// src/pages/Success.jsx
+import { useEffect } from 'react';
+import api from '../utils/api';
 import { useCart } from '../CartContext';
-import { useNavigate } from 'react-router-dom';
-import toast from 'react-hot-toast';
 
 const Success = () => {
-  const { clearCart } = useCart();
-  const navigate = useNavigate();
-  const hasShownAlert = useRef(false); // 🔒 Empêche le toast en double
+  const { clearCart } = useCart?.() || {};
 
   useEffect(() => {
-    if (hasShownAlert.current) return;
-    hasShownAlert.current = true;
+    const run = async () => {
+      try {
+        const url = new URL(window.location.href);
+        const sessionId = url.searchParams.get('session_id');
 
-    toast.success('Merci pour ton achat 🎉 Tu seras redirigé sous peu...', {
-      duration: 3000,
-      style: {
-        background: '#f0fff4',
-        color: '#1a202c'
+        // (Optionnel) Valider côté serveur
+        if (sessionId) {
+          try {
+            await api.get(
+              `/api/payments/verify?session_id=${encodeURIComponent(sessionId)}`
+            );
+          } catch (e) {
+            // même si la vérif échoue, on ne reste pas coincé ici
+            console.warn('[Success] verify failed', e);
+          }
+        }
+
+        // vider le panier si possible (sans bloquer la redirection)
+        try {
+          const maybe = clearCart?.();
+          if (maybe && typeof maybe.then === 'function') await maybe;
+        } catch {
+          /* empty */
+        }
+      } finally {
+        // 🚪 Sortie "bulldozer": on quitte la page en dur
+        const target = `${window.location.origin}/shop`;
+        window.location.replace(target);
       }
-    });
+    };
 
-    const timeout = setTimeout(() => {
-      clearCart();
-      navigate('/shop');
-    }, 3200); // léger délai pour laisser le toast se jouer
+    run();
+  }, [clearCart]);
 
-    return () => clearTimeout(timeout);
-  }, [clearCart, navigate]);
+  // après clearCart()
+  const target = `${window.location.origin}/shop?flash=merci`;
+  window.location.replace(target);
 
   return null;
 };
