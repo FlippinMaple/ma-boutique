@@ -14,6 +14,7 @@ export const createCheckoutSession = async (req, res) => {
   const customer_id = req.user.id;
 
   try {
+    // 1) Valider le panier + stock Printful et construire les line_items Stripe
     const line_items = [];
 
     for (const item of items) {
@@ -27,12 +28,10 @@ export const createCheckoutSession = async (req, res) => {
       }
 
       const status = await getPrintfulVariantAvailability(printful_variant_id);
-
       if (status !== 'active') {
         const msg = `⚠️ Produit indisponible (ID ${printful_variant_id}) : ${status}`;
         console.warn(msg);
         await logWarn(`${msg} pour ${customer_email}`, 'checkout');
-
         return res.status(400).json({
           error: `Le produit "${
             item.name || `#${item.id}`
@@ -67,9 +66,7 @@ export const createCheckoutSession = async (req, res) => {
       line_items.push({
         price_data: {
           currency: 'cad',
-          product_data: {
-            name: `Livraison (${shipping_rate.name.trim()})`
-          },
+          product_data: { name: `Livraison (${shipping_rate.name.trim()})` },
           unit_amount: Math.round(Number(shipping_rate.rate) * 100)
         },
         quantity: 1
@@ -84,24 +81,14 @@ export const createCheckoutSession = async (req, res) => {
         .json({ error: 'Le panier ne contient aucun article valide.' });
     }
 
-    const session = await createStripeCheckoutSession({
-      line_items,
-      customer_email,
-      shipping
-    });
-
-    await logInfo(
-      `Session Stripe ${session.id} créée pour ${customer_email}`,
-      'checkout'
-    );
-
+    // 2) Calcul des totaux (pour la commande locale)
     const orderTotal = line_items.reduce(
-      (sum, item) => sum + (item.price_data.unit_amount * item.quantity) / 100,
+      (sum, li) => sum + (li.price_data.unit_amount * li.quantity) / 100,
       0
     );
-
     const shippingCost = shipping_rate ? parseFloat(shipping_rate.rate) : 0;
 
+    // 3) Créer l’adresse + la commande AVANT la session Stripe  ★
     const shipping_address_id = await insertAddress(
       customer_id,
       'shipping',
@@ -122,6 +109,7 @@ export const createCheckoutSession = async (req, res) => {
       'checkout'
     );
 
+    // 4) Enregistrer les items de commande locaux (comme tu le fais déjà)
     for (const item of items) {
       const {
         id: variantId,
@@ -154,6 +142,61 @@ export const createCheckoutSession = async (req, res) => {
       );
     }
 
+    // 5) Construire metadata.cart_items pour Stripe (STRICT pour le webhook)  ★
+    //    -> id, printful_variant_id, quantity, price (+ infos utiles en debug)
+    const metaCart = items.map(
+      ({ id, printful_variant_id, quantity, price, name, sku }) => ({
+        id: Number(id),
+        printful_variant_id: Number(printful_variant_id),
+        quantity: Number(quantity || 1),
+        price: typeof price === 'number' ? price : 0,
+        name: name || null,
+        sku: sku || null
+      })
+    );
+
+    const metadata = {
+      order_id: String(orderId),
+      cart_items: JSON.stringify(metaCart),
+      ...(shipping
+        ? {
+            shipping: JSON.stringify({
+              name: shipping.name || '',
+              address1: shipping.address1 || '',
+              city: shipping.city || '',
+              state: shipping.state || '',
+              country: shipping.country || '',
+              zip: shipping.zip || '',
+              email: shipping.email || customer_email || ''
+            })
+          }
+        : {}),
+      ...(shipping_rate?.name && !isNaN(Number(shipping_rate.rate))
+        ? {
+            shipping_rate: JSON.stringify({
+              name: shipping_rate.name.trim(),
+              rate: Number(shipping_rate.rate) // en dollars
+            })
+          }
+        : {})
+    };
+
+    // 6) Créer la session Stripe avec metadata + client_reference_id  ★
+    //    ⚠️ Assure-toi que createStripeCheckoutSession forwarde ces champs vers stripe.checkout.sessions.create
+    const session = await createStripeCheckoutSession({
+      line_items,
+      customer_email,
+      shipping,
+      client_reference_id: String(orderId), // utile à ton webhook
+      metadata // ← indispensable pour cart_items
+    });
+
+    await logInfo(
+      `Session Stripe ${session.id} créée pour ${customer_email}`,
+      'checkout'
+    );
+
+    // 7) Réponse
     res.json({ url: session.url });
   } catch (error) {
     const msg = `Erreur Stripe: ${
@@ -161,7 +204,6 @@ export const createCheckoutSession = async (req, res) => {
     }`;
     console.error(msg);
     await logError(msg, 'checkout');
-
     res
       .status(500)
       .json({ error: 'Erreur lors de la création de la session.' });
