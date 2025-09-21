@@ -1,49 +1,69 @@
-// utils/logger.js
+// server/utils/logger.js
 import { pool } from '../db.js';
 
-/**
- * Insère un log dans la table cron_logs
- * @param {string} message - Message du log
- * @param {string} type - Type de log ('info', 'error', etc.)
- * @param {string} source - Source du log (ex: 'checkout', 'cron', 'wishlist'...)
- */
-export async function logToDatabase(message, type = 'info', source = 'app') {
+let _ensured = false;
+async function ensureLogsTable() {
+  if (_ensured) return;
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS logs (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+      level ENUM('debug','info','warn','error') NOT NULL DEFAULT 'info',
+      message TEXT NOT NULL,
+      context VARCHAR(128) NULL,
+      details LONGTEXT NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (id),
+      INDEX idx_created_at (created_at),
+      INDEX idx_level (level),
+      INDEX idx_context (context)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+  `);
+  _ensured = true;
+}
+
+export async function logToDatabase(
+  message,
+  level = 'info',
+  context = null,
+  details = null
+) {
   try {
+    await ensureLogsTable();
+    // on borne le message si jamais c’est énorme
+    const msg = typeof message === 'string' ? message : JSON.stringify(message);
+    const det =
+      details == null
+        ? null
+        : typeof details === 'string'
+        ? details
+        : JSON.stringify(details);
     await pool.execute(
-      `INSERT INTO cron_logs (message, type, source, created_at) VALUES (?, ?, ?, NOW())`,
-      [message, type, source]
+      `INSERT INTO logs (level, message, context, details) VALUES (?, ?, ?, ?)`,
+      [level, msg.slice(0, 65535), context, det]
     );
-    console.log(`📥 [${type.toUpperCase()}] ${source} > ${message}`);
   } catch (err) {
-    console.error('❌ Erreur lors de l’enregistrement du log en base :', err);
+    // ne jamais faire planter l’app à cause du logger
+    console.error('logger> insert failed:', err.message || err);
   }
 }
 
-/**
- * Purge les logs plus vieux que N jours
- * @param {number} days - Nombre de jours de rétention
- */
-export async function purgeOldLogs(days = 7) {
+// Helpers pratiques (tu les utilises déjà)
+export const logDebug = (msg, ctx, det) =>
+  logToDatabase(msg, 'debug', ctx, det);
+export const logInfo = (msg, ctx, det) => logToDatabase(msg, 'info', ctx, det);
+export const logWarn = (msg, ctx, det) => logToDatabase(msg, 'warn', ctx, det);
+export const logError = (msg, ctx, det) =>
+  logToDatabase(msg, 'error', ctx, det);
+
+// Purge simple (utilisé par le cron)
+export async function purgeOldLogs(retentionDays = 7) {
   try {
-    const [result] = await pool.query(
-      `DELETE FROM cron_logs WHERE created_at < NOW() - INTERVAL ? DAY`,
-      [days]
-    );
-    console.log(`🧹 ${result.affectedRows} anciens logs supprimés.`);
-    await logToDatabase(
-      `🧹 ${result.affectedRows} anciens logs supprimés`,
-      'info'
+    await ensureLogsTable();
+    await pool.execute(
+      `DELETE FROM logs WHERE created_at < (NOW() - INTERVAL ? DAY)`,
+      [Number(retentionDays) || 7]
     );
   } catch (err) {
-    console.error('❌ Erreur purge des logs :', err);
+    console.error('logger> purge failed:', err.message || err);
   }
 }
-
-export const logInfo = (msg, source = 'app') =>
-  logToDatabase(msg, 'info', source);
-
-export const logWarn = (msg, source = 'app') =>
-  logToDatabase(msg, 'warning', source);
-
-export const logError = (msg, source = 'app') =>
-  logToDatabase(msg, 'error', source);

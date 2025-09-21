@@ -1,5 +1,9 @@
+// server/services/printfulService.js
 import axios from 'axios';
+import { pool } from '../db.js'; // 👈 ajoute cet import
+import { logError } from '../utils/logger.js';
 
+// (existant)
 export const getPrintfulVariantAvailability = async (printful_variant_id) => {
   try {
     const response = await axios.get(
@@ -11,13 +15,41 @@ export const getPrintfulVariantAvailability = async (printful_variant_id) => {
         }
       }
     );
-
     return response.data?.result?.sync_variant?.availability_status || null;
   } catch (error) {
-    console.error(
-      `❌ Erreur lors de la vérification Printful (${printful_variant_id}):`,
-      error.message
-    );
+    await logError('❌ Printful service error', 'printful', error);
+
     throw new Error('Erreur lors de la communication avec Printful');
   }
+};
+
+// 👇 nouveau: map du panier vers variantes Printful (réutilisable)
+export const mapCartToPrintfulVariants = async (cart_items) => {
+  if (!cart_items || cart_items.length === 0) return [];
+  const variantIds = cart_items.map((item) => item.id);
+  const [variants] = await pool.query(
+    `SELECT id, printful_variant_id
+       FROM product_variants
+      WHERE id IN (${variantIds.map(() => '?').join(',')})`,
+    variantIds
+  );
+  return cart_items.map((item) => {
+    const v = variants.find((row) => row.id === item.id);
+    if (!v) throw new Error(`Aucune variante trouvée pour l'id ${item.id}`);
+    return { variant_id: v.printful_variant_id, quantity: item.quantity };
+  });
+};
+
+// 👇 nouveau: création de commande Printful (on centralise l’appel)
+export const createPrintfulOrder = async ({
+  recipient,
+  items,
+  confirm = false
+}) => {
+  const resp = await axios.post(
+    'https://api.printful.com/orders',
+    { recipient, items, confirm },
+    { headers: { Authorization: `Bearer ${process.env.PRINTFUL_API_KEY}` } }
+  );
+  return resp.data.result; // ex: { id, status, ... }
 };

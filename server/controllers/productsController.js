@@ -1,4 +1,5 @@
 import { pool } from '../db.js';
+import { logError } from '../utils/logger.js';
 
 export const getVisibleProducts = async (req, res) => {
   try {
@@ -41,7 +42,7 @@ export const getVisibleProducts = async (req, res) => {
     const products = Object.values(productsMap);
     res.json(products);
   } catch (err) {
-    console.error('❌ Erreur SQL /api/products:', err);
+    await logError('❌ Erreur SQL /api/products', 'products', err);
     res.status(500).json({ error: 'Erreur serveur.' });
   }
 };
@@ -73,7 +74,7 @@ export const getProductDetails = async (req, res) => {
       variants: variants || []
     });
   } catch (err) {
-    console.error('❌ Erreur SQL /api/products/:id:', err);
+    await logError('❌ Erreur SQL /api/products/:id', 'products', err);
     res.status(500).json({ error: 'Erreur serveur.' });
   }
 };

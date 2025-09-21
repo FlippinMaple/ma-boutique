@@ -4,6 +4,7 @@ import mysql from 'mysql2/promise';
 import dotenv from 'dotenv';
 dotenv.config();
 import { pool } from './db.js';
+import { logError } from './utils/logger.js';
 
 const PRINTFUL_API_KEY = process.env.PRINTFUL_API_KEY;
 const STORE_ID = process.env.PRINTFUL_STORE_ID;
@@ -127,13 +128,16 @@ async function importProducts() {
     process.exit(0);
   } catch (err) {
     if (err.response) {
-      console.error('Erreur import:', {
-        url: err.config?.url,
-        status: err.response.status,
-        data: err.response.data
+      await logError('Erreur import', 'import', {
+        details: {
+          url: err.config?.url,
+          status: err.response.status,
+          data: err.response.data,
+          err
+        }
       });
     } else {
-      console.error('Erreur import:', err);
+      await logError('Erreur import', 'import', { details: err });
     }
     process.exit(1);
   }

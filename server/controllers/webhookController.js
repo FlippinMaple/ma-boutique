@@ -1,5 +1,6 @@
 // server/controllers/webhookController.js
 import Stripe from 'stripe';
+import { logInfo, logWarn, logError } from '../utils/logger.js';
 import { pool } from '../db.js';
 import {
   mapCartToPrintfulVariants,
@@ -29,8 +30,9 @@ async function handleStripeWebhook(req, res) {
 
   // 1) Sanity checks
   if (!process.env.STRIPE_SECRET_KEY || !process.env.STRIPE_WEBHOOK_SECRET) {
-    console.error(
-      `❌ [${traceId}] STRIPE_SECRET_KEY ou STRIPE_WEBHOOK_SECRET manquant`
+    await logError(
+      `❌ [${traceId}] STRIPE_SECRET_KEY ou STRIPE_WEBHOOK_SECRET manquant`,
+      'webhook'
     );
     return res.status(500).send('Configuration Stripe incomplète');
   }
@@ -45,7 +47,11 @@ async function handleStripeWebhook(req, res) {
       process.env.STRIPE_WEBHOOK_SECRET
     );
   } catch (err) {
-    console.error(`❌ [${traceId}] Webhook signature error:`, err.message);
+    await logError(
+      `❌ [${traceId}] Webhook signature error: ${err.message}`,
+      'webhook',
+      err
+    );
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
@@ -57,11 +63,15 @@ async function handleStripeWebhook(req, res) {
       [event.id]
     );
     if (r.affectedRows === 0) {
-      console.log(`ℹ️ [${traceId}] Event déjà reçu: ${event.id}`);
+      logInfo(`ℹ️ [${traceId}] Event déjà reçu: ${event.id}`, 'webhook');
       return res.json({ received: true, duplicate: true });
     }
   } catch (e) {
-    console.error(`❌ [${traceId}] Erreur idempotence stripe_events:`, e);
+    await logError(
+      `❌ [${traceId}] Erreur idempotence stripe_events: ${e?.message || e}`,
+      'webhook',
+      e
+    );
   }
 
   // 4) Événements utiles
@@ -71,8 +81,9 @@ async function handleStripeWebhook(req, res) {
 
       // === STRICT MODE: on n'utilise QUE metadata fourni par ton checkout ===
       if (!session.metadata || !session.metadata.cart_items) {
-        console.error(
-          `❌ [${traceId}] metadata.cart_items manquant; abandon insertion order_items.`
+        await logError(
+          `❌ [${traceId}] metadata.cart_items manquant; abandon insertion order_items.`,
+          'webhook'
         );
         // On met quand même la commande à paid si elle existe déjà (logique inchangée)
         // mais sans réinsérer les items.
@@ -84,7 +95,7 @@ async function handleStripeWebhook(req, res) {
         try {
           shipping = JSON.parse(session.metadata.shipping);
         } catch {
-          /* empty */
+          /* ignore */
         }
       }
 
@@ -93,7 +104,7 @@ async function handleStripeWebhook(req, res) {
         try {
           cart_items = JSON.parse(session.metadata.cart_items) || [];
         } catch {
-          /* empty */
+          /* ignore */
         }
       }
 
@@ -105,8 +116,11 @@ async function handleStripeWebhook(req, res) {
           !Number.isFinite(Number(it?.quantity))
       );
       if (cart_items?.length && invalid) {
-        console.error(
-          `❌ [${traceId}] cart_items invalide (id, printful_variant_id, quantity requis):`,
+        await logError(
+          `❌ [${traceId}] cart_items invalide (id, printful_variant_id, quantity requis): ${JSON.stringify(
+            invalid
+          )}`,
+          'webhook',
           invalid
         );
         // On n'insère pas d'items si invalides
@@ -125,7 +139,7 @@ async function handleStripeWebhook(req, res) {
         session.total_details?.amount_shipping ?? 0
       );
 
-      // 2) fallback #1: metadata.shipping_rate (si tu l'as ajoutée)
+      // 2) fallback #1: metadata.shipping_rate (si tu l'as ajoutée côté checkout)
       if (shipping_cost === 0 && session.metadata?.shipping_rate) {
         try {
           const sr = JSON.parse(session.metadata.shipping_rate);
@@ -135,50 +149,59 @@ async function handleStripeWebhook(req, res) {
         }
       }
 
-      // 3) fallback #2: garder l'ancien si toujours 0
-      try {
-        const [[prevOrderForShip]] = await pool.query(
-          `SELECT shipping_cost FROM orders WHERE id = ?`,
-          [orderId]
-        );
-        if (shipping_cost === 0 && prevOrderForShip?.shipping_cost != null) {
-          shipping_cost = Number(prevOrderForShip.shipping_cost);
-        }
-      } catch {
-        /* ignore */
-      }
-
-      // --- Upsert de la commande (inchangé)
+      // --- Upsert de la commande ---
       let orderId = orderIdFromStripe;
 
       if (orderId) {
+        // Fallback #2: si on a un orderId existant, on récupère SON shipping_cost avant l'update
+        try {
+          const [[prevOrder]] = await pool.query(
+            'SELECT shipping_cost FROM orders WHERE id = ?',
+            [orderId]
+          );
+          if (shipping_cost === 0 && prevOrder?.shipping_cost != null) {
+            shipping_cost = Number(prevOrder.shipping_cost);
+          }
+        } catch {
+          /* ignore */
+        }
+
         await pool.execute(
           `UPDATE orders
              SET status = ?, total = ?, shipping_cost = ?, updated_at = NOW()
            WHERE id = ?`,
           ['paid', total, shipping_cost, orderId]
         );
+
         if (cart_items.length > 0) {
           await pool.execute(`DELETE FROM order_items WHERE order_id = ?`, [
             orderId
           ]);
         }
       } else {
+        // Essayer d'associer à la dernière pending du même email
         if (customer_email) {
           const [[existingOrder]] = await pool.query(
-            `SELECT id FROM orders
-              WHERE customer_email = ? AND status = 'pending'
-              ORDER BY created_at DESC LIMIT 1`,
+            `SELECT id, shipping_cost FROM orders
+             WHERE customer_email = ? AND status = 'pending'
+             ORDER BY created_at DESC LIMIT 1`,
             [customer_email]
           );
           if (existingOrder) {
             orderId = existingOrder.id;
+
+            // Fallback #2: si zéro, reprendre l'ancien shipping_cost de cette commande
+            if (shipping_cost === 0 && existingOrder.shipping_cost != null) {
+              shipping_cost = Number(existingOrder.shipping_cost);
+            }
+
             await pool.execute(
               `UPDATE orders
                  SET status = ?, total = ?, shipping_cost = ?, updated_at = NOW()
                WHERE id = ?`,
               ['paid', total, shipping_cost, orderId]
             );
+
             if (cart_items.length > 0) {
               await pool.execute(`DELETE FROM order_items WHERE order_id = ?`, [
                 orderId
@@ -186,6 +209,8 @@ async function handleStripeWebhook(req, res) {
             }
           }
         }
+
+        // Sinon créer une nouvelle commande
         if (!orderId) {
           const [ins] = await pool.execute(
             `INSERT INTO orders
@@ -211,8 +236,11 @@ async function handleStripeWebhook(req, res) {
             !Number.isFinite(pfVariantId) ||
             !Number.isFinite(qty)
           ) {
-            console.error(
-              `❌ [${traceId}] Item invalide, insertion annulée:`,
+            await logWarn(
+              `❌ [${traceId}] Item invalide, insertion annulée: ${JSON.stringify(
+                item
+              )}`,
+              'webhook',
               item
             );
             continue; // on saute l'item invalide
@@ -239,8 +267,9 @@ async function handleStripeWebhook(req, res) {
           );
         }
       } else {
-        console.warn(
-          `⚠️ [${traceId}] Aucun item inséré (metadata.cart_items absent ou invalide).`
+        await logWarn(
+          `⚠️ [${traceId}] Aucun item inséré (metadata.cart_items absent ou invalide).`,
+          'webhook'
         );
       }
 
@@ -258,9 +287,10 @@ async function handleStripeWebhook(req, res) {
           [orderId, oldStatus, 'paid']
         );
       } catch (e) {
-        console.warn(
-          `⚠️ [${traceId}] Historisation statut échouée:`,
-          e.message
+        await logWarn(
+          `⚠️ [${traceId}] Historisation statut échouée: ${e.message}`,
+          'webhook',
+          e
         );
       }
 
@@ -292,30 +322,47 @@ async function handleStripeWebhook(req, res) {
                 `UPDATE orders SET printful_order_id = ? WHERE id = ?`,
                 [result.id, orderId]
               );
-              console.log(`✅ [${traceId}] Printful order lié : ${result.id}`);
+              logInfo(
+                `✅ [${traceId}] Printful order lié : ${result.id}`,
+                'webhook'
+              );
             } else {
-              console.warn(`⚠️ [${traceId}] Réponse Printful sans id:`, result);
+              await logWarn(
+                `⚠️ [${traceId}] Réponse Printful sans id: ${JSON.stringify(
+                  result
+                )}`,
+                'webhook',
+                result
+              );
             }
           } else {
-            console.warn(
-              `⚠️ [${traceId}] mapCartToPrintfulVariants a retourné 0 item`
+            await logWarn(
+              `⚠️ [${traceId}] mapCartToPrintfulVariants a retourné 0 item`,
+              'webhook'
             );
           }
         } catch (err) {
-          console.error(
-            `❌ [${traceId}] Erreur envoi Printful:`,
-            err.response?.data || err.message || err
+          await logError(
+            `❌ [${traceId}] Erreur envoi Printful: ${
+              err?.response?.data || err?.message || String(err)
+            }`,
+            'webhook',
+            err
           );
         }
       }
 
-      console.log(
-        `✅ [${traceId}] checkout.session.completed traité (order #${orderId})`
+      logInfo(
+        `✅ [${traceId}] checkout.session.completed traité (order #${orderId})`,
+        'webhook'
       );
       return res.json({ received: true, orderId });
     } catch (err) {
-      console.error(
-        `❌ [${traceId}] Erreur traitement checkout.session.completed:`,
+      await logError(
+        `❌ [${traceId}] Erreur traitement checkout.session.completed: ${
+          err?.message || err
+        }`,
+        'webhook',
         err
       );
       return res.status(500).send('Erreur interne webhook');
@@ -323,7 +370,7 @@ async function handleStripeWebhook(req, res) {
   }
 
   // Autres events
-  console.log(`ℹ️ [${traceId}] Event ignoré: ${event.type}`);
+  logInfo(`ℹ️ [${traceId}] Event ignoré: ${event.type}`, 'webhook');
   return res.json({ received: true });
 }
 

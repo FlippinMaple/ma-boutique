@@ -41,9 +41,13 @@ export async function registerUser(req, res) {
 
 // POST /api/auth/login
 export async function loginUser(req, res) {
+  if (!req.body || typeof req.body !== 'object') {
+    return res.status(400).json({ error: 'Corps JSON manquant ou invalide.' });
+  }
   const { email, password } = req.body;
-  if (!email || !password)
-    return res.status(400).json({ error: 'Champs requis manquants.' });
+  if (!email || !password) {
+    return res.status(400).json({ error: 'Email et mot de passe requis.' });
+  }
 
   try {
     const result = await login(email, password);

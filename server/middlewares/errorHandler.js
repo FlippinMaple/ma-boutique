@@ -1,14 +1,17 @@
+// server/middlewares/errorHandler.js
 import { logError } from '../utils/logger.js';
 
 export function errorHandler(err, req, res, next) {
-  console.error('🔥 ERREUR NON GÉRÉE :', err);
+  // on log l’erreur non gérée avec le contexte http + infos utiles
+  logError('🔥 ERREUR NON GÉRÉE', 'http', {
+    message: err?.message,
+    stack: err?.stack,
+    path: req?.path,
+    method: req?.method
+  });
 
-  // Log en base si dispo
-  if (err?.message) {
-    logError(`Erreur non interceptée : ${err.message}`, 'global');
-  }
-
-  res.status(err.status || 500).json({
-    error: err.message || 'Erreur serveur'
+  const status = err?.status || 500;
+  res.status(status).json({
+    message: err?.message || 'Erreur serveur'
   });
 }

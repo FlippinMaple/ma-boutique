@@ -3,6 +3,7 @@ import dotenv from 'dotenv';
 dotenv.config();
 import axios from 'axios';
 import { pool } from './db.js';
+import { logInfo, logError } from './utils/logger.js';
 
 async function syncVariants() {
   try {
@@ -53,7 +54,7 @@ async function syncVariants() {
       }
 
       for (const variant of sync_variants) {
-        console.log('🔍 VARIANT DEBUG:', {
+        await logInfo('🔍 VARIANT DEBUG', 'variants', {
           printful_variant_id: variant.id,
           variant_id: variant.variant_id,
           external_id: variant.external_id,
@@ -102,11 +103,9 @@ async function syncVariants() {
       }
     }
 
-    console.log('✅ Synchronisation avec Printful complétée');
-    process.exit(0);
+    await logInfo('✅ Synchronisation avec Printful complétée', 'variants');
   } catch (err) {
-    console.error('❌ Erreur lors de la synchronisation Printful:', err);
-    process.exit(1);
+    await logError('❌ Erreur synchronisation Printful', 'variants', err);
   }
 }
 
