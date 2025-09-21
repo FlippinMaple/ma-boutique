@@ -1,7 +1,7 @@
 // app.js
 import express from 'express';
 import cors from 'cors';
-import { errorHandler } from './middlewares/errorHandler.js';
+import { notFound, errorHandler } from './middlewares/errorHandler.js';
 
 // routes existantes
 import webhookRoutes from './routes/webhookRoutes.js';
@@ -27,6 +27,8 @@ app.use('/', webhookRoutes);
 // JSON pour le reste
 app.use(express.json());
 
+app.get('/health', (req, res) => res.json({ ok: true }));
+
 // API
 app.use('/api/auth', authRoutes);
 app.use('/api/products', productsRoutes);
@@ -34,13 +36,14 @@ app.use('/api/wishlist', wishlistRoutes);
 app.use('/api/create-checkout-session', checkoutRoutes);
 
 // Nouvelles routes
-app.use('/', adminRoutes); // expose /api/debug-orders
-app.use('/', inventoryRoutes); // expose /api/printful-stock/:variantId
-app.use('/', shippingRoutes); // expose /api/shipping-rates
-app.use('/api', ordersRoutes); // /printful-order, /protected, /user-info
+app.use('/api/inventory', inventoryRoutes);
+app.use('/api/shipping', shippingRoutes);
+app.use('/api/admin', adminRoutes);
+app.use('/api', ordersRoutes);
 
-// erreurs
-app.use(errorHandler);
+// erreurs 404
+app.use(notFound); // 404 propre
+app.use(errorHandler); // handler erreurs
 
 // cron
 startCronJobs();
