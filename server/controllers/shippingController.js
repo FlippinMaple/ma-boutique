@@ -3,50 +3,84 @@ import axios from 'axios';
 import { pool } from '../db.js';
 import { logWarn, logError } from '../utils/logger.js';
 
-export async function getShippingRates(req, res) {
-  const { recipient, items } = req.body;
-
-  if (!recipient || !items?.length) {
-    await logWarn(
-      'Données incomplètes pour le calcul des tarifs de livraison',
-      'shipping',
-      {
-        hasRecipient: !!recipient,
-        itemsCount: items?.length || 0
-      }
-    );
-    return res.status(400).json({ error: 'Données incomplètes.' });
-  }
-
+export async function getRates(req, res) {
   try {
-    const ids = items.map((i) => i.variant_id);
-    const [variantRows] = await pool.query(
-      `SELECT variant_id
-         FROM product_variants
-        WHERE variant_id IN (${ids.map(() => '?').join(',')})`,
-      ids
-    );
+    const { recipient, items } = req.body;
+    if (!recipient || !Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ error: 'Données incomplètes.' });
+    }
 
-    const printfulItems = items.map((i) => {
-      const found = variantRows.find((v) => v.variant_id == i.variant_id);
-      if (!found) throw new Error(`Variante introuvable: ${i.variant_id}`);
-      return { variant_id: i.variant_id, quantity: i.quantity };
-    });
+    // Adresse complète requise pour CA/US
+    const cc = (
+      recipient.country ||
+      recipient.country_code ||
+      ''
+    ).toUpperCase();
+    if (cc === 'CA' || cc === 'US') {
+      const missing = [];
+      if (!recipient.address1) missing.push('address1');
+      if (!recipient.city) missing.push('city');
+      if (!recipient.state) missing.push('state');
+      if (!recipient.zip) missing.push('zip');
+      if (missing.length) {
+        return res
+          .status(400)
+          .json({ error: `Adresse incomplète: ${missing.join(', ')}` });
+      }
+    }
 
-    const r = await axios.post(
-      'https://api.printful.com/shipping/rates',
-      {
-        recipient: {
-          name: recipient.name,
-          address1: recipient.address1,
-          city: recipient.city,
-          state_code: recipient.state,
-          country_code: recipient.country,
-          zip: recipient.zip,
-          email: recipient.email || ''
-        },
-        items: printfulItems
+    // Mapper vers le variant_id **court** attendu par l’API Printful
+    const shortItems = [];
+    for (const it of items) {
+      const qty = Number(it.quantity || 1);
+      if (!Number.isFinite(qty) || qty <= 0) continue;
+
+      let shortId = null;
+
+      // Déjà court ?
+      if (Number.isFinite(Number(it.variant_id))) {
+        shortId = Number(it.variant_id);
+      }
+      // Sinon: on reçoit le long printful_variant_id → lookup en base
+      else if (Number.isFinite(Number(it.printful_variant_id))) {
+        const [[row]] = await pool.query(
+          'SELECT variant_id FROM product_variants WHERE printful_variant_id = ? LIMIT 1',
+          [Number(it.printful_variant_id)]
+        );
+        if (row?.variant_id) shortId = Number(row.variant_id);
+      }
+
+      if (!shortId) {
+        await logWarn(
+          `Variante introuvable pour l’item ${JSON.stringify(it)}`,
+          'shipping'
+        );
+        return res.status(400).json({
+          error: `Variante introuvable pour l’item (${
+            it.printful_variant_id ?? it.variant_id
+          }).`
+        });
+      }
+
+      shortItems.push({ variant_id: shortId, quantity: qty });
+    }
+
+    const payload = {
+      recipient: {
+        name: recipient.name || '',
+        address1: recipient.address1 || '',
+        city: recipient.city || '',
+        state_code: recipient.state || recipient.state_code || '',
+        country_code: recipient.country || recipient.country_code || '',
+        zip: recipient.zip || '',
+        email: recipient.email || ''
       },
+      items: shortItems
+    };
+
+    const resp = await axios.post(
+      'https://api.printful.com/shipping/rates',
+      payload,
       {
         headers: {
           Authorization: `Bearer ${process.env.PRINTFUL_API_KEY}`,
@@ -55,16 +89,15 @@ export async function getShippingRates(req, res) {
       }
     );
 
-    res.json(r.data.result);
-  } catch (error) {
+    return res.json(resp.data.result ?? []);
+  } catch (err) {
     await logError(
-      `❌ Erreur récupération shipping rates: ${
-        error?.response?.data?.message || error?.message
+      `Erreur shipping rates: ${
+        err.response?.data?.error?.message || err.response?.data || err.message
       }`,
-      'shipping',
-      error
+      'shipping'
     );
-    res
+    return res
       .status(500)
       .json({ error: 'Impossible d’obtenir les options de livraison.' });
   }

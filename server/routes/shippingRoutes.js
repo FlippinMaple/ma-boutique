@@ -1,8 +1,9 @@
+// server/routes/shippingRoutes.js
 import express from 'express';
-import { getShippingRates } from '../controllers/shippingController.js';
+import { getRates } from '../controllers/shippingController.js';
 
 const router = express.Router();
-// /api/shipping-rates
-router.post('/api/shipping-rates', getShippingRates);
+
+router.post('/rates', getRates);
 
 export default router;
