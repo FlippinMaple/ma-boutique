@@ -1,6 +1,5 @@
+// server/db.js
 import mysql from 'mysql2/promise';
-import dotenv from 'dotenv';
-dotenv.config();
 
 export const pool = mysql.createPool({
   host: process.env.MYSQL_HOST,
@@ -9,5 +8,6 @@ export const pool = mysql.createPool({
   database: process.env.MYSQL_DATABASE,
   waitForConnections: true,
   connectionLimit: 10,
-  queueLimit: 0
+  queueLimit: 0,
+  timezone: 'Z' // UTC
 });

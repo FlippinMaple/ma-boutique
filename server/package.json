@@ -1,15 +1,16 @@
 {
   "name": "server",
   "version": "1.0.0",
-  "main": "index.js",
+  "main": "server.js",
   "type": "module",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
-  "keywords": [],
-  "author": "",
+  "description": "Backend Node.js / Express du projet mon-shop-artofwhere",
+  "author": "Martin Forget",
   "license": "ISC",
-  "description": "",
+  "scripts": {
+    "start": "node server.js",
+    "jobs": "node jobs/index.js",
+    "dev": "node --watch server.js"
+  },
   "dependencies": {
     "archiver": "^7.0.1",
     "axios": "^1.8.4",
@@ -18,14 +19,12 @@
     "dotenv": "^16.4.7",
     "express": "^5.1.0",
     "fs-extra": "^11.3.0",
+    "helmet": "^8.1.0",
+    "compression": "^1.8.1",
     "jsonwebtoken": "^9.0.2",
     "mysql2": "^3.14.0",
     "node-cron": "^4.0.7",
     "pg": "^8.14.1",
     "stripe": "^18.0.0"
-  },
-  "devDependencies": {
-    "@vitejs/plugin-react": "^4.5.0",
-    "vite": "^6.3.5"
   }
 }

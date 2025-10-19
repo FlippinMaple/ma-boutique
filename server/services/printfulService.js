@@ -3,6 +3,8 @@ import axios from 'axios';
 import { pool } from '../db.js'; // 👈 ajoute cet import
 import { logError } from '../utils/logger.js';
 
+axios.defaults.timeout = 10000; // 10s
+
 // (existant)
 export const getPrintfulVariantAvailability = async (printful_variant_id) => {
   try {

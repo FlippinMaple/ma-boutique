@@ -1,17 +1,37 @@
 // server/jobs/purgeLogs.js
 import cron from 'node-cron';
-import { logToDatabase, purgeOldLogs } from '../utils/logger.js';
+import { purgeOldLogs, createLogger } from '../utils/logger.js';
+import { getDb } from '../utils/db.js';
 
-export function scheduleLogsPurge() {
-  const SPEC = process.env.CRON_PURGE_LOG_SCHEDULE || '0 0 * * *';
-  const DAYS = parseInt(process.env.LOG_RETENTION_DAYS, 10) || 7;
+const RETENTION_DAYS = Number(process.env.LOG_RETENTION_DAYS || 7);
+const CRON_PURGE_SCHEDULE = process.env.CRON_PURGE_SCHEDULE || '0 0 * * *'; // tous les jours à minuit
 
-  cron.schedule(SPEC, async () => {
-    await logToDatabase(
-      '🧹 Cron minuit : purge des anciens logs',
-      'info',
-      'cron_purge'
+export async function runPurgeLogsJob() {
+  const db = await getDb().catch(() => null);
+  const logger = createLogger(db);
+  await logger.info(
+    `🧹 Lancement purge des logs (rétention=${RETENTION_DAYS} jours)`
+  );
+
+  const res = await purgeOldLogs(db, RETENTION_DAYS);
+  if (res.ok) {
+    await logger.info(
+      `✅ Purge OK (engine=${res.engine}${
+        res.note ? `, note=${res.note}` : ''
+      })`
     );
-    await purgeOldLogs(DAYS);
+  } else {
+    await logger.warn(
+      `⚠️ Purge partielle/échec: ${
+        res.error?.code || res.error?.message || res.error
+      }`
+    );
+  }
+}
+
+/** Planifie la purge quotidienne */
+export function scheduleLogsPurge() {
+  cron.schedule(CRON_PURGE_SCHEDULE, async () => {
+    await runPurgeLogsJob();
   });
 }

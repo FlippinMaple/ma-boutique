@@ -20,11 +20,11 @@ const ShippingOptions = ({ cartItems, shippingInfo, onShippingSelected }) => {
 
       try {
         const response = await axios.post(
-          'http://localhost:4242/api/shipping-rates',
+          'http://localhost:4242/api/shipping/rates',
           {
             recipient: shippingInfo,
             items: cartItems.map((item) => ({
-              variant_id: item.variant_id,
+              printful_variant_id: item.printful_variant_id, // ← LONG ID
               quantity: item.quantity
             }))
           }
@@ -122,7 +122,7 @@ const ShippingOptions = ({ cartItems, shippingInfo, onShippingSelected }) => {
                   </div>
                 </div>
                 <div style={{ fontWeight: 'bold', fontSize: '1rem' }}>
-                  {parseFloat(rate.rate).toFixed(2)} CAD
+                  {parseFloat(rate.rate).toFixed(2)} CAD
                 </div>
               </div>
             );

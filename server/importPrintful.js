@@ -1,6 +1,5 @@
 // importPrintful.js
 import axios from 'axios';
-import mysql from 'mysql2/promise';
 import dotenv from 'dotenv';
 dotenv.config();
 import { pool } from './db.js';

@@ -1,40 +1,123 @@
 // server/controllers/webhookController.js
-import Stripe from 'stripe';
+import { getStripe } from '../services/stripeService.js';
 import { logInfo, logWarn, logError } from '../utils/logger.js';
 import { pool } from '../db.js';
+// ❌ on n'utilise plus markRecoveredByEmail (email-only)
+// import { markRecoveredByEmail } from '../services/abandonedCartService.js';
 import {
   mapCartToPrintfulVariants,
   createPrintfulOrder
 } from '../services/printfulService.js';
+import { centsToFloat } from '../utils/currency.js';
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
-  apiVersion: '2022-11-15'
-});
-
-function centsToFloat(cents) {
-  if (typeof cents !== 'number') return 0;
-  return Math.round(cents) / 100;
-}
-
+/* ------------------------------------------------------------------ */
+/*  Stripe events store: upgrade-safe (idempotence + full payload)     */
+/* ------------------------------------------------------------------ */
 async function ensureStripeEventsTable() {
+  // 1) crée si absent (schéma complet)
   await pool.query(`
     CREATE TABLE IF NOT EXISTS stripe_events (
-      id VARCHAR(255) PRIMARY KEY,
-      received_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
+      event_id   VARCHAR(255) PRIMARY KEY,
+      event_type VARCHAR(64)  NOT NULL,
+      created_at DATETIME     NOT NULL DEFAULT UTC_TIMESTAMP(),
+      payload    LONGTEXT     NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
   `);
+
+  // 2) si ancienne table minimale existe (id, received_at), on la migre "en douceur"
+  try {
+    await pool.query(
+      `ALTER TABLE stripe_events CHANGE COLUMN id event_id VARCHAR(255) NOT NULL`
+    );
+  } catch {
+    /* existe déjà */
+  }
+  try {
+    await pool.query(
+      `ALTER TABLE stripe_events ADD COLUMN event_type VARCHAR(64) NOT NULL`
+    );
+  } catch {
+    /* existe déjà */
+  }
+  try {
+    await pool.query(
+      `ALTER TABLE stripe_events ADD COLUMN created_at DATETIME NOT NULL DEFAULT UTC_TIMESTAMP()`
+    );
+  } catch {
+    /* existe déjà */
+  }
+  try {
+    await pool.query(
+      `ALTER TABLE stripe_events ADD COLUMN payload LONGTEXT NULL`
+    );
+  } catch {
+    /* existe déjà */
+  }
 }
 
+async function upsertStripeEvent(event) {
+  try {
+    await pool.query(
+      `INSERT INTO stripe_events (event_id, event_type, created_at, payload)
+       VALUES (?, ?, UTC_TIMESTAMP(), ?)
+       ON DUPLICATE KEY UPDATE event_type=VALUES(event_type), payload=VALUES(payload)`,
+      [event.id, event.type, JSON.stringify(event)]
+    );
+  } catch (e) {
+    // non bloquant
+    await logWarn(
+      `[stripe_events] upsert failed for ${event.id}: ${e?.message || e}`,
+      'webhook',
+      e
+    );
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/*  Mark abandoned cart recovered (by sessionId first, fallback email) */
+/* ------------------------------------------------------------------ */
+async function markAbandonedRecovered({ sessionId, email }) {
+  await pool.query(
+    `UPDATE abandoned_carts
+        SET is_recovered = 1,
+            recovered_at = UTC_TIMESTAMP(),
+            checkout_session_id = COALESCE(checkout_session_id, ?)
+      WHERE is_recovered = 0
+        AND (
+              checkout_session_id = ?
+           OR (customer_email = ? AND created_at >= UTC_TIMESTAMP() - INTERVAL 30 DAY)
+            )
+      ORDER BY created_at DESC
+      LIMIT 1`,
+    [sessionId, sessionId, email || null]
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Main handler                                                      */
+/* ------------------------------------------------------------------ */
 async function handleStripeWebhook(req, res) {
   const traceId = `wh_${Date.now()}`;
 
   // 1) Sanity checks
-  if (!process.env.STRIPE_SECRET_KEY || !process.env.STRIPE_WEBHOOK_SECRET) {
+  if (!process.env.STRIPE_WEBHOOK_SECRET) {
     await logError(
       `❌ [${traceId}] STRIPE_SECRET_KEY ou STRIPE_WEBHOOK_SECRET manquant`,
       'webhook'
     );
     return res.status(500).send('Configuration Stripe incomplète');
+  }
+
+  let stripe;
+  try {
+    stripe = getStripe(); // ✅ instanciation au runtime, après chargement .env
+  } catch (e) {
+    await logError(
+      `❌ [${traceId}] Stripe init error: ${e.message}`,
+      'webhook',
+      e
+    );
+    return res.status(500).send('Stripe non configuré');
   }
 
   // 2) Vérif de signature (raw body requis sur la route)
@@ -55,14 +138,16 @@ async function handleStripeWebhook(req, res) {
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
-  // 3) Idempotence
+  // 3) Idempotence (basée sur event_id)
   await ensureStripeEventsTable();
   try {
-    const [r] = await pool.query(
-      'INSERT IGNORE INTO stripe_events (id) VALUES (?)',
-      [event.id]
+    const [ins] = await pool.query(
+      `INSERT IGNORE INTO stripe_events (event_id, event_type, created_at)
+       VALUES (?, ?, UTC_TIMESTAMP())`,
+      [event.id, event.type]
     );
-    if (r.affectedRows === 0) {
+    if (ins.affectedRows === 0) {
+      // déjà reçu/traité
       logInfo(`ℹ️ [${traceId}] Event déjà reçu: ${event.id}`, 'webhook');
       return res.json({ received: true, duplicate: true });
     }
@@ -72,21 +157,19 @@ async function handleStripeWebhook(req, res) {
       'webhook',
       e
     );
+    // on continue quand même
   }
 
-  // 4) Événements utiles
+  // 4) Traitement des events utiles
   if (event.type === 'checkout.session.completed') {
     try {
       const session = event.data.object;
 
-      // === STRICT MODE: on n'utilise QUE metadata fourni par ton checkout ===
       if (!session.metadata || !session.metadata.cart_items) {
-        await logError(
-          `❌ [${traceId}] metadata.cart_items manquant; abandon insertion order_items.`,
+        await logWarn(
+          `⚠️ [${traceId}] metadata.cart_items manquant; insertion order_items sautée.`,
           'webhook'
         );
-        // On met quand même la commande à paid si elle existe déjà (logique inchangée)
-        // mais sans réinsérer les items.
       }
 
       // Parse metadata strict
@@ -95,20 +178,19 @@ async function handleStripeWebhook(req, res) {
         try {
           shipping = JSON.parse(session.metadata.shipping);
         } catch {
-          /* ignore */
+          /* empty */
         }
       }
-
       let cart_items = [];
       if (session.metadata?.cart_items) {
         try {
           cart_items = JSON.parse(session.metadata.cart_items) || [];
         } catch {
-          /* ignore */
+          /* empty */
         }
       }
 
-      // Validation stricte des items (printful_variant_id DOIT exister)
+      // Validation stricte des items
       const invalid = (cart_items || []).find(
         (it) =>
           !Number.isFinite(Number(it?.printful_variant_id)) ||
@@ -117,35 +199,33 @@ async function handleStripeWebhook(req, res) {
       );
       if (cart_items?.length && invalid) {
         await logError(
-          `❌ [${traceId}] cart_items invalide (id, printful_variant_id, quantity requis): ${JSON.stringify(
-            invalid
-          )}`,
+          `❌ [${traceId}] cart_items invalide: ${JSON.stringify(invalid)}`,
           'webhook',
           invalid
         );
-        // On n'insère pas d'items si invalides
         cart_items = [];
       }
 
       const orderIdFromStripe =
         session.client_reference_id || session.metadata?.order_id || null;
-
-      const customer_email = session.customer_email || shipping?.email || null;
+      const customer_email =
+        (session.customer_details && session.customer_details.email) ||
+        session.customer_email ||
+        shipping?.email ||
+        null;
 
       const total = centsToFloat(session.amount_total ?? 0);
 
-      // 1) shipping renvoyé par Stripe (sera >0 seulement si tu utilises Shipping Options)
+      // Shipping (Stripe) ou fallback metadata
       let shipping_cost = centsToFloat(
         session.total_details?.amount_shipping ?? 0
       );
-
-      // 2) fallback #1: metadata.shipping_rate (si tu l'as ajoutée côté checkout)
       if (shipping_cost === 0 && session.metadata?.shipping_rate) {
         try {
           const sr = JSON.parse(session.metadata.shipping_rate);
           if (!isNaN(Number(sr?.rate))) shipping_cost = Number(sr.rate);
         } catch {
-          /* ignore */
+          /* empty */
         }
       }
 
@@ -153,7 +233,7 @@ async function handleStripeWebhook(req, res) {
       let orderId = orderIdFromStripe;
 
       if (orderId) {
-        // Fallback #2: si on a un orderId existant, on récupère SON shipping_cost avant l'update
+        // fallback coût livraison d’une commande existante
         try {
           const [[prevOrder]] = await pool.query(
             'SELECT shipping_cost FROM orders WHERE id = ?',
@@ -163,12 +243,12 @@ async function handleStripeWebhook(req, res) {
             shipping_cost = Number(prevOrder.shipping_cost);
           }
         } catch {
-          /* ignore */
+          /* empty */
         }
 
         await pool.execute(
           `UPDATE orders
-             SET status = ?, total = ?, shipping_cost = ?, updated_at = NOW()
+             SET status = ?, total = ?, shipping_cost = ?, updated_at = UTC_TIMESTAMP()
            WHERE id = ?`,
           ['paid', total, shipping_cost, orderId]
         );
@@ -189,19 +269,15 @@ async function handleStripeWebhook(req, res) {
           );
           if (existingOrder) {
             orderId = existingOrder.id;
-
-            // Fallback #2: si zéro, reprendre l'ancien shipping_cost de cette commande
             if (shipping_cost === 0 && existingOrder.shipping_cost != null) {
               shipping_cost = Number(existingOrder.shipping_cost);
             }
-
             await pool.execute(
               `UPDATE orders
-                 SET status = ?, total = ?, shipping_cost = ?, updated_at = NOW()
+                 SET status = ?, total = ?, shipping_cost = ?, updated_at = UTC_TIMESTAMP()
                WHERE id = ?`,
               ['paid', total, shipping_cost, orderId]
             );
-
             if (cart_items.length > 0) {
               await pool.execute(`DELETE FROM order_items WHERE order_id = ?`, [
                 orderId
@@ -209,41 +285,37 @@ async function handleStripeWebhook(req, res) {
             }
           }
         }
-
         // Sinon créer une nouvelle commande
         if (!orderId) {
           const [ins] = await pool.execute(
             `INSERT INTO orders
                (customer_email, status, total, shipping_cost, created_at, updated_at)
-             VALUES (?, ?, ?, ?, NOW(), NOW())`,
+             VALUES (?, ?, ?, ?, UTC_TIMESTAMP(), UTC_TIMESTAMP())`,
             [customer_email, 'paid', total, shipping_cost]
           );
           orderId = ins.insertId;
         }
       }
 
-      // --- Réinsertion des items (STRICT: exige printful_variant_id présent dans metadata)
+      // --- Réinsertion des items si valides
       if (cart_items.length > 0) {
         for (const item of cart_items) {
           const localVariantId = Number(item.id);
-          const pfVariantId = Number(item.printful_variant_id); // requis
+          const pfVariantId = Number(item.printful_variant_id);
           const qty = Number(item.quantity);
           const price = typeof item.price === 'number' ? item.price : 0;
 
-          // Double vérif défensive (évite tout NULL/NaN)
           if (
             !Number.isFinite(localVariantId) ||
             !Number.isFinite(pfVariantId) ||
             !Number.isFinite(qty)
           ) {
             await logWarn(
-              `❌ [${traceId}] Item invalide, insertion annulée: ${JSON.stringify(
-                item
-              )}`,
+              `⚠️ [${traceId}] Item invalide, sauté: ${JSON.stringify(item)}`,
               'webhook',
               item
             );
-            continue; // on saute l'item invalide
+            continue;
           }
 
           const metaPayload = {
@@ -255,7 +327,7 @@ async function handleStripeWebhook(req, res) {
           await pool.execute(
             `INSERT INTO order_items
                (order_id, variant_id, printful_variant_id, quantity, price_at_purchase, meta, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+             VALUES (?, ?, ?, ?, ?, ?, UTC_TIMESTAMP(), UTC_TIMESTAMP())`,
             [
               orderId,
               localVariantId,
@@ -268,23 +340,18 @@ async function handleStripeWebhook(req, res) {
         }
       } else {
         await logWarn(
-          `⚠️ [${traceId}] Aucun item inséré (metadata.cart_items absent ou invalide).`,
+          `⚠️ [${traceId}] Aucun item inséré (metadata.cart_items absent/invalide).`,
           'webhook'
         );
       }
 
       // --- Historique de statut
       try {
-        const [[prev]] = await pool.query(
-          `SELECT status FROM orders WHERE id = ?`,
-          [orderId]
-        );
-        const oldStatus =
-          prev?.status && prev.status !== 'paid' ? prev.status : 'pending';
+        // on historise "pending" -> "paid" (si tu veux le vrai old_status, capture-le avant l'UPDATE)
         await pool.execute(
           `INSERT INTO order_status_history (order_id, old_status, new_status, changed_at)
-           VALUES (?, ?, ?, NOW())`,
-          [orderId, oldStatus, 'paid']
+           VALUES (?, ?, ?, UTC_TIMESTAMP())`,
+          [orderId, 'pending', 'paid']
         );
       } catch (e) {
         await logWarn(
@@ -294,7 +361,21 @@ async function handleStripeWebhook(req, res) {
         );
       }
 
-      // --- Envoi Printful (optionnel, inchangé)
+      // --- Abandoned cart: marquer "recovered" via sessionId/email
+      try {
+        await markAbandonedRecovered({
+          sessionId: session.id,
+          email: customer_email
+        });
+      } catch (e) {
+        await logWarn(
+          `⚠️ [${traceId}] markAbandonedRecovered a échoué: ${e?.message || e}`,
+          'webhook',
+          e
+        );
+      }
+
+      // --- Printful (optionnel, inchangé)
       if (
         process.env.PRINTFUL_AUTOMATIC_ORDER === 'true' &&
         cart_items.length > 0 &&
@@ -352,6 +433,9 @@ async function handleStripeWebhook(req, res) {
         }
       }
 
+      // 5) Log complet de l’event (payload)
+      await upsertStripeEvent(event);
+
       logInfo(
         `✅ [${traceId}] checkout.session.completed traité (order #${orderId})`,
         'webhook'
@@ -369,7 +453,8 @@ async function handleStripeWebhook(req, res) {
     }
   }
 
-  // Autres events
+  // autres events → juste log + upsert
+  await upsertStripeEvent(event);
   logInfo(`ℹ️ [${traceId}] Event ignoré: ${event.type}`, 'webhook');
   return res.json({ received: true });
 }

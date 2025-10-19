@@ -53,7 +53,7 @@ const ProductDetail = () => {
         setLoading(true);
         try {
           const res = await api.get(
-            `/api/printful-stock/${selectedVariant.printful_variant_id}`
+            `/api/inventory/printful-stock/${selectedVariant.printful_variant_id}`
           );
           const stock = res.data.available ?? 0;
           setAvailableStock(stock);

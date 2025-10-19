@@ -2,7 +2,7 @@
 import { logError } from '../utils/logger.js';
 
 /** 404 (route non trouvée) */
-export function notFound(req, res, _next) {
+export function notFound(req, res) {
   const payload = {
     error: 'Not Found',
     path: req.originalUrl,
@@ -15,11 +15,13 @@ export function notFound(req, res, _next) {
   try {
     res.writeHead?.(404, { 'Content-Type': 'application/json' });
     res.end?.(JSON.stringify(payload));
-  } catch {}
+  } catch {
+    /* empty */
+  }
 }
 
 /** Handler d’erreurs Express (signature à 4 args OBLIGATOIRE) */
-export function errorHandler(err, req, res, _next) {
+export function errorHandler(err, req, res) {
   const status = err?.statusCode || err?.status || 500;
   const body = {
     error: err?.message || 'Erreur interne',

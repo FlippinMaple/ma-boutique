@@ -7,6 +7,41 @@ const CartContext = createContext();
 export const CartProvider = ({ children }) => {
   const [cart, setCart] = useState([]);
 
+  // --- NEW: helpers pour éviter les faux abandoned pendant le checkout Stripe
+  const setInCheckoutFlag = () => {
+    try {
+      localStorage.setItem(
+        'inCheckout',
+        JSON.stringify({
+          ts: Date.now(),
+          ttlMs: 20 * 60 * 1000 // 20 minutes
+        })
+      );
+    } catch {
+      // intentionally ignored
+    }
+  };
+
+  const clearInCheckoutFlag = () => {
+    try {
+      localStorage.removeItem('inCheckout');
+    } catch {
+      // intentionally ignored
+    }
+  };
+
+  const shouldSuppressAbandonedLog = () => {
+    try {
+      const raw = localStorage.getItem('inCheckout');
+      if (!raw) return false;
+      const { ts, ttlMs } = JSON.parse(raw);
+      return Date.now() - ts <= (ttlMs || 0);
+    } catch {
+      return false;
+    }
+  };
+  // --- FIN NEW
+
   useEffect(() => {
     const savedCart = localStorage.getItem('cart');
     if (savedCart) setCart(JSON.parse(savedCart));
@@ -35,12 +70,11 @@ export const CartProvider = ({ children }) => {
   const validateStockBeforeAdd = async (item) => {
     try {
       const res = await api.get(
-        `/api/printful-stock/${item.printful_variant_id}`
+        `/api/inventory/printful-stock/${item.printful_variant_id}`
       );
       const data = res.data;
       const stockAvailable = data.available ?? 99;
 
-      // Rechercher s’il y en a déjà dans le panier
       const existingItem = cart.find((i) => i.id === item.id);
       const totalQuantity = existingItem
         ? existingItem.quantity + item.quantity
@@ -74,10 +108,13 @@ export const CartProvider = ({ children }) => {
   };
 
   const updateQuantity = (id, quantity) => {
-    const updatedCart = cart.map((item) =>
-      item.id === id ? { ...item, quantity } : item
-    );
-    setCart(updatedCart);
+    setCart((prev) => {
+      const q = Math.max(0, Number(quantity) || 0);
+      if (q <= 0) return prev.filter((item) => item.id !== id); // 0 → supprime
+      return prev.map((item) =>
+        item.id === id ? { ...item, quantity: q } : item
+      );
+    });
   };
 
   const clearCart = () => {
@@ -92,7 +129,11 @@ export const CartProvider = ({ children }) => {
         validateStockBeforeAdd,
         removeFromCart,
         updateQuantity,
-        clearCart
+        clearCart,
+        // --- NEW: on expose les helpers
+        setInCheckoutFlag,
+        clearInCheckoutFlag,
+        shouldSuppressAbandonedLog
       }}
     >
       {children}

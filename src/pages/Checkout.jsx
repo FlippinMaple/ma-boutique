@@ -16,7 +16,15 @@ const getAuthToken = () => {
 };
 
 const Checkout = () => {
-  const { cart, removeFromCart, clearCart, addToCart } = useCart();
+  const {
+    cart,
+    removeFromCart,
+    clearCart,
+    addToCart,
+    shouldSuppressAbandonedLog, // NEW
+    setInCheckoutFlag, // NEW
+    updateQuantity
+  } = useCart();
 
   const [userEmail, setUserEmail] = useState('');
   const [shipping, setShipping] = useState({
@@ -33,6 +41,17 @@ const Checkout = () => {
   const hasRedirected = useRef(false);
 
   useEffect(() => {
+    setShippingRate(null);
+  }, [
+    shipping.name,
+    shipping.address1,
+    shipping.city,
+    shipping.state,
+    shipping.country,
+    shipping.zip
+  ]);
+
+  useEffect(() => {
     if (!Array.isArray(cart) || cart.length === 0) {
       hasRedirected.current = true;
       toast.error('Ton panier est vide. Redirection...');
@@ -43,22 +62,104 @@ const Checkout = () => {
   }, [cart, navigate]);
 
   useEffect(() => {
-    const handleBeforeUnload = async () => {
-      const emailClean = formatEmail(userEmail);
-      if (cart.length > 0 && emailClean) {
-        try {
-          await api.post('/api/log-abandoned-cart', {
-            customer_email: emailClean,
-            cart_contents: JSON.stringify(cart)
-          });
-        } catch {
-          // on ignore volontairement les erreurs ici
+    // 🔧 Nettoie un flag éventuel si on revient sur /checkout après une annulation Stripe
+    try {
+      localStorage.removeItem('inCheckout');
+    } catch {
+      /* empty */
+    }
+
+    const API_BASE =
+      (import.meta.env.VITE_SERVER_URL &&
+        import.meta.env.VITE_SERVER_URL.replace(/\/+$/, '')) ||
+      window.location.origin; // fallback même domaine
+
+    let sent = false;
+
+    const sendAbandon = () => {
+      if (sent) return;
+
+      // ✅ RE-vérifie le flag au moment de quitter (pas en closure)
+      if (
+        typeof shouldSuppressAbandonedLog === 'function' &&
+        shouldSuppressAbandonedLog()
+      ) {
+        return;
+      }
+
+      // Email tolérant (fallback si formatEmail rend vide)
+      const raw = (userEmail || '').trim();
+      const emailClean =
+        (typeof formatEmail === 'function' && formatEmail(raw)) ||
+        (raw.includes('@') ? raw.toLowerCase() : '');
+
+      if (!emailClean || !Array.isArray(cart) || cart.length === 0) return;
+
+      const payload = {
+        customer_email: emailClean,
+        cart_contents: cart.map(
+          ({ id, name, quantity, price, variant_id, printful_variant_id }) => ({
+            id,
+            name,
+            quantity,
+            price,
+            variant_id,
+            printful_variant_id
+          })
+        ), // <= compact pour éviter la limite ~64KB
+        reason: 'beforeunload'
+      };
+      const body = JSON.stringify(payload);
+      const url = `${API_BASE}/api/log-abandoned-cart`;
+
+      try {
+        if (navigator.sendBeacon) {
+          // text/plain: super compatible pendant l'unload
+          const blob = new Blob([body], { type: 'text/plain;charset=UTF-8' });
+          const ok = navigator.sendBeacon(url, blob);
+          sent = ok;
+          if (ok) return;
         }
+
+        // Fallback: fetch keepalive (no credentials)
+        fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body,
+          keepalive: true
+        }).catch(() => {});
+      } catch {
+        // ignore
+      } finally {
+        sent = true;
       }
     };
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, [cart, userEmail]);
+
+    // Déclencheurs robustes
+    const onBeforeUnload = () => sendAbandon();
+    const onPageHide = () => sendAbandon();
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') sendAbandon();
+    };
+
+    window.addEventListener('beforeunload', onBeforeUnload);
+    window.addEventListener('pagehide', onPageHide);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
+    // 🔎 TEST MANUEL sans quitter la page
+    window.__abandonTest = sendAbandon;
+
+    return () => {
+      window.removeEventListener('beforeunload', onBeforeUnload);
+      window.removeEventListener('pagehide', onPageHide);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      try {
+        delete window.__abandonTest;
+      } catch {
+        /* empty */
+      }
+    };
+  }, [cart, userEmail, shouldSuppressAbandonedLog]);
 
   const total = Array.isArray(cart)
     ? cart.reduce((sum, item) => sum + item.price * item.quantity, 0)
@@ -93,6 +194,8 @@ const Checkout = () => {
     setLoading(true);
 
     try {
+      const token = getAuthToken();
+
       const preparedItems = cart.map((item) => ({
         id: item.id,
         name: capitalizeSmart(item.name),
@@ -113,12 +216,18 @@ const Checkout = () => {
           name: capitalizeSmart(shipping.name)
         },
         shipping_rate: shippingRate
+          ? { name: shippingRate.name, rate: shippingRate.rate }
+          : null
       };
 
-      const response = await api.post('/api/create-checkout-session', payload);
+      const response = await api.post('/api/create-checkout-session', payload, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
 
       if (response.data?.url) {
         toast.success('Redirection vers Stripe...');
+        // === UPDATED: utilise le helper du contexte (évite les faux logs)
+        setInCheckoutFlag();
         window.location.href = response.data.url;
       } else {
         toast.error('Erreur : aucune URL de paiement reçue.');
@@ -241,18 +350,36 @@ const Checkout = () => {
             <div className="shop-quantity-controls">
               <button
                 className="shop-qty-btn"
-                onClick={() => removeFromCart(item.id)}
+                onClick={() => updateQuantity(item.id, item.quantity - 1)}
+                disabled={item.quantity <= 1} // évite de tomber à 0 d'un coup
+                title={
+                  item.quantity <= 1 ? 'Quantité minimale atteinte' : 'Diminuer'
+                }
               >
                 ➖
               </button>
+
               <span className="shop-qty-count">{item.quantity}</span>
+
               <button
                 className="shop-qty-btn"
-                onClick={() => addToCart({ ...item, quantity: 1 })}
+                onClick={() => addToCart({ ...item, quantity: 1 })} // +1 conserve ton logique
+                title="Augmenter"
               >
                 ➕
               </button>
+
+              {/* Optionnel : un bouton dédié pour supprimer l'article */}
+              <button
+                className="shop-qty-btn"
+                onClick={() => removeFromCart(item.id)}
+                title="Supprimer l'article"
+                style={{ marginLeft: 8 }}
+              >
+                🗑️
+              </button>
             </div>
+
             <p style={{ marginTop: '5px' }}>
               {(Number(item.price) || 0).toFixed(2)} $ x {item.quantity} ={' '}
               {((Number(item.price) || 0) * item.quantity).toFixed(2)} $

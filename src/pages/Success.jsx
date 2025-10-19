@@ -4,46 +4,48 @@ import api from '../utils/api';
 import { useCart } from '../CartContext';
 
 const Success = () => {
-  const { clearCart } = useCart?.() || {};
+  // On récupère les helpers du contexte
+  const { clearCart, clearInCheckoutFlag } = useCart();
 
   useEffect(() => {
     const run = async () => {
       try {
+        // 1) Nettoie le flag "en checkout" dès l'arrivée ici
+        try {
+          clearInCheckoutFlag();
+        } catch {
+          /* empty */
+        }
+
+        // 2) Vérifie la session Stripe côté serveur (optionnel)
         const url = new URL(window.location.href);
         const sessionId = url.searchParams.get('session_id');
-
-        // (Optionnel) Valider côté serveur
         if (sessionId) {
           try {
             await api.get(
               `/api/payments/verify?session_id=${encodeURIComponent(sessionId)}`
             );
           } catch (e) {
-            // même si la vérif échoue, on ne reste pas coincé ici
             console.warn('[Success] verify failed', e);
           }
         }
 
-        // vider le panier si possible (sans bloquer la redirection)
+        // 3) Vide le panier (ne bloque pas la redirection si ça échoue)
         try {
           const maybe = clearCart?.();
           if (maybe && typeof maybe.then === 'function') await maybe;
         } catch {
-          /* empty */
+          /* noop */
         }
       } finally {
-        // 🚪 Sortie "bulldozer": on quitte la page en dur
-        const target = `${window.location.origin}/shop`;
+        // 4) Redirige vers la boutique (une seule fois)
+        const target = `${window.location.origin}/shop?flash=merci`;
         window.location.replace(target);
       }
     };
 
     run();
-  }, [clearCart]);
-
-  // après clearCart()
-  const target = `${window.location.origin}/shop?flash=merci`;
-  window.location.replace(target);
+  }, [clearCart, clearInCheckoutFlag]);
 
   return null;
 };

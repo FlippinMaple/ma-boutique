@@ -1,13 +1,16 @@
-import { Router } from 'express';
-import { authProtect } from '../middlewares/authProtect.js';
+// server/routes/ordersRoutes.js
+import express from 'express';
 import {
-  createPrintfulOrderController,
-  getProtected,
-  getUserInfo
+  createPrintfulOrder,
+  protectedExample,
+  userInfo
 } from '../controllers/ordersController.js';
+import { authProtect } from '../middlewares/authProtect.js';
 
-const router = Router();
-router.post('/printful-order', createPrintfulOrderController);
-router.get('/protected', authProtect, getProtected);
-router.get('/user-info', authProtect, getUserInfo);
+const router = express.Router();
+
+router.post('/printful-order', createPrintfulOrder);
+router.get('/protected', authProtect, protectedExample);
+router.get('/user-info', authProtect, userInfo);
+
 export default router;
