@@ -9,6 +9,8 @@ import { jwtDecode } from 'jwt-decode';
 import api from './utils/api';
 import toast, { Toaster } from 'react-hot-toast'; // ✅ toast + composant
 import { ModalProvider } from './context/ModalContext';
+import axios from 'axios';
+axios.defaults.withCredentials = true;
 
 // Pages et composants
 import Header from './components/Header';
@@ -34,28 +36,30 @@ function App() {
 
   // 🔁 Rafraîchir le token d'accès sans dupliquer les toasts / requêtes
   const refreshAccessToken = async (refreshToken) => {
-    if (refreshingRef.current) return null; // déjà en cours → on sort
+    if (refreshingRef.current) return null;
     refreshingRef.current = true;
-
     try {
       if (!refreshToken) throw new Error('No refresh token');
       const { data } = await api.post('/api/auth/refresh-token', {
         refreshToken
       });
-
       localStorage.setItem('authToken', data.accessToken);
+
       setIsAuthenticated(true);
-
-      // ✅ id fixe → pas de doublon même si ré-exécuté
       toast.success('Session renouvelée ✔️', { id: 'refresh-ok' });
-
       return data.accessToken;
     } catch (error) {
-      console.error('Erreur lors du rafraîchissement du token', error);
-      toast.error(
-        'Erreur lors du renouvellement du token. Veuillez vous reconnecter.',
-        { id: 'refresh-fail' }
-      );
+      const status = error?.response?.status;
+      if (status === 401) {
+        // token absent/expiré/invalide → logout doux
+        toast.error('Session expirée. Connecte-toi de nouveau.', {
+          id: 'session-expired'
+        });
+      } else {
+        toast.error('Erreur serveur. Réessaie plus tard.', {
+          id: 'refresh-fail'
+        });
+      }
       setIsAuthenticated(false);
       return null;
     } finally {

@@ -2,8 +2,8 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:4242', // adapt to your env
-  withCredentials: false
+  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:4242', // adapte si besoin
+  withCredentials: true // au cas où tu mixes body + cookies
 });
 
 let isRefreshing = false;
@@ -20,17 +20,12 @@ const processQueue = (error, token = null) => {
   failedQueue = [];
 };
 
-// Intercepteur de requêtes: ajoute l’access token si présent
-api.interceptors.request.use(
-  (config) => {
-    const token = localStorage.getItem('authToken');
-    if (token) {
-      config.headers['Authorization'] = `Bearer ${token}`;
-    }
-    return config;
-  },
-  (error) => Promise.reject(error)
-);
+// Intercepteur: attache le JWT d'accès si présent
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem('authToken');
+  if (token) config.headers.Authorization = `Bearer ${token}`;
+  return config;
+});
 
 // Intercepteur de réponses: si 401, tente de rafraîchir le token
 api.interceptors.response.use(
