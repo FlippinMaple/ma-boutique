@@ -1,60 +1,83 @@
-import { pool } from '../db.js';
+// server/models/authModel.js
 
-export const findCustomerByEmail = async (email) => {
-  const [rows] = await pool.query('SELECT id FROM customers WHERE email = ?', [
-    email
-  ]);
-  return rows.length > 0 ? rows[0] : null;
-};
-
-export const insertCustomer = async ({
-  first_name,
-  last_name,
-  email,
-  password_hash,
-  is_subscribed
-}) => {
-  const [result] = await pool.execute(
-    `INSERT INTO customers (
-      first_name,
-      last_name,
-      email,
-      password_hash,
-      is_subscribed,
-      created_at,
-      updated_at
-    ) VALUES (?, ?, ?, ?, ?, NOW(), NOW())`,
-    [first_name, last_name, email, password_hash, !!is_subscribed]
-  );
-  return result.insertId;
-};
-
-export const getUserByEmail = async (email) => {
-  const [rows] = await pool.query(
-    'SELECT id, first_name, last_name, password_hash FROM customers WHERE email = ?',
+/**
+ * Trouve un utilisateur par son adresse email.
+ */
+export async function findUserByEmail(email, req) {
+  const db = req.app.locals.db;
+  const [rows] = await db.execute(
+    'SELECT * FROM users WHERE email = ? LIMIT 1',
     [email]
   );
-  return rows.length > 0 ? rows[0] : null;
-};
+  return rows[0] ?? null;
+}
 
-export const saveRefreshToken = async (userId, refreshToken, expiresAt) => {
-  await pool.execute(
-    `REPLACE INTO refresh_tokens (user_id, refresh_token, expires_at)
-     VALUES (?, ?, ?)`,
-    [userId, refreshToken, expiresAt]
+/**
+ * Récupère un utilisateur (alias possible pour compatibilité avec du code existant).
+ */
+export async function getUserByEmail(email) {
+  return findUserByEmail(email);
+}
+
+/**
+ * Insère un nouveau client (customer).
+ */
+export async function insertCustomer({ name, email, passwordHash, req }) {
+  const db = req.app.locals.db;
+  const [res] = await db.execute(
+    `INSERT INTO users (name, email, password_hash, created_at)
+     VALUES (?, ?, ?, NOW())`,
+    [name, email, passwordHash]
   );
-};
+  return res.insertId;
+}
 
-export const deleteRefreshToken = async (refreshToken) => {
-  await pool.execute(`DELETE FROM refresh_tokens WHERE refresh_token = ?`, [
-    refreshToken
-  ]);
-};
-
-export const getRefreshTokenRecord = async (refreshToken) => {
-  const [rows] = await pool.query(
-    `SELECT * FROM refresh_tokens WHERE refresh_token = ?`,
-    [refreshToken]
+/**
+ * Sauvegarde un refresh token pour un utilisateur.
+ */
+export async function saveRefreshToken({ userId, token, req }) {
+  const db = req.app.locals.db;
+  const [res] = await db.execute(
+    `INSERT INTO refresh_tokens (user_id, token, created_at)
+     VALUES (?, ?, NOW())`,
+    [userId, token]
   );
-  return rows.length > 0 ? rows[0] : null;
-};
+  return res.insertId ?? 0;
+}
+
+/**
+ * Supprime un refresh token (par token ou par userId).
+ */
+export async function deleteRefreshToken({ token, userId, req }) {
+  const db = req.app.locals.db;
+
+  if (token) {
+    const [res] = await db.execute(
+      'DELETE FROM refresh_tokens WHERE token = ?',
+      [token]
+    );
+    return res.affectedRows ?? 0;
+  }
+
+  if (userId) {
+    const [res] = await db.execute(
+      'DELETE FROM refresh_tokens WHERE user_id = ?',
+      [userId]
+    );
+    return res.affectedRows ?? 0;
+  }
+
+  return 0;
+}
+
+/**
+ * Récupère le refresh token d’un utilisateur spécifique.
+ */
+export async function getRefreshTokenRecord({ token, req }) {
+  const db = req.app.locals.db;
+  const [rows] = await db.execute(
+    'SELECT * FROM refresh_tokens WHERE token = ? LIMIT 1',
+    [token]
+  );
+  return rows[0] ?? null;
+}

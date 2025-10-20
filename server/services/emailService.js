@@ -1,6 +1,5 @@
 // services/emailService.js
 import nodemailer from 'nodemailer';
-import { pool } from '../db.js';
 
 const SENDER_EMAIL = process.env.EMAIL_FROM || 'no-reply@example.com';
 const SENDER_NAME = process.env.EMAIL_FROM_NAME || 'Boutique';
@@ -44,8 +43,10 @@ export async function sendEmail({ to, subject, html, text, headers }) {
   }
 }
 
-export async function markCustomerSubscribed(email, on) {
-  await pool.query(`UPDATE customers SET is_subscribed = ? WHERE email = ?`, [
+export async function markCustomerSubscribed(email, on, req) {
+  const db = req.app.locals.db;
+
+  await db.query(`UPDATE customers SET is_subscribed = ? WHERE email = ?`, [
     on ? 1 : 0,
     email
   ]);

@@ -1,34 +1,38 @@
 // server/app.js
+import 'dotenv/config'; // ✅ charge FRONTEND_URL, NODE_ENV, etc. avant usage
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import compression from 'compression';
+import bodyParser from 'body-parser';
+import cookieParser from 'cookie-parser';
 
 import { notFound, errorHandler } from './middlewares/errorHandler.js';
 
-// ⚠️ On n'importe plus la DB ici, ni les cron.
-// import { pool } from './db.js';
-// import { startCronJobs } from './jobs/index.js';
-
-import webhookRoutes from './routes/webhookRoutes.js';
-import abandonedCartRoutes from './routes/abandonedCartRoutes.js';
-import authRoutes from './routes/authRoutes.js';
-import productsRoutes from './routes/productsRoutes.js';
-import wishlistRoutes from './routes/wishlistRoutes.js';
-import checkoutRoutes from './routes/checkoutRoutes.js';
-import adminRoutes from './routes/adminRoutes.js';
-import inventoryRoutes from './routes/inventoryRoutes.js';
-import shippingRoutes from './routes/shippingRoutes.js';
-import ordersRoutes from './routes/ordersRoutes.js';
-import complianceEmailRoutes from './routes/complianceEmailRoutes.js';
-
 const app = express();
 
-// Sécu/Perf
+/* ------- Sécu/Perf global ------- */
+const behindProxy =
+  process.env.NODE_ENV === 'production' && process.env.TRUST_PROXY !== 'false';
+const TRUST_PROXY_HOPS = Number(process.env.TRUST_PROXY_HOPS || 1);
+
+// En local: false. En prod: 1 (ou la valeur fournie)
+app.set('trust proxy', behindProxy ? TRUST_PROXY_HOPS : false);
 app.use(helmet());
 app.use(compression());
 
-// CORS spécifique pour /api/log-abandoned-cart (sendBeacon)
+/* ------- Hook de debug (TLA en ESM Node ≥ 20) ------- */
+if (process.env.NODE_ENV !== 'production') {
+  try {
+    await import('./dev/route-debug.js');
+  } catch (e) {
+    // Ne pas faire planter en dev si le fichier n'existe pas
+    console.warn('[route-debug] non chargé :', e?.message);
+  }
+}
+
+/* ------- CORS / parsers ------- */
+// CORS strict pour le endpoint "abandoned cart" (POST only, sans credentials)
 app.use(
   '/api/log-abandoned-cart',
   cors({
@@ -41,55 +45,74 @@ app.use(
   })
 );
 
-// CORS global
-const origins = process.env.FRONTEND_URL
+// CORS général pour le reste de l’API (avec credentials)
+const ALLOWED_ORIGINS = process.env.FRONTEND_URL
   ? process.env.FRONTEND_URL.split(',').map((s) => s.trim())
-  : '*';
-app.use(cors({ origin: origins, credentials: true }));
+  : ['http://localhost:5173'];
 
-// 🚩 Webhook AVANT json : on monte explicitement en RAW sur /webhook
-import bodyParser from 'body-parser';
-app.use(
-  '/webhook',
-  bodyParser.raw({ type: 'application/json' }),
-  webhookRoutes
-);
+const commonCors = cors({
+  origin: ALLOWED_ORIGINS,
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+});
 
-// Abandoned cart AVANT json global (si la route gère son propre parser)
-app.use('/api', abandonedCartRoutes);
+app.use(commonCors);
+app.options(/.*/, commonCors);
+// Stripe/Autres webhooks : raw body AVANT json
+app.use('/webhook', bodyParser.raw({ type: 'application/json' }));
 
-// JSON pour le reste
+// cookies + json global
+app.use(cookieParser());
 app.use(express.json());
 
-// Health
+/* ------- Health ------- */
 app.get('/health', (_req, res) => res.json({ ok: true }));
-
 app.get('/readiness', async (req, res) => {
   try {
     const db = req.app.locals.db ?? req.app.locals.pool ?? null;
     if (!db) return res.status(503).json({ ok: false, note: 'no db' });
-
-    // mysql2/promise style:
-    if (typeof db.execute === 'function') {
-      await db.execute('SELECT 1');
-      return res.json({ ok: true });
-    }
-    // knex style:
-    if (typeof db.raw === 'function') {
-      await db.raw('SELECT 1');
-      return res.json({ ok: true });
-    }
-    // pool.query fallback
-    if (typeof db.query === 'function') {
-      await db.query('SELECT 1');
-      return res.json({ ok: true });
-    }
-
-    return res.status(200).json({ ok: true, note: 'unknown db adapter' });
-  } catch {
-    res.status(503).json({ ok: false });
+    if (typeof db.execute === 'function') await db.execute('SELECT 1');
+    else if (typeof db.raw === 'function') await db.raw('SELECT 1');
+    else if (typeof db.query === 'function') await db.query('SELECT 1');
+    return res.json({ ok: true });
+  } catch (e) {
+    res.status(503).json({ ok: false, error: e?.message ?? true });
   }
 });
+
+/* ------- Routes (dynamiques) ------- */
+const [
+  { default: webhookRoutes },
+  { default: abandonedCartRoutes },
+  { default: authRoutes },
+  { default: productsRoutes },
+  { default: wishlistRoutes },
+  { default: checkoutRoutes },
+  { default: adminRoutes },
+  { default: inventoryRoutes },
+  { default: shippingRoutes },
+  { default: ordersRoutes },
+  { default: complianceEmailRoutes }
+] = await Promise.all([
+  import('./routes/webhookRoutes.js'),
+  import('./routes/abandonedCartRoutes.js'),
+  import('./routes/authRoutes.js'),
+  import('./routes/productsRoutes.js'),
+  import('./routes/wishlistRoutes.js'),
+  import('./routes/checkoutRoutes.js'),
+  import('./routes/adminRoutes.js'),
+  import('./routes/inventoryRoutes.js'),
+  import('./routes/shippingRoutes.js'),
+  import('./routes/ordersRoutes.js'),
+  import('./routes/complianceEmailRoutes.js')
+]);
+
+// Abandoned cart (si la route gère son propre parser, elle le fait en interne)
+app.use('/api', abandonedCartRoutes);
+
+// Webhook déjà « raw »
+app.use('/webhook', webhookRoutes);
 
 // API
 app.use('/api/auth', authRoutes);
@@ -102,12 +125,9 @@ app.use('/api/admin', adminRoutes);
 app.use('/api', ordersRoutes);
 app.use('/api', complianceEmailRoutes);
 
-// 404 & erreurs
+/* ------- 404 & erreurs ------- */
 app.use(notFound);
 app.use(errorHandler);
-
-// ❌ plus de startCronJobs() ici
-// app.locals.pool = pool; // ❌ pas d’import direct ici
 
 export { app };
 export default app;

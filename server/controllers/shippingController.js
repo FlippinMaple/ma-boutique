@@ -1,9 +1,10 @@
 // server/controllers/shippingController.js
 import axios from 'axios';
-import { pool } from '../db.js';
 import { logWarn, logError } from '../utils/logger.js';
 
 export async function getRates(req, res) {
+  const db = req.app.locals.db;
+
   try {
     const { recipient, items } = req.body;
     if (!recipient || !Array.isArray(items) || items.length === 0) {
@@ -43,7 +44,7 @@ export async function getRates(req, res) {
       }
       // Sinon: on reçoit le long printful_variant_id → lookup en base
       else if (Number.isFinite(Number(it.printful_variant_id))) {
-        const [[row]] = await pool.query(
+        const [[row]] = await db.query(
           'SELECT variant_id FROM product_variants WHERE printful_variant_id = ? LIMIT 1',
           [Number(it.printful_variant_id)]
         );

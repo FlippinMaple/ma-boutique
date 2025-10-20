@@ -1,5 +1,4 @@
-import { pool } from '../db.js';
-
+// server/models/orderModel.js
 /**
  * Insère une nouvelle commande complète dans la table orders
  * @param {object} orderData
@@ -19,9 +18,12 @@ export const insertOrder = async ({
   shipping_address_id,
   billing_address_id = null,
   total,
-  shipping_cost = 0
+  shipping_cost = 0,
+  req
 }) => {
-  const [result] = await pool.query(
+  const db = req.app.locals.db;
+
+  const [result] = await db.query(
     `INSERT INTO orders
      (customer_id, customer_email, shipping_address_id, billing_address_id, total, shipping_cost)
      VALUES (?, ?, ?, ?, ?, ?)`,
@@ -53,9 +55,12 @@ export const insertOrderItem = async (
   printful_variant_id,
   quantity,
   price,
-  meta = {}
+  meta = {},
+  req
 ) => {
-  await pool.query(
+  const db = req.app.locals.db;
+
+  await db.query(
     `INSERT INTO order_items
      (order_id, variant_id, printful_variant_id, quantity, price_at_purchase, meta)
      VALUES (?, ?, ?, ?, ?, ?)`,

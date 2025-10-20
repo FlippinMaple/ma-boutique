@@ -1,16 +1,17 @@
 // server/controllers/adminController.js
-import { pool } from '../db.js';
 import { logError } from '../utils/logger.js';
 
 export async function adminDebug(req, res) {
+  const db = req.app.locals.db;
+
   try {
-    const [orders] = await pool.query(
+    const [orders] = await db.query(
       'SELECT * FROM orders ORDER BY id DESC LIMIT 10'
     );
-    const [items] = await pool.query(
+    const [items] = await db.query(
       'SELECT * FROM order_items ORDER BY id DESC LIMIT 10'
     );
-    const [statuses] = await pool.query(
+    const [statuses] = await db.query(
       'SELECT * FROM order_status_history ORDER BY id DESC LIMIT 10'
     );
     res.json({ orders, order_items: items, order_status_history: statuses });

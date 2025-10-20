@@ -2,10 +2,11 @@
 import dotenv from 'dotenv';
 dotenv.config();
 import axios from 'axios';
-import { pool } from './db.js';
 import { logInfo, logError } from './utils/logger.js';
 
-async function syncVariants() {
+async function syncVariants(req) {
+  const db = req.app.locals.db;
+
   try {
     const printfulRes = await axios.get(
       'https://api.printful.com/store/products',
@@ -33,7 +34,7 @@ async function syncVariants() {
       const { sync_product, sync_variants } = productDetails.data.result;
 
       // Update or insert product
-      const [existingProducts] = await pool.query(
+      const [existingProducts] = await db.query(
         'SELECT id FROM products WHERE name = ?',
         [sync_product.name]
       );
@@ -41,12 +42,12 @@ async function syncVariants() {
       let productId;
       if (existingProducts.length > 0) {
         productId = existingProducts[0].id;
-        await pool.query(
+        await db.query(
           'UPDATE products SET description = ?, image = ?, is_visible = 1, updated_at = NOW() WHERE id = ?',
           [sync_product.name, sync_product.thumbnail_url, productId]
         );
       } else {
-        const [result] = await pool.query(
+        const [result] = await db.query(
           'INSERT INTO products (name, description, image, is_visible, created_at, updated_at) VALUES (?, ?, ?, 1, NOW(), NOW())',
           [sync_product.name, sync_product.name, sync_product.thumbnail_url]
         );
@@ -66,13 +67,13 @@ async function syncVariants() {
         // ✅ On assume que toutes les variantes sont imprimables (POD)
         const stock = 1;
 
-        const [existingVariants] = await pool.query(
+        const [existingVariants] = await db.query(
           'SELECT id FROM product_variants WHERE printful_variant_id = ?',
           [variant.id.toString()]
         );
 
         if (existingVariants.length > 0) {
-          await pool.query(
+          await db.query(
             'UPDATE product_variants SET variant_id = ?, color = ?, size = ?, price = ?, image = ?, stock = ?, product_id = ?, updated_at = NOW() WHERE printful_variant_id = ?',
             [
               variant.variant_id,
@@ -86,7 +87,7 @@ async function syncVariants() {
             ]
           );
         } else {
-          await pool.query(
+          await db.query(
             'INSERT INTO product_variants (product_id, printful_variant_id, variant_id, color, size, price, image, stock, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())',
             [
               productId,

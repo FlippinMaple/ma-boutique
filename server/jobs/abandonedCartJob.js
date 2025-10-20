@@ -1,5 +1,4 @@
 // jobs/abandonedCartJob.js
-import { pool } from '../db.js';
 import {
   sendEmail,
   getFrontendUrl,
@@ -12,8 +11,10 @@ const PROMO_LABEL = process.env.PROMO_LABEL || 'une petite remise';
 const PROMO_CODE = process.env.PROMO_CODE || 'WELCOME10';
 const PROMO_EXPIRY = process.env.PROMO_EXPIRY || 'bientôt';
 
-async function hasExpressConsent(email) {
-  const [r] = await pool.query(
+async function hasExpressConsent(email, req) {
+  const db = req.app.locals.db;
+
+  const [r] = await db.query(
     `SELECT 1
        FROM consents
       WHERE (email = ? OR customer_id IN (SELECT id FROM customers WHERE email = ?))
@@ -23,8 +24,10 @@ async function hasExpressConsent(email) {
   );
   return r.length > 0;
 }
-async function isSuppressed(email) {
-  const [r] = await pool.query(
+async function isSuppressed(email, req) {
+  const db = req.app.locals.db;
+
+  const [r] = await db.query(
     `SELECT 1 FROM (
        SELECT email FROM unsubscribes WHERE email = ?
        UNION
@@ -34,8 +37,10 @@ async function isSuppressed(email) {
   );
   return r.length > 0;
 }
-async function hasOrder(email, sessionId) {
-  const [r] = await pool.query(
+async function hasOrder(email, sessionId, req) {
+  const db = req.app.locals.db;
+
+  const [r] = await db.query(
     `SELECT id FROM orders
       WHERE (email = ? OR (checkout_session_id IS NOT NULL AND checkout_session_id = ?))
       LIMIT 1`,
@@ -87,8 +92,10 @@ async function resumeUrlFor(ac) {
   return `${getFrontendUrl()}/shop?resume=${encodeURIComponent(ac.id)}`;
 }
 
-async function pickTransactional(limit = 200) {
-  const [rows] = await pool.query(
+async function pickTransactional(limit = 200, req) {
+  const db = req.app.locals.db;
+
+  const [rows] = await db.query(
     `SELECT ac.*
        FROM abandoned_carts ac
   LEFT JOIN orders o ON (o.checkout_session_id = ac.checkout_session_id OR o.email = ac.customer_email)
@@ -102,8 +109,10 @@ async function pickTransactional(limit = 200) {
   );
   return rows;
 }
-async function pickMarketing(limit = 200) {
-  const [rows] = await pool.query(
+async function pickMarketing(limit = 200, req) {
+  const db = req.app.locals.db;
+
+  const [rows] = await db.query(
     `SELECT ac.*
        FROM abandoned_carts ac
        JOIN consents c
@@ -125,7 +134,9 @@ async function pickMarketing(limit = 200) {
   return rows;
 }
 
-async function sendTransactional(ac) {
+async function sendTransactional(ac, req) {
+  const db = req.app.locals.db;
+
   const email = String(ac.customer_email || '').toLowerCase();
   if (!email) return false;
   if (await isSuppressed(email)) return false;
@@ -144,14 +155,16 @@ async function sendTransactional(ac) {
     text: tpl.text,
     headers: { 'X-Campaign': 'ac-transactional' }
   });
-  await pool.query(
+  await db.query(
     `UPDATE abandoned_carts SET last_email_sent_at = UTC_TIMESTAMP() WHERE id = ?`,
     [ac.id]
   );
   return true;
 }
 
-async function sendMarketing(ac) {
+async function sendMarketing(ac, req) {
+  const db = req.app.locals.db;
+
   const email = String(ac.customer_email || '').toLowerCase();
   if (!email) return false;
   if (!(await hasExpressConsent(email))) return false;
@@ -172,7 +185,7 @@ async function sendMarketing(ac) {
     text: tpl.text,
     headers: { 'X-Campaign': 'ac-marketing' }
   });
-  await pool.query(
+  await db.query(
     `UPDATE abandoned_carts SET last_email_sent_at = UTC_TIMESTAMP(), campaign_id='ac-marketing' WHERE id = ?`,
     [ac.id]
   );

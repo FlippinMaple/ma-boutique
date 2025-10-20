@@ -1,5 +1,4 @@
 // server/services/abandonedCartService.js
-import { pool } from '../db.js';
 
 /**
  * Marque le dernier abandon (dans une fenêtre de X heures) comme récupéré
@@ -8,8 +7,11 @@ import { pool } from '../db.js';
 export async function markRecoveredByEmail(
   email,
   checkoutSessionId,
-  lookbackHours = 48
+  lookbackHours = 48,
+  req
 ) {
+  const db = req.app.locals.db;
+
   if (!email) return;
 
   const hours = Number(lookbackHours) || 48; // évite l'injection, force un entier
@@ -25,5 +27,5 @@ export async function markRecoveredByEmail(
      LIMIT 1
   `;
 
-  await pool.query(sql, [checkoutSessionId || null, email]);
+  await db.query(sql, [checkoutSessionId || null, email]);
 }

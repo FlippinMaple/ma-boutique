@@ -1,13 +1,13 @@
 // server/services/orderService.js
-import { pool } from '../db.js';
 import { logInfo, logError } from '../utils/logger.js';
 
-export async function updateOrderStatus(orderId, newStatus) {
+export async function updateOrderStatus(orderId, newStatus, req) {
   try {
-    const [[order]] = await pool.query(
-      'SELECT status FROM orders WHERE id = ?',
-      [orderId]
-    );
+    const db = req.app.locals.db;
+
+    const [[order]] = await db.query('SELECT status FROM orders WHERE id = ?', [
+      orderId
+    ]);
     if (!order) {
       await logError(`Commande ID ${orderId} non trouvée`, 'orders');
       return;
@@ -16,14 +16,14 @@ export async function updateOrderStatus(orderId, newStatus) {
     const oldStatus = order.status;
 
     // historiser même si pas de changement (traçabilité)
-    await pool.execute(
+    await db.execute(
       `INSERT INTO order_status_history (order_id, old_status, new_status, changed_at)
        VALUES (?, ?, ?, NOW())`,
       [orderId, oldStatus, newStatus]
     );
 
     if (oldStatus !== newStatus) {
-      await pool.execute(
+      await db.execute(
         'UPDATE orders SET status = ?, updated_at = NOW() WHERE id = ?',
         [newStatus, orderId]
       );

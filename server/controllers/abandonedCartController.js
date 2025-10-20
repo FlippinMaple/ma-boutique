@@ -1,7 +1,7 @@
-import { pool } from '../db.js';
 import { logInfo, logError } from '../utils/logger.js';
-
 export async function logAbandonedCart(req, res, next) {
+  const db = req.app.locals.db;
+
   try {
     const { customer_email, cart_contents } = req.body || {};
     if (!customer_email || !cart_contents) {
@@ -17,7 +17,7 @@ export async function logAbandonedCart(req, res, next) {
         : JSON.stringify(cart_contents);
 
     // On cherche un enregistrement "ouvert" (non récupéré) récent pour cet email
-    const [rows] = await pool.query(
+    const [rows] = await db.query(
       `SELECT id
          FROM abandoned_carts
         WHERE customer_email = ?
@@ -29,7 +29,7 @@ export async function logAbandonedCart(req, res, next) {
 
     if (rows.length) {
       const id = rows[0].id;
-      await pool.execute(
+      await db.execute(
         `UPDATE abandoned_carts
             SET cart_contents = ?,
                 last_activity = NOW(),
@@ -45,7 +45,7 @@ export async function logAbandonedCart(req, res, next) {
     }
 
     // Sinon: nouveau log
-    const [ins] = await pool.execute(
+    const [ins] = await db.execute(
       `INSERT INTO abandoned_carts
          (customer_email, cart_contents, abandoned_at, last_activity, notified, is_recovered, created_at, updated_at)
        VALUES (?, ?, NOW(), NOW(), 0, 0, NOW(), NOW())`,

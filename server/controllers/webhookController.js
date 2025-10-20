@@ -1,9 +1,6 @@
 // server/controllers/webhookController.js
 import { getStripe } from '../services/stripeService.js';
 import { logInfo, logWarn, logError } from '../utils/logger.js';
-import { pool } from '../db.js';
-// ❌ on n'utilise plus markRecoveredByEmail (email-only)
-// import { markRecoveredByEmail } from '../services/abandonedCartService.js';
 import {
   mapCartToPrintfulVariants,
   createPrintfulOrder
@@ -13,9 +10,11 @@ import { centsToFloat } from '../utils/currency.js';
 /* ------------------------------------------------------------------ */
 /*  Stripe events store: upgrade-safe (idempotence + full payload)     */
 /* ------------------------------------------------------------------ */
-async function ensureStripeEventsTable() {
+async function ensureStripeEventsTable(req) {
+  const db = req.app.locals.db;
+
   // 1) crée si absent (schéma complet)
-  await pool.query(`
+  await db.query(`
     CREATE TABLE IF NOT EXISTS stripe_events (
       event_id   VARCHAR(255) PRIMARY KEY,
       event_type VARCHAR(64)  NOT NULL,
@@ -26,28 +25,28 @@ async function ensureStripeEventsTable() {
 
   // 2) si ancienne table minimale existe (id, received_at), on la migre "en douceur"
   try {
-    await pool.query(
+    await db.query(
       `ALTER TABLE stripe_events CHANGE COLUMN id event_id VARCHAR(255) NOT NULL`
     );
   } catch {
     /* existe déjà */
   }
   try {
-    await pool.query(
+    await db.query(
       `ALTER TABLE stripe_events ADD COLUMN event_type VARCHAR(64) NOT NULL`
     );
   } catch {
     /* existe déjà */
   }
   try {
-    await pool.query(
+    await db.query(
       `ALTER TABLE stripe_events ADD COLUMN created_at DATETIME NOT NULL DEFAULT UTC_TIMESTAMP()`
     );
   } catch {
     /* existe déjà */
   }
   try {
-    await pool.query(
+    await db.query(
       `ALTER TABLE stripe_events ADD COLUMN payload LONGTEXT NULL`
     );
   } catch {
@@ -55,9 +54,11 @@ async function ensureStripeEventsTable() {
   }
 }
 
-async function upsertStripeEvent(event) {
+async function upsertStripeEvent(event, req) {
+  const db = req.app.locals.db;
+
   try {
-    await pool.query(
+    await db.query(
       `INSERT INTO stripe_events (event_id, event_type, created_at, payload)
        VALUES (?, ?, UTC_TIMESTAMP(), ?)
        ON DUPLICATE KEY UPDATE event_type=VALUES(event_type), payload=VALUES(payload)`,
@@ -76,8 +77,10 @@ async function upsertStripeEvent(event) {
 /* ------------------------------------------------------------------ */
 /*  Mark abandoned cart recovered (by sessionId first, fallback email) */
 /* ------------------------------------------------------------------ */
-async function markAbandonedRecovered({ sessionId, email }) {
-  await pool.query(
+async function markAbandonedRecovered({ sessionId, email, req }) {
+  const db = req.app.locals.db;
+
+  await db.query(
     `UPDATE abandoned_carts
         SET is_recovered = 1,
             recovered_at = UTC_TIMESTAMP(),
@@ -139,9 +142,11 @@ async function handleStripeWebhook(req, res) {
   }
 
   // 3) Idempotence (basée sur event_id)
-  await ensureStripeEventsTable();
+  await ensureStripeEventsTable(req);
   try {
-    const [ins] = await pool.query(
+    const db = req.app.locals.db;
+
+    const [ins] = await db.query(
       `INSERT IGNORE INTO stripe_events (event_id, event_type, created_at)
        VALUES (?, ?, UTC_TIMESTAMP())`,
       [event.id, event.type]
@@ -231,11 +236,12 @@ async function handleStripeWebhook(req, res) {
 
       // --- Upsert de la commande ---
       let orderId = orderIdFromStripe;
+      const db = req.app.locals.db;
 
       if (orderId) {
         // fallback coût livraison d’une commande existante
         try {
-          const [[prevOrder]] = await pool.query(
+          const [[prevOrder]] = await db.query(
             'SELECT shipping_cost FROM orders WHERE id = ?',
             [orderId]
           );
@@ -246,7 +252,7 @@ async function handleStripeWebhook(req, res) {
           /* empty */
         }
 
-        await pool.execute(
+        await db.execute(
           `UPDATE orders
              SET status = ?, total = ?, shipping_cost = ?, updated_at = UTC_TIMESTAMP()
            WHERE id = ?`,
@@ -254,14 +260,14 @@ async function handleStripeWebhook(req, res) {
         );
 
         if (cart_items.length > 0) {
-          await pool.execute(`DELETE FROM order_items WHERE order_id = ?`, [
+          await db.execute(`DELETE FROM order_items WHERE order_id = ?`, [
             orderId
           ]);
         }
       } else {
         // Essayer d'associer à la dernière pending du même email
         if (customer_email) {
-          const [[existingOrder]] = await pool.query(
+          const [[existingOrder]] = await db.query(
             `SELECT id, shipping_cost FROM orders
              WHERE customer_email = ? AND status = 'pending'
              ORDER BY created_at DESC LIMIT 1`,
@@ -272,14 +278,14 @@ async function handleStripeWebhook(req, res) {
             if (shipping_cost === 0 && existingOrder.shipping_cost != null) {
               shipping_cost = Number(existingOrder.shipping_cost);
             }
-            await pool.execute(
+            await db.execute(
               `UPDATE orders
                  SET status = ?, total = ?, shipping_cost = ?, updated_at = UTC_TIMESTAMP()
                WHERE id = ?`,
               ['paid', total, shipping_cost, orderId]
             );
             if (cart_items.length > 0) {
-              await pool.execute(`DELETE FROM order_items WHERE order_id = ?`, [
+              await db.execute(`DELETE FROM order_items WHERE order_id = ?`, [
                 orderId
               ]);
             }
@@ -287,7 +293,7 @@ async function handleStripeWebhook(req, res) {
         }
         // Sinon créer une nouvelle commande
         if (!orderId) {
-          const [ins] = await pool.execute(
+          const [ins] = await db.execute(
             `INSERT INTO orders
                (customer_email, status, total, shipping_cost, created_at, updated_at)
              VALUES (?, ?, ?, ?, UTC_TIMESTAMP(), UTC_TIMESTAMP())`,
@@ -324,7 +330,7 @@ async function handleStripeWebhook(req, res) {
             note: 'inserted from stripe webhook (strict metadata)'
           };
 
-          await pool.execute(
+          await db.execute(
             `INSERT INTO order_items
                (order_id, variant_id, printful_variant_id, quantity, price_at_purchase, meta, created_at, updated_at)
              VALUES (?, ?, ?, ?, ?, ?, UTC_TIMESTAMP(), UTC_TIMESTAMP())`,
@@ -348,7 +354,7 @@ async function handleStripeWebhook(req, res) {
       // --- Historique de statut
       try {
         // on historise "pending" -> "paid" (si tu veux le vrai old_status, capture-le avant l'UPDATE)
-        await pool.execute(
+        await db.execute(
           `INSERT INTO order_status_history (order_id, old_status, new_status, changed_at)
            VALUES (?, ?, ?, UTC_TIMESTAMP())`,
           [orderId, 'pending', 'paid']
@@ -399,7 +405,7 @@ async function handleStripeWebhook(req, res) {
               confirm: false
             });
             if (result?.id) {
-              await pool.execute(
+              await db.execute(
                 `UPDATE orders SET printful_order_id = ? WHERE id = ?`,
                 [result.id, orderId]
               );

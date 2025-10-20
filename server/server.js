@@ -6,9 +6,16 @@ import { dirname, join } from 'path';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-// charge .env racine puis server/.env (si tu en as un)
+// Charge .env racine puis server/.env (si présent)
 dotenv.config({ path: join(__dirname, '..', '.env') });
 dotenv.config({ path: join(__dirname, '.env') });
+
+process.on('unhandledRejection', (r) => {
+  console.error('❌ UnhandledRejection:', r);
+});
+process.on('uncaughtException', (e) => {
+  console.error('❌ UncaughtException:', e);
+});
 
 import app from './app.js';
 import { getDb } from './utils/db.js';
@@ -16,7 +23,8 @@ import { createLogger } from './utils/logger.js';
 import { ensureLogsTable } from './bootstrap/createLogsTable.js';
 import { startCronJobs } from './jobs/index.js';
 
-const PORT = process.env.PORT ?? 4242;
+const PORT = Number(process.env.PORT) || 4242;
+const HOST = process.env.HOST || '0.0.0.0';
 
 (async () => {
   console.log('🚀 Démarrage du serveur…');
@@ -33,12 +41,12 @@ const PORT = process.env.PORT ?? 4242;
     }
   }
 
-  // Injecte la DB (ou pool) dans app.locals pour les routes
+  // Injection DB pour les contrôleurs (Option A)
   if (db) app.locals.db = db;
 
   const logger = createLogger(db);
 
-  // Démarre les cron jobs (printful, purge, etc.)
+  // Cron jobs
   try {
     startCronJobs();
     console.log('🕒 Cron jobs initialisés');
@@ -46,13 +54,8 @@ const PORT = process.env.PORT ?? 4242;
     console.warn('⚠️ Échec init cron jobs:', e?.message || e);
   }
 
-  // Trust proxy (utile si reverse proxy)
-  if (process.env.TRUST_PROXY === 'true') {
-    app.set('trust proxy', 1);
-  }
-
-  app.listen(PORT, () => {
+  app.listen(PORT, HOST, () => {
     logger.info(`✅ Serveur actif sur http://localhost:${PORT}`);
-    console.log(`✅ Serveur actif sur http://localhost:${PORT}`); // banner console
+    console.log(`✅ Serveur actif sur http://localhost:${PORT}`);
   });
 })();

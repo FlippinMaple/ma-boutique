@@ -2,13 +2,15 @@
 import axios from 'axios';
 import dotenv from 'dotenv';
 dotenv.config();
-import { pool } from './db.js';
+// db.execute(...) ou db.query(...)
 import { logError } from './utils/logger.js';
 
 const PRINTFUL_API_KEY = process.env.PRINTFUL_API_KEY;
 const STORE_ID = process.env.PRINTFUL_STORE_ID;
 
-async function importProducts() {
+async function importProducts(req) {
+  const db = req.app.locals.db;
+
   try {
     const { data } = await axios.get(
       'https://api.printful.com/store/products',
@@ -37,7 +39,7 @@ async function importProducts() {
         detailData.result;
 
       // INSERT / UPDATE produit principal
-      await pool.execute(
+      await db.execute(
         `INSERT INTO products
           (name, description, image, external_id, created_at, updated_at, brand, category, is_featured, is_visible)
         VALUES (?, ?, ?, ?, NOW(), NOW(), ?, ?, ?, ?)
@@ -55,7 +57,7 @@ async function importProducts() {
         ]
       );
 
-      const [[productRow]] = await pool.execute(
+      const [[productRow]] = await db.execute(
         'SELECT id FROM products WHERE external_id = ?',
         [external_id]
       );
@@ -66,7 +68,7 @@ async function importProducts() {
         const previewImage =
           variant.files?.find((f) => f.type === 'preview')?.preview_url || '';
 
-        await pool.execute(
+        await db.execute(
           `INSERT INTO product_variants
             (product_id, sku, price, custom_price, discount_price, image, size, color, stock,
              is_active, created_at, options, printful_variant_id, variant_id)
@@ -93,7 +95,7 @@ async function importProducts() {
           ]
         );
 
-        const [[variantRow]] = await pool.execute(
+        const [[variantRow]] = await db.execute(
           'SELECT id FROM product_variants WHERE sku = ?',
           [variant.sku]
         );
@@ -101,7 +103,7 @@ async function importProducts() {
 
         if (variant.files && variant.files.length) {
           for (const file of variant.files) {
-            await pool.execute(
+            await db.execute(
               `INSERT IGNORE INTO product_images
                 (variant_id, type, url, filename, mime_type, width, height, dpi, status, created_at, preview_url, thumbnail_url)
               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?)`,

@@ -1,6 +1,5 @@
 // server/services/orderSyncService.js
 import axios from 'axios';
-import { pool } from '../db.js';
 import { logToDatabase } from '../utils/logger.js';
 import { updateOrderStatus } from './orderService.js';
 import { logInfo, logWarn, logError } from '../utils/logger.js';
@@ -31,7 +30,9 @@ export async function fetchPrintfulOrderStatus(printfulOrderId) {
 }
 
 // ⚙️ Orchestrateur: 1 commande → fetch status → map → compare → update + log
-export async function syncPrintfulOrderStatus(orderId, printfulOrderId) {
+export async function syncPrintfulOrderStatus(orderId, printfulOrderId, req) {
+  const db = req.app.locals.db;
+
   try {
     const printfulStatus = await fetchPrintfulOrderStatus(printfulOrderId);
     if (!printfulStatus) {
@@ -41,7 +42,7 @@ export async function syncPrintfulOrderStatus(orderId, printfulOrderId) {
       return;
     }
 
-    const [[current]] = await pool.query(
+    const [[current]] = await db.query(
       'SELECT status FROM orders WHERE id = ?',
       [orderId]
     );

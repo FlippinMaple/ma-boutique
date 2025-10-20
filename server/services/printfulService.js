@@ -1,6 +1,6 @@
 // server/services/printfulService.js
 import axios from 'axios';
-import { pool } from '../db.js'; // 👈 ajoute cet import
+import { getDb } from '../utils/db.js';
 import { logError } from '../utils/logger.js';
 
 axios.defaults.timeout = 10000; // 10s
@@ -29,7 +29,7 @@ export const getPrintfulVariantAvailability = async (printful_variant_id) => {
 export const mapCartToPrintfulVariants = async (cart_items) => {
   if (!cart_items || cart_items.length === 0) return [];
   const variantIds = cart_items.map((item) => item.id);
-  const [variants] = await pool.query(
+  const [variants] = await getDb.query(
     `SELECT id, printful_variant_id
        FROM product_variants
       WHERE id IN (${variantIds.map(() => '?').join(',')})`,

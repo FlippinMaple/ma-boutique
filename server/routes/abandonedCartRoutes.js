@@ -9,8 +9,8 @@ const router = Router();
 // puis remplace express.json() par parsers ci-dessous.
 router.post('/log-abandoned-cart', express.json(), async (req, res) => {
   try {
-    const pool = req.app.locals.pool; // ✅ comme avant: la DB passe via Express
-    if (!pool) return res.status(500).json({ error: 'db pool not available' });
+    const db = req.app.locals.db; // ✅ comme avant: la DB passe via Express
+    if (!db) return res.status(500).json({ error: 'db db not available' });
 
     // Body: email + panier
     let payload = req.body || {};
@@ -38,7 +38,7 @@ router.post('/log-abandoned-cart', express.json(), async (req, res) => {
       typeof snapshot === 'string' ? snapshot : JSON.stringify(snapshot);
 
     // (Optionnel) anti-doublon très simple (10 minutes)
-    const [recent] = await pool.query(
+    const [recent] = await db.query(
       `SELECT id
          FROM abandoned_carts
         WHERE customer_email = ?
@@ -50,7 +50,7 @@ router.post('/log-abandoned-cart', express.json(), async (req, res) => {
     if (recent.length) return res.sendStatus(204);
 
     // ✅ IMPORTANT: ta BDD a cart_contents NOT NULL → on remplit les 2 colonnes
-    await pool.query(
+    await db.query(
       `INSERT INTO abandoned_carts
          (customer_email, cart_snapshot, cart_contents, source)
        VALUES (?, ?, ?, ?)`,

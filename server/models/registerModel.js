@@ -1,7 +1,7 @@
-import { pool } from '../db.js';
+export const findCustomerByEmail = async (email, req) => {
+  const db = req.app.locals.db;
 
-export const findCustomerByEmail = async (email) => {
-  const [rows] = await pool.query('SELECT id FROM customers WHERE email = ?', [
+  const [rows] = await db.query('SELECT id FROM customers WHERE email = ?', [
     email
   ]);
   return rows.length > 0 ? rows[0] : null;
@@ -12,9 +12,12 @@ export const insertCustomer = async ({
   last_name,
   email,
   password_hash,
-  is_subscribed
+  is_subscribed,
+  req
 }) => {
-  const [result] = await pool.execute(
+  const db = req.app.locals.db;
+
+  const [result] = await db.execute(
     `INSERT INTO customers (
       first_name,
       last_name,

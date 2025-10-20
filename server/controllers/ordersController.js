@@ -1,9 +1,10 @@
 // server/controllers/ordersController.js
 import axios from 'axios';
-import { pool } from '../db.js';
 
 // POST /api/printful-order
 export async function createPrintfulOrder(req, res) {
+  const db = req.app.locals.db;
+
   try {
     const { customer_email, shipping, cart_items } = req.body;
 
@@ -17,15 +18,13 @@ export async function createPrintfulOrder(req, res) {
     // Récupère les printful_variant_id à partir des IDs locaux
     const localIds = cart_items.map((it) => it.id).filter(Boolean);
     if (localIds.length !== cart_items.length) {
-      return res
-        .status(400)
-        .json({
-          error: 'Tous les items doivent contenir un id (variant local).'
-        });
+      return res.status(400).json({
+        error: 'Tous les items doivent contenir un id (variant local).'
+      });
     }
 
     const placeholders = localIds.map(() => '?').join(',');
-    const [rows] = await pool.query(
+    const [rows] = await db.query(
       `SELECT id, printful_variant_id FROM product_variants WHERE id IN (${placeholders})`,
       localIds
     );

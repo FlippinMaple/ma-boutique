@@ -1,12 +1,10 @@
 // controllers/complianceEmailController.js
-import { pool } from '../db.js';
-import {
-  makeUnsubToken,
-  parseUnsubToken
-} from '../services/unsubscribeToken.js';
+import { parseUnsubToken } from '../services/unsubscribeToken.js';
 import { markCustomerSubscribed } from '../services/emailService.js';
 
 export async function recordConsent(req, res) {
+  const db = req.app.locals.db;
+
   try {
     const body = req.body || {};
     const {
@@ -31,7 +29,7 @@ export async function recordConsent(req, res) {
         .status(400)
         .json({ error: 'email and text_snapshot required' });
 
-    await pool.query(
+    await db.query(
       `INSERT INTO consents
        (customer_id, subject_type, subject_id, email, purpose, basis, method, text_snapshot, locale, source, ip, user_agent, granted_at)
        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,UTC_TIMESTAMP())`,
@@ -60,10 +58,12 @@ export async function recordConsent(req, res) {
 }
 
 export async function unsubscribePost(req, res) {
+  const db = req.app.locals.db;
+
   try {
     const token = req.body?.token || req.query?.e;
     const email = parseUnsubToken(token);
-    await pool.query(
+    await db.query(
       `INSERT INTO unsubscribes (email, reason, created_at)
        VALUES (?, 'user_click', UTC_TIMESTAMP())
        ON DUPLICATE KEY UPDATE created_at = UTC_TIMESTAMP(), reason='user_click'`,
@@ -78,9 +78,11 @@ export async function unsubscribePost(req, res) {
 }
 
 export async function unsubscribeLanding(req, res) {
+  const db = req.app.locals.db;
+
   try {
     const email = parseUnsubToken(req.query.e);
-    await pool.query(
+    await db.query(
       `INSERT INTO unsubscribes (email, reason, created_at)
        VALUES (?, 'user_click', UTC_TIMESTAMP())
        ON DUPLICATE KEY UPDATE created_at = UTC_TIMESTAMP(), reason='user_click'`,
@@ -101,6 +103,8 @@ export async function unsubscribeLanding(req, res) {
 }
 
 export async function emailWebhook(req, res) {
+  const db = req.app.locals.db;
+
   try {
     const provider = (req.params.provider || '').toLowerCase();
     const body = req.body || {};
@@ -152,12 +156,12 @@ export async function emailWebhook(req, res) {
 
     for (const ev of events) {
       if (!ev.email || !ev.type) continue;
-      await pool.query(
+      await db.query(
         `INSERT INTO email_events (email, type, occurred_at, meta) VALUES (?,?,?,?)`,
         [ev.email, ev.type, ev.occurred_at, JSON.stringify(ev.meta || {})]
       );
       if (['bounce', 'complaint', 'reject'].includes(ev.type)) {
-        await pool.query(
+        await db.query(
           `INSERT INTO unsubscribes (email, reason, created_at)
            VALUES (?, 'provider_${ev.type}', UTC_TIMESTAMP())
            ON DUPLICATE KEY UPDATE reason=VALUES(reason), created_at=UTC_TIMESTAMP()`,
