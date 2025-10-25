@@ -1,54 +1,26 @@
 // controllers/inventoryController.js
-import axios from 'axios';
+import { getPrintfulVariantAvailability } from '../services/printfulService.js';
 
-const PRINTFUL_TOKEN = process.env.PRINTFUL_TOKEN;
-
-function isInternalPrintfulId(id) {
-  return /^\d{10}$/.test(String(id)); // 10 chiffres => printful_variant_id interne
-}
-
-async function resolveShortVariantId(internalId) {
-  // Récupère la variante pour extraire le variant_id "court" compatible
-  const resp = await axios.get(
-    `https://api.printful.com/variants/${internalId}`,
-    { headers: { Authorization: `Bearer ${PRINTFUL_TOKEN}` } }
-  );
-  const r = resp?.data?.result;
-  const shortId = r?.variant?.variant_id || r?.variant_id || r?.id;
-  if (!shortId) {
-    throw new Error(
-      'Impossible de résoudre variant_id (court) à partir du printful_variant_id.'
-    );
-  }
-  return shortId;
-}
-
+/**
+ * Renvoie un stock virtuel en fonction du statut de disponibilité Printful.
+ * Les statuts "active" et "active-supplier" sont considérés comme disponibles (stock élevé).
+ */
 export async function getPrintfulStock(req, res) {
-  const { id } = req.params; // peut être un 5 chiffres ou 10 chiffres
+  const { id } = req.params; // id = printful_variant_id (long)
   try {
-    let variantId = id;
-    if (isInternalPrintfulId(id)) {
-      variantId = await resolveShortVariantId(id);
+    const status = await getPrintfulVariantAvailability(id);
+    let available = 0;
+    if (status === 'active' || status === 'active-supplier') {
+      available = 999;
     }
-
-    // Exemple d’appel "stock" (à ajuster à ton endpoint réel)
-    const stockResp = await axios.get(
-      `https://api.printful.com/warehouse/stock?variant_id=${variantId}`,
-      { headers: { Authorization: `Bearer ${PRINTFUL_TOKEN}` } }
-    );
-
-    return res.json(stockResp.data);
+    return res.json({ available });
   } catch (err) {
-    console.error('[printful-stock] id=', id, {
-      status: err?.response?.status,
-      data: err?.response?.data
-    });
+    console.error('[printful-stock] id=', id, err.message);
     return res.status(500).json({
       error: 'PRINTFUL_STOCK_FAILED',
-      message: err?.response?.data || err.message,
-      hint: isInternalPrintfulId(id)
-        ? 'ID long détecté (printful_variant_id). Résolution vers variant_id court tentée.'
-        : 'Vérifie que tu fournis bien un variant_id (court) pour cet endpoint.'
+      message:
+        err.message || 'Erreur lors de la récupération du statut Printful',
+      hint: 'Assurez-vous que PRINTFUL_API_KEY et PRINTFUL_STORE_ID sont correctement configurés.'
     });
   }
 }

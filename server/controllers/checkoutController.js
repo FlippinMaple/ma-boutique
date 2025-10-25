@@ -1,225 +1,388 @@
 // server/controllers/checkoutController.js
-import { getPrintfulVariantAvailability } from '../services/printfulService.js';
-import { createStripeCheckoutSession } from '../services/stripeService.js';
-import { insertOrder, insertOrderItem } from '../models/orderModel.js';
-import { logInfo, logWarn, logError } from '../utils/logger.js';
-import { insertAddress } from '../models/addressModel.js';
+import Stripe from 'stripe';
+import { getPool } from '../db.js';
+import jwt from 'jsonwebtoken';
 
+function sanitizeBaseUrl(req) {
+  const clean = (u) =>
+    String(u)
+      .trim()
+      .replace(/^["']|["']$/g, '')
+      .replace(/\/+$/, ''); // ⬅︎ retire 1+ slashs finaux
+  const valid = (u) => /^https?:\/\/\S+$/i.test(String(u)); // ⬅︎ accepte 1+ caractères
+
+  // 1) .env FRONTEND_URL peut contenir une liste "a, b" ou des guillemets
+  let envRaw = process.env.FRONTEND_URL || '';
+  if (envRaw.includes(',')) envRaw = envRaw.split(',')[0];
+  const envClean = clean(envRaw);
+  if (envClean && valid(envClean)) return envClean;
+
+  // 2) Origin du navigateur (via proxy Vite)
+  const originClean = clean(req.headers?.origin || '');
+  if (originClean && valid(originClean)) return originClean;
+
+  // 3) Repli: déduire depuis la requête (attention au proxy)
+  const proto = (req.headers['x-forwarded-proto'] || req.protocol || 'http')
+    .split(',')[0]
+    .trim();
+  const host = (req.headers['x-forwarded-host'] || req.get('host') || '')
+    .split(',')[0]
+    .trim();
+  const guess = clean(`${proto}://${host}`);
+  if (valid(guess)) return guess;
+
+  // 4) Safe default dev
+  return 'http://localhost:3000';
+}
+
+// Filtre les URLs valides http(s) et limite à 8 max
+
+function filterHttpImages(arr) {
+  if (!Array.isArray(arr)) return [];
+  const isHttp = (u) => /^https?:\/\/\S+$/i.test(String(u || '')); // ⬅︎ 1+ caractères
+  return arr.map(String).filter(isHttp).slice(0, 8);
+}
+
+const isProd = process.env.NODE_ENV === 'production';
+
+function signAccess(payload) {
+  return jwt.sign(payload, process.env.JWT_ACCESS_SECRET, {
+    expiresIn: process.env.JWT_ACCESS_TTL || '15m'
+  });
+}
+
+const cookieOptsAccess = {
+  httpOnly: true,
+  sameSite: 'lax', // via proxy Vite on est same-origin
+  secure: isProd,
+  maxAge: 1000 * 60 * 60,
+  path: '/'
+};
+
+const STRIPE_KEY = process.env.STRIPE_SECRET_KEY || process.env.STRIPE_SK || '';
+const stripe = STRIPE_KEY ? new Stripe(STRIPE_KEY) : null;
+
+function toCents(value) {
+  if (value == null) return 0;
+  // accepte "29.99" ou "29,99"
+  const s = String(value).replace(',', '.').trim();
+  const n = Number(s);
+  if (!isFinite(n)) return 0;
+  return Math.round(n * 100);
+}
+
+function pickCart(raw) {
+  if (!raw || typeof raw !== 'object') return [];
+  if (Array.isArray(raw.cart)) return raw.cart;
+  if (Array.isArray(raw.items)) return raw.items;
+  if (Array.isArray(raw.lineItems)) return raw.lineItems;
+  if (Array.isArray(raw.cartItems)) return raw.cartItems;
+  if (raw.data && Array.isArray(raw.data.cart)) return raw.data.cart;
+  return [];
+}
+
+/**
+ * POST /api/create-checkout-session
+ * Reçoit { cart: [...] } (ou alias items/lineItems/cartItems)
+ * Item accepté:
+ *  - { priceId, quantity }
+ *  - OU { name/title, price/unit_price, images/image, quantity }
+ */
 export const createCheckoutSession = async (req, res) => {
-  if (!req.user || !req.user.email || !req.user.id) {
-    return res.status(401).json({ error: 'Authentification requise.' });
-  }
-
-  const { items, shipping, billing: _billing, shipping_rate } = req.body;
-  const customer_email = req.user.email;
-  const customer_id = req.user.id;
-
   try {
-    // 1) Valider le panier + stock Printful et construire les line_items Stripe
-    const line_items = [];
-
-    for (const item of items) {
-      const { printful_variant_id, price, name, image, quantity } = item;
-
-      if (!printful_variant_id || isNaN(Number(printful_variant_id))) {
-        await logWarn(
-          `variant_id manquant ou invalide pour l’item ${item.id}`,
-          'checkout',
-          item
-        );
-        continue;
-      }
-
-      const status = await getPrintfulVariantAvailability(printful_variant_id);
-      if (status !== 'active') {
-        const msg = `Produit indisponible (ID ${printful_variant_id}) : ${status}`;
-        await logWarn(`${msg} pour ${customer_email}`, 'checkout', {
-          item,
-          customer_email
-        });
-        return res.status(400).json({
-          error: `Le produit "${
-            item.name || `#${item.id}`
-          }" n'est plus disponible.`
-        });
-      }
-
-      line_items.push({
-        price_data: {
-          currency: 'cad',
-          product_data: {
-            name:
-              typeof name === 'string' && name.trim() !== ''
-                ? name.trim()
-                : `Produit #${item.id}`,
-            images: image ? [image] : []
-          },
-          unit_amount: !isNaN(Number(price))
-            ? Math.round(Number(price) * 100)
-            : 1000
-        },
-        quantity: quantity || 1
+    if (!stripe) {
+      return res.status(500).json({
+        error: 'STRIPE_SECRET_KEY manquant dans server/.env',
+        code: 'STRIPE_KEY_MISSING'
       });
     }
-
-    // Option livraison comme ligne dédiée (si tu l'utilises côté frontend)
-    if (
-      shipping_rate &&
-      typeof shipping_rate.name === 'string' &&
-      shipping_rate.name.trim() !== '' &&
-      !isNaN(Number(shipping_rate.rate))
-    ) {
-      line_items.push({
-        price_data: {
-          currency: 'cad',
-          product_data: { name: `Livraison (${shipping_rate.name.trim()})` },
-          unit_amount: Math.round(Number(shipping_rate.rate) * 100)
-        },
-        quantity: 1
-      });
+    let userId = null;
+    try {
+      const access = req.cookies?.access;
+      if (!access) throw new Error('NO_ACCESS');
+      const payload = jwt.verify(access, process.env.JWT_ACCESS_SECRET);
+      userId = payload?.sub ?? null;
+    } catch (e) {
+      // Access manquant/expiré → on tente le refresh silencieux
+      const refresh = req.cookies?.refresh;
+      const isExpired = e?.name === 'TokenExpiredError';
+      if (!refresh || (!isExpired && e?.message !== 'NO_ACCESS')) {
+        // jeton illisible (autre erreur) → on stoppe
+        return res
+          .status(401)
+          .json({ message: 'Session expirée. Veuillez vous reconnecter.' });
+      }
+      try {
+        const r = jwt.verify(refresh, process.env.JWT_REFRESH_SECRET);
+        userId = r?.sub ?? null;
+        // réémettre un nouvel access et poursuivre
+        const newAccess = signAccess({ sub: userId });
+        res.cookie('access', newAccess, cookieOptsAccess);
+      } catch {
+        return res
+          .status(401)
+          .json({ message: 'Session expirée. Veuillez vous reconnecter.' });
+      }
     }
 
-    if (line_items.length === 0) {
-      const msg = `Aucun article valide pour la commande de ${customer_email}`;
-      await logWarn(msg, 'checkout', { customer_email, items });
+    const FRONTEND_URL = sanitizeBaseUrl(req);
+    console.log('[checkout] FRONTEND_URL =', FRONTEND_URL);
+
+    const raw = req.body || {};
+    const cart = pickCart(raw);
+
+    if (!Array.isArray(cart) || cart.length === 0) {
       return res
         .status(400)
-        .json({ error: 'Le panier ne contient aucun article valide.' });
+        .json({ error: 'Panier vide.', code: 'EMPTY_CART' });
     }
 
-    // 2) Calcul des totaux (pour la commande locale)
-    const orderTotal = line_items.reduce(
-      (sum, li) => sum + (li.price_data.unit_amount * li.quantity) / 100,
-      0
-    );
-    const shippingCost = shipping_rate ? parseFloat(shipping_rate.rate) : 0;
+    const errors = [];
+    const line_items = cart.map((it, idx) => {
+      const qty = Math.max(1, Number(it.quantity ?? it.qty ?? 1) || 1);
 
-    // 3) Créer l’adresse + la commande AVANT la session Stripe
-    const shipping_address_id = await insertAddress(
-      customer_id,
-      'shipping',
-      shipping
-    );
+      // Cas A: prix Stripe déjà créé
+      const priceId = it.priceId || it.stripePriceId || it.price_id;
+      if (priceId) return { price: String(priceId), quantity: qty };
 
-    const orderId = await insertOrder({
-      customer_id,
-      customer_email,
-      shipping_address_id,
-      billing_address_id: null,
-      total: orderTotal,
-      shipping_cost: shippingCost
+      // Cas B: price_data à la volée
+      const name =
+        it.name || it.title || it.productName || `Article ${idx + 1}`;
+      const unit_raw =
+        it.unit_price ??
+        it.unitPrice ??
+        it.price ??
+        it.amount ??
+        it.subtotal_per_unit ??
+        0;
+      const unit_amount = toCents(unit_raw);
+
+      if (!unit_amount || unit_amount < 0) {
+        errors.push({ idx, name, reason: 'PRICE_INVALID', raw: unit_raw });
+        // on mettra un montant factice pour éviter une throw Stripe avant d’avoir un message clair
+        return {
+          quantity: qty,
+          price_data: {
+            currency: (process.env.CURRENCY || 'cad').toLowerCase(),
+            unit_amount: 1, // placeholder; on retournera 400 juste après
+            product_data: { name }
+          }
+        };
+      }
+
+      // ⚠️ Stripe n’accepte que des URLs absolues http(s) pour product_data.images
+      const imgs = filterHttpImages([
+        it.image,
+        ...(Array.isArray(it.images) ? it.images : [])
+      ]);
+
+      return {
+        quantity: qty,
+        price_data: {
+          currency: (process.env.CURRENCY || 'cad').toLowerCase(),
+          unit_amount,
+          product_data: {
+            name,
+            ...(imgs.length ? { images: imgs } : {}) // on omet si vide
+          }
+        }
+      };
     });
 
-    await logInfo(
-      `Commande ${orderId} enregistrée pour ${customer_email}`,
-      'checkout',
-      {
-        orderId,
-        customer_email,
-        orderTotal,
-        shippingCost
-      }
-    );
-
-    // 4) Enregistrer les items de commande locaux
-    for (const item of items) {
-      const {
-        id: variantId,
-        printful_variant_id,
-        quantity,
-        price,
-        color,
-        size,
-        ...rest
-      } = item;
-
-      const meta = {
-        ...(color && { color }),
-        ...(size && { size }),
-        ...rest
-      };
-
-      await insertOrderItem(
-        orderId,
-        variantId,
-        printful_variant_id,
-        quantity,
-        price,
-        meta
-      );
-
-      await logInfo(
-        `Item ${variantId} x${quantity} ajouté à la commande ${orderId} pour ${customer_email}`,
-        'checkout',
-        { orderId, variantId, quantity, price }
-      );
+    if (errors.length) {
+      return res.status(400).json({
+        error: 'Certains articles ont un prix invalide.',
+        code: 'BAD_LINE_ITEMS',
+        details: errors
+      });
     }
 
-    // 5) Construire metadata.cart_items pour Stripe (STRICT pour le webhook)
-    const metaCart = items.map(
-      ({ id, printful_variant_id, quantity, price, name, sku }) => ({
-        id: Number(id),
-        printful_variant_id: Number(printful_variant_id),
-        quantity: Number(quantity || 1),
-        price: typeof price === 'number' ? price : 0,
-        name: name || null,
-        sku: sku || null
-      })
-    );
+    // === PERSISTENCE : créer un draft d'ordre AVANT la redirection Stripe ===
+    // === PERSISTENCE dans `orders` (draft) AVANT Stripe ===
+    const currency = (process.env.CURRENCY || 'CAD').toUpperCase();
 
-    const metadata = {
-      order_id: String(orderId),
-      cart_items: JSON.stringify(metaCart),
-      ...(shipping
-        ? {
-            shipping: JSON.stringify({
-              name: shipping.name || '',
-              address1: shipping.address1 || '',
-              city: shipping.city || '',
-              state: shipping.state || '',
-              country: shipping.country || '',
-              zip: shipping.zip || '',
-              email: shipping.email || customer_email || ''
-            })
-          }
-        : {}),
-      ...(shipping_rate
-        ? {
-            shipping_rate: JSON.stringify({
-              name: shipping_rate.name,
-              rate: Number(shipping_rate.rate)
-            })
-          }
-        : {})
+    // total en cents (cart + shipping_rate)
+    const cartSubtotalCents = line_items.reduce((sum, li) => {
+      if (li.price_data?.unit_amount && li.quantity) {
+        return sum + Number(li.price_data.unit_amount) * Number(li.quantity);
+      }
+      return sum;
+    }, 0);
+
+    const shippingRateRaw = raw.shipping_rate?.rate ?? 0;
+    const shippingCents = (() => {
+      const s = String(shippingRateRaw).replace(',', '.');
+      const n = Number(s);
+      return Number.isFinite(n) ? Math.round(n * 100) : 0;
+    })();
+    const totalCents = cartSubtotalCents + shippingCents;
+
+    // Normalise l’adresse pour snapshot
+    const shippingNormalized = {
+      name: raw?.shipping?.name || '',
+      address1: raw?.shipping?.address1 || '',
+      city: raw?.shipping?.city || '',
+      state: raw?.shipping?.state || '',
+      country: raw?.shipping?.country || '',
+      zip: raw?.shipping?.zip || ''
     };
 
-    // 6) Créer la session Stripe avec metadata + client_reference_id
-    const session = await createStripeCheckoutSession({
+    // email & userId (si JWT dispo)
+    const emailSnapshot = (raw.customer_email || '').toLowerCase();
+    const customerId = userId || null;
+
+    let orderId = null;
+    try {
+      const pool = await getPool();
+      const [ins] = await pool.query(
+        `INSERT INTO orders
+     (customer_email, customer_id, status,
+      subtotal_cents, shipping_cents, total_cents,
+      shipping_cost, total, currency,
+      email_snapshot, shipping_name_snapshot, shipping_address_snapshot,
+      created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+        [
+          emailSnapshot || null,
+          customerId,
+          'pending', // statut draft/pending
+          cartSubtotalCents,
+          shippingCents,
+          totalCents,
+          (shippingCents / 100).toFixed(2), // shipping_cost DECIMAL(10,2)
+          (totalCents / 100).toFixed(2), // total DECIMAL(10,2)
+          currency,
+          emailSnapshot || null,
+          shippingNormalized.name || null,
+          JSON.stringify(shippingNormalized)
+        ]
+      );
+      orderId = ins.insertId;
+    } catch (e) {
+      console.warn('[checkout] orders insert skipped:', e?.message);
+    }
+    // === Stripe Customer (upsert avec adresse pour préremplir le Checkout) ===
+    let stripeCustomerId = null;
+    try {
+      // 1) on cherche par email
+      const existing = emailSnapshot
+        ? await stripe.customers.list({ email: emailSnapshot, limit: 1 })
+        : { data: [] };
+
+      if (existing.data.length) {
+        stripeCustomerId = existing.data[0].id;
+        // 2) on met à jour l'adresse si besoin
+        await stripe.customers.update(stripeCustomerId, {
+          name: shippingNormalized.name || undefined,
+          address: {
+            line1: shippingNormalized.address1 || undefined,
+            city: shippingNormalized.city || undefined,
+            state: shippingNormalized.state || undefined,
+            postal_code: shippingNormalized.zip || undefined,
+            country: shippingNormalized.country || undefined
+          },
+          shipping: {
+            name: shippingNormalized.name || undefined,
+            address: {
+              line1: shippingNormalized.address1 || undefined,
+              city: shippingNormalized.city || undefined,
+              state: shippingNormalized.state || undefined,
+              postal_code: shippingNormalized.zip || undefined,
+              country: shippingNormalized.country || undefined
+            }
+          }
+        });
+      } else {
+        // 3) on crée le customer avec l'adresse
+        const c = await stripe.customers.create({
+          email: emailSnapshot || undefined,
+          name: shippingNormalized.name || undefined,
+          address: {
+            line1: shippingNormalized.address1 || undefined,
+            city: shippingNormalized.city || undefined,
+            state: shippingNormalized.state || undefined,
+            postal_code: shippingNormalized.zip || undefined,
+            country: shippingNormalized.country || undefined
+          },
+          shipping: {
+            name: shippingNormalized.name || undefined,
+            address: {
+              line1: shippingNormalized.address1 || undefined,
+              city: shippingNormalized.city || undefined,
+              state: shippingNormalized.state || undefined,
+              postal_code: shippingNormalized.zip || undefined,
+              country: shippingNormalized.country || undefined
+            }
+          }
+        });
+        stripeCustomerId = c.id;
+      }
+
+      // 4) on colle l'id Stripe sur la ligne `orders`
+      if (orderId) {
+        const pool = await getPool();
+        await pool.query(
+          `UPDATE orders SET stripe_customer_id = ? WHERE id = ?`,
+          [stripeCustomerId, orderId]
+        );
+      }
+    } catch (e) {
+      console.warn('[checkout] stripe customer upsert skipped:', e?.message);
+    }
+
+    const session = await stripe.checkout.sessions.create({
+      mode: 'payment',
       line_items,
-      customer_email,
-      shipping,
-      client_reference_id: String(orderId),
-      metadata
+      success_url: `${FRONTEND_URL}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${FRONTEND_URL}/checkout/cancel`,
+      // Affiche le formulaire d'adresse ET le pré-remplit depuis le customer
+      shipping_address_collection: { allowed_countries: ['CA', 'US'] },
+      customer: stripeCustomerId || undefined,
+      customer_update: { address: 'auto', shipping: 'auto', name: 'auto' },
+      client_reference_id: orderId ? String(orderId) : undefined,
+
+      // Ajoute le shipping dans le total Stripe (depuis ce que tu as choisi côté front)
+      shipping_options:
+        shippingCents > 0
+          ? [
+              {
+                shipping_rate_data: {
+                  type: 'fixed_amount',
+                  display_name: raw.shipping_rate?.name || 'Livraison',
+                  fixed_amount: {
+                    amount: shippingCents,
+                    currency: currency.toLowerCase()
+                  }
+                }
+              }
+            ]
+          : undefined,
+      metadata: {
+        source: 'flippin-maple',
+        order_id: orderId ? String(orderId) : ''
+      }
     });
 
-    await logInfo(
-      `Session Stripe ${session.id} créée pour ${customer_email}`,
-      'checkout',
-      {
-        orderId,
-        sessionId: session.id
-      }
-    );
-
-    // 7) Réponse
-    res.json({ url: session.url });
-  } catch (error) {
-    const msg = `Erreur Stripe: ${
-      error?.response?.data?.message || error.message
-    }`;
-    await logError(msg, 'checkout', error);
-    res
-      .status(500)
-      .json({ error: 'Erreur lors de la création de la session.' });
+    return res.status(200).json({ id: session.id, url: session.url });
+  } catch (err) {
+    // Log serveur complet
+    console.error('[checkout] create session error:', {
+      type: err?.type,
+      message: err?.message,
+      code: err?.code,
+      param: err?.param,
+      raw: err?.raw
+    });
+    // Expose TOUJOURS le message Stripe côté client (temporaire le temps du debug)
+    const clientMessage =
+      err?.raw?.message || err?.message || 'Erreur inconnue côté Stripe.';
+    return res.status(500).json({
+      error: 'Erreur lors de la création de la session.',
+      code: 'STRIPE_CREATE_FAILED',
+      stripe_message: clientMessage,
+      stripe_type: err?.type || null,
+      stripe_code: err?.code || null,
+      stripe_param: err?.param || null
+    });
   }
 };

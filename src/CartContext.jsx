@@ -70,7 +70,7 @@ export const CartProvider = ({ children }) => {
   const validateStockBeforeAdd = async (item) => {
     try {
       const res = await api.get(
-        `/api/inventory/printful-stock/${item.printful_variant_id}`
+        `/inventory/printful-stock/${item.printful_variant_id}`
       );
       const data = res.data;
       const stockAvailable = data.available ?? 99;

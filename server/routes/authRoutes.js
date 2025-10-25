@@ -1,16 +1,22 @@
-import express from 'express';
+import { Router } from 'express';
 import {
-  registerUser,
-  loginUser,
-  logoutUser,
-  handleRefreshToken
+  login,
+  refreshToken,
+  logout,
+  register
 } from '../controllers/authController.js';
+import { verifyToken } from '../middlewares/verifyToken.js';
 
-const router = express.Router();
+const router = Router();
 
-router.post('/register', registerUser);
-router.post('/login', loginUser);
-router.post('/logout', logoutUser);
-router.post('/refresh-token', handleRefreshToken);
+router.post('/login', login);
+router.post('/refresh-token', refreshToken);
+router.post('/logout', logout);
+router.post('/register', register);
+
+// 🔎 diag simple : lit le cookie "access" et renvoie l'utilisateur
+router.get('/whoami', verifyToken, (req, res) => {
+  res.json({ ok: true, user: req.user });
+});
 
 export default router;

@@ -18,7 +18,7 @@ const ProductDetail = () => {
   useEffect(() => {
     const fetchProduct = async () => {
       try {
-        const res = await api.get(`/api/products/details/${id}`);
+        const res = await api.get(`/products/details/${id}`);
         const productData = res.data;
         setProduct(productData);
 
@@ -53,7 +53,7 @@ const ProductDetail = () => {
         setLoading(true);
         try {
           const res = await api.get(
-            `/api/inventory/printful-stock/${selectedVariant.printful_variant_id}`
+            `/inventory/printful-stock/${selectedVariant.printful_variant_id}`
           );
           const stock = res.data.available ?? 0;
           setAvailableStock(stock);

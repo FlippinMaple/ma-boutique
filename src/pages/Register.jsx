@@ -63,20 +63,21 @@ const Register = () => {
     setIsSubmitting(true);
 
     try {
-      const response = await api.post('/api/auth/register', {
-        first_name: capitalizeSmart(firstName),
-        last_name: capitalizeSmart(lastName),
+      const response = await api.post('/auth/register', {
+        name: `${capitalizeSmart(firstName)} ${capitalizeSmart(
+          lastName
+        )}`.trim(),
         email: formatEmail(email),
         password,
-        is_subscribed: consentLoi25
+        passwordConfirm: confirmPassword,
+        consentLoi25
       });
 
       // Axios renvoie directement le JSON dans response.data
-      toast.success(
-        response.data.message || 'Votre compte a été créé avec succès.'
-      );
 
-      toast.success('Votre compte a été créé avec succès.');
+      toast.success(
+        response.data?.message || 'Votre compte a été créé avec succès.'
+      );
       setFirstName('');
       setLastName('');
       setEmail('');
@@ -90,7 +91,11 @@ const Register = () => {
         navigate('/login'); // ou '/dashboard' selon le flux désiré
       }, 2000);
     } catch (err) {
-      toast.error(err.message || 'Impossible de contacter le serveur.');
+      const msg =
+        err?.response?.data?.message ||
+        err?.message ||
+        'Erreur à la création du compte.';
+      toast.error(msg);
     } finally {
       setIsSubmitting(false);
     }

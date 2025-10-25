@@ -5,12 +5,15 @@ import {
   protectedExample,
   userInfo
 } from '../controllers/ordersController.js';
-import { authProtect } from '../middlewares/authProtect.js';
+import { verifyToken } from '../middlewares/verifyToken.js';
 
 const router = express.Router();
 
+// ✅ Route publique (création Printful, pas besoin de token)
 router.post('/printful-order', createPrintfulOrder);
-router.get('/protected', authProtect, protectedExample);
-router.get('/user-info', authProtect, userInfo);
+
+// ✅ Routes protégées : on remplace "authProtect" par "verifyToken"
+router.get('/protected', verifyToken, protectedExample);
+router.get('/user-info', verifyToken, userInfo);
 
 export default router;

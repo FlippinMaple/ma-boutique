@@ -10,6 +10,7 @@ const Login = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    console.log('[login] submit start'); // 🔎
 
     if (!email || !password) {
       toast.error('Les champs email et mot de passe sont requis.');
@@ -17,22 +18,24 @@ const Login = () => {
     }
 
     setLoading(true);
-
     try {
-      const response = await api.post('/api/auth/login', {
+      console.log('[login] calling /auth/login'); // 🔎
+      const { status, data } = await api.post('/auth/login', {
         email: formatEmail(email),
         password
       });
-
-      localStorage.setItem('authToken', response.data.accessToken);
-      localStorage.setItem('refreshToken', response.data.refreshToken);
-
+      console.log('[login] response:', status, data); // 🔎
       toast.success('Connexion réussie !');
       setEmail('');
       setPassword('');
       window.location.href = '/dashboard';
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Erreur lors de la connexion.');
+      const msg =
+        err.response?.data?.error ||
+        err.response?.data?.message ||
+        'Erreur lors de la connexion.';
+      console.error('[login] error:', err); // 🔎
+      toast.error(msg);
     } finally {
       setLoading(false);
     }

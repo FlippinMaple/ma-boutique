@@ -45,7 +45,7 @@ const Shop = () => {
   useEffect(() => {
     const fetchProducts = async () => {
       try {
-        const res = await api.get('/api/products', {
+        const res = await api.get('/products', {
           params: search ? { q: search } : {}
         });
         setProducts(res.data);

@@ -1,196 +1,228 @@
 // server/controllers/authController.js
 import jwt from 'jsonwebtoken';
-import {
-  findUserByEmail,
-  insertCustomer,
-  saveRefreshToken,
-  deleteRefreshToken,
-  getRefreshTokenRecord
-} from '../models/authModel.js';
-import { logInfo, logWarn, logError } from '../utils/logger.js';
 import bcrypt from 'bcrypt';
-import { refreshAccessToken } from '../services/authService.js';
+import { getPool } from '../db.js';
 
-// helpers cookies (dev/prod)
-function cookieOptsRefresh() {
-  const isProd = process.env.NODE_ENV === 'production';
-  // En dev (HTTP): secure=false, sameSite='lax'
-  // En prod (HTTPS cross-site): secure=true, sameSite='none'
-  return {
-    httpOnly: true,
-    secure: isProd,
-    sameSite: isProd ? 'none' : 'lax',
-    path: '/api/auth',
-    maxAge: 30 * 24 * 60 * 60 * 1000 // 30j
-  };
+const isProd = process.env.NODE_ENV === 'production';
+
+// Garde-fous ENV très tôt (évite "secretOrPrivateKey must have a value")
+if (!process.env.JWT_ACCESS_SECRET) {
+  throw new Error('[auth] JWT_ACCESS_SECRET manquant (server/.env)');
+}
+if (!process.env.JWT_REFRESH_SECRET) {
+  throw new Error('[auth] JWT_REFRESH_SECRET manquant (server/.env)');
 }
 
-export async function postRefreshToken(req, res) {
-  // On accepte body, header ou cookie (tu utilises body côté client)
-  const token =
-    req.body?.refreshToken ||
-    req.get('x-refresh-token') ||
-    req.cookies?.refreshToken;
+const ACCESS_TTL = process.env.JWT_ACCESS_TTL || '15m';
+const REFRESH_TTL = process.env.JWT_REFRESH_TTL || '30d';
 
-  const result = await refreshAccessToken(token);
-  if (!result.ok) {
-    return res.status(result.status).json({ error: result.code });
-  }
-  return res.json({ accessToken: result.accessToken });
+const cookieOptsAccess = {
+  httpOnly: true,
+  sameSite: 'lax',
+  secure: isProd,
+  maxAge: 1000 * 60 * 60, // 1h (le token lui-même expire plus tôt)
+  path: '/'
+};
+
+const cookieOptsRefresh = {
+  httpOnly: true,
+  sameSite: 'lax',
+  secure: isProd,
+  maxAge: 1000 * 60 * 60 * 24 * 30, // 30j
+  path: '/'
+};
+
+function signAccess(payload) {
+  return jwt.sign(payload, process.env.JWT_ACCESS_SECRET, {
+    expiresIn: ACCESS_TTL
+  });
 }
 
-/** POST /api/auth/register */
-export async function registerUser(req, res) {
-  try {
-    const { name, email, password } = req.body || {};
-    if (!email || !password) {
-      return res.status(400).json({ error: 'email et password requis' });
-    }
-    const existing = await findUserByEmail(email);
-    if (existing) {
-      return res.status(409).json({ error: 'email déjà utilisé' });
-    }
-    const passwordHash = await bcrypt.hash(String(password), 10);
-    const userId = await insertCustomer({
-      name: name ?? null,
-      email,
-      passwordHash
-    });
-    await logInfo(`register user ${email} (#${userId})`, 'auth');
-    return res.status(201).json({ id: userId, email, name: name ?? null });
-  } catch (e) {
-    await logError(`register error: ${e?.message || e}`, 'auth');
-    return res.status(500).json({ error: 'Erreur serveur' });
-  }
+function signRefresh(payload) {
+  return jwt.sign(payload, process.env.JWT_REFRESH_SECRET, {
+    expiresIn: REFRESH_TTL
+  });
 }
 
-/** POST /api/auth/login */
-export async function loginUser(req, res) {
+/**
+ * POST /api/auth/login
+ * body: { email, password }
+ * - Cherche le user dans `customers`
+ * - Compare password (bcrypt)
+ * - Dépose cookies "access" et "refresh"
+ */
+export const login = async (req, res, next) => {
   try {
     const { email, password } = req.body || {};
     if (!email || !password) {
-      return res.status(400).json({ error: 'email et password requis' });
+      return res.status(400).json({ message: 'Email et mot de passe requis.' });
     }
-    const user = await findUserByEmail(email);
-    if (!user) {
-      return res.status(401).json({ error: 'identifiants invalides' });
+
+    const pool = await getPool();
+    const [rows] = await pool.query(
+      'SELECT id, email, password_hash FROM customers WHERE email = ? LIMIT 1',
+      [email]
+    );
+
+    if (!rows.length) {
+      return res.status(401).json({ message: 'Identifiants invalides.' });
     }
-    const ok = await bcrypt.compare(String(password), user.password_hash || '');
+
+    const user = rows[0];
+    const ok = await bcrypt.compare(password, user.password_hash || '');
     if (!ok) {
-      return res.status(401).json({ error: 'identifiants invalides' });
+      return res.status(401).json({ message: 'Identifiants invalides.' });
     }
 
-    // Access token court
-    const accessToken = jwt.sign(
-      { id: user.id, email: user.email },
-      process.env.ACCESS_TOKEN_SECRET,
-      { expiresIn: '15m' }
-    );
-    // Refresh token long
-    const refreshToken = jwt.sign(
-      { id: user.id, email: user.email },
-      process.env.REFRESH_TOKEN_SECRET,
-      { expiresIn: '30d' }
-    );
-    await saveRefreshToken({ userId: user.id, token: refreshToken });
+    const access = signAccess({ sub: user.id, email: user.email });
+    const refresh = signRefresh({ sub: user.id });
 
-    res.cookie('refresh_token', refreshToken, cookieOptsRefresh());
-    await logInfo(`login user #${user.id}`, 'auth');
-
-    return res.status(200).json({
-      accessToken, // ✅ camelCase
-      refreshToken, // ✅ camelCase (pour ton App.jsx)
-      user: { id: user.id, email: user.email, name: user.name ?? null }
-    });
-  } catch (e) {
-    await logError(`login error: ${e?.message || e}`, 'auth');
-    return res.status(500).json({ error: 'Erreur serveur' });
+    return res
+      .cookie('access', access, cookieOptsAccess)
+      .cookie('refresh', refresh, cookieOptsRefresh)
+      .status(200)
+      .json({ ok: true });
+  } catch (err) {
+    console.error('[auth:login] error:', err?.message);
+    next(err);
   }
-}
+};
 
-/** POST /api/auth/logout */
-export async function logoutUser(req, res) {
+/**
+ * POST /api/auth/refresh-token
+ * - Lit cookie "refresh"
+ * - Vérifie et émet un nouveau "access"
+ */
+export const refreshToken = async (req, res) => {
   try {
-    // On tente de lire le token pour le révoquer, mais on logout même s'il n'existe plus
-    const token = req.cookies?.refresh_token || req.body?.refresh_token || null;
-    if (token) {
-      try {
-        await deleteRefreshToken({ token });
-      } catch {
-        /* noop */
-      }
-    }
-    res.clearCookie('refresh_token', { ...cookieOptsRefresh(), maxAge: 0 });
-    await logInfo('logout', 'auth');
-    return res.status(200).json({ ok: true });
-  } catch (e) {
-    await logError(`logout error: ${e?.message || e}`, 'auth');
-    return res.status(500).json({ error: 'Erreur serveur' });
-  }
-}
-
-export async function handleRefreshToken(req, res) {
-  try {
-    // Debug temporaire (regarde la console serveur pendant tes curl)
-    console.log('[refresh] content-type:', req.headers['content-type']);
-    console.log('[refresh] typeof body:', typeof req.body);
-    console.log('[refresh] body raw:', req.body);
-
-    // 1) Extraire le token de la façon la plus tolérante possible
-    let token =
-      (req.body && (req.body.refreshToken || req.body.refresh_token)) ||
-      req.get('x-refresh-token') ||
-      req.cookies?.refresh_token ||
-      null;
-
-    // Fallback si le body est une string
-    if (!token && typeof req.body === 'string') {
-      try {
-        const asJson = JSON.parse(req.body);
-        token = asJson.refreshToken || asJson.refresh_token || token;
-      } catch {
-        const m =
-          req.body.match(/refreshToken=([^&\s]+)/i) ||
-          req.body.match(/refresh_token=([^&\s]+)/i);
-        if (m) token = m[1];
-      }
-    }
-
+    const token = req.cookies?.refresh;
     if (!token) {
-      res.setHeader('X-Refresh-Debug', 'missing_token');
-      return res.status(401).json({ error: 'refresh_token manquant' });
+      return res.status(401).json({ message: 'Aucun cookie refresh.' });
     }
 
-    // 2) Vérifier existence en DB (⚠️ chaîne, pas objet)
-    const rec = await getRefreshTokenRecord(token);
-    if (!rec) {
-      res.setHeader('X-Refresh-Debug', 'unknown_token');
-      await logWarn('refresh: token inconnu', 'auth');
-      return res.status(401).json({ error: 'refresh_token inconnu' });
+    const payload = jwt.verify(token, process.env.JWT_REFRESH_SECRET);
+    const access = signAccess({ sub: payload.sub });
+
+    return res
+      .cookie('access', access, cookieOptsAccess)
+      .status(200)
+      .json({ ok: true });
+  } catch (err) {
+    console.error('[auth:refreshToken] error:', err?.message);
+    return res.status(401).json({ message: 'Refresh invalide ou expiré.' });
+  }
+};
+
+/**
+ * POST /api/auth/logout
+ * - Efface les cookies
+ */
+export const logout = (req, res) => {
+  return res
+    .clearCookie('access', cookieOptsAccess)
+    .clearCookie('refresh', cookieOptsRefresh)
+    .status(200)
+    .json({ ok: true });
+};
+
+// --- REMPLACER EN ENTIER la fonction register par ceci ---
+export const register = async (req, res, next) => {
+  try {
+    const raw = req.body || {};
+
+    // J'accepte tes alias côté front, sans casser ton flux actuel
+    const firstName = (raw.first_name ?? raw.firstName ?? '').toString().trim();
+    const lastName = (raw.last_name ?? raw.lastName ?? '').toString().trim();
+
+    // Si "name" est fourni, on tente de le splitter "Prénom Nom"
+    const fullName = (raw.name ?? '').toString().trim();
+    let f = firstName,
+      l = lastName;
+    if ((!f || !l) && fullName) {
+      const parts = fullName.split(/\s+/);
+      f = f || parts.shift() || '';
+      l = l || parts.join(' ') || '';
     }
 
-    // 3) Vérifier signature
-    let payload;
-    try {
-      payload = jwt.verify(token, process.env.REFRESH_TOKEN_SECRET);
-    } catch (e) {
-      res.setHeader('X-Refresh-Debug', 'invalid_signature');
-      await logWarn(`refresh: token invalide (${e?.name})`, 'auth');
-      return res.status(401).json({ error: 'refresh_token invalide' });
+    const email = (raw.email ?? raw.userEmail ?? raw.mail ?? '')
+      .toString()
+      .trim()
+      .toLowerCase();
+
+    const password = (raw.password ?? raw.pass ?? raw.pwd ?? '').toString();
+    const passwordConfirm = (
+      raw.passwordConfirm ??
+      raw.confirmPassword ??
+      ''
+    ).toString();
+
+    // is_subscribed: accepte consentLoi25 de ton form, ou is_subscribed
+    const isSubscribedRaw = raw.is_subscribed ?? raw.consentLoi25 ?? false;
+    const is_subscribed = isSubscribedRaw ? 1 : 0;
+
+    // Champs requis minimaux
+    if (!f || !l) {
+      return res.status(400).json({ message: 'Prénom et nom sont requis.' });
+    }
+    if (!email) {
+      return res.status(400).json({ message: 'Courriel requis.' });
+    }
+    if (!password) {
+      return res.status(400).json({ message: 'Mot de passe requis.' });
     }
 
-    // 4) Émettre un nouvel access token
-    const accessToken = jwt.sign(
-      { id: payload.id, email: payload.email },
-      process.env.ACCESS_TOKEN_SECRET,
-      { expiresIn: '15m' }
+    // Validation basique côté back (ton front a déjà la regex stricte)
+    if (password.length < 8 || password.length > 16) {
+      return res
+        .status(400)
+        .json({ message: 'Mot de passe invalide (8–16 caractères requis).' });
+    }
+    if (passwordConfirm && password !== passwordConfirm) {
+      return res
+        .status(422)
+        .json({ message: 'Les mots de passe ne correspondent pas.' });
+    }
+
+    const pool = await getPool();
+
+    // Unicité du courriel
+    const [exists] = await pool.query(
+      'SELECT id FROM customers WHERE email = ? LIMIT 1',
+      [email]
+    );
+    if (exists.length) {
+      return res
+        .status(409)
+        .json({ message: 'Un compte existe déjà avec ce courriel.' });
+    }
+
+    const password_hash = await bcrypt.hash(password, 10);
+
+    // INSERT adapté à ta structure exacte
+    const role = 'customer'; // ou utilise la valeur par défaut de ta DB si configurée
+    const [result] = await pool.query(
+      `INSERT INTO customers
+        (first_name, last_name, email, password_hash, is_subscribed, role, created_at, updated_at, last_login)
+       VALUES
+        (?, ?, ?, ?, ?, ?, NOW(), NOW(), NULL)`,
+      [f, l, email, password_hash, is_subscribed, role]
     );
 
-    res.setHeader('X-Refresh-Debug', 'ok');
-    return res.status(200).json({ accessToken }); // ✅ camelCase
-  } catch (e) {
-    res.setHeader('X-Refresh-Debug', 'server_error');
-    await logError(`refresh error: ${e?.message || e}`, 'auth');
-    return res.status(500).json({ error: 'Erreur serveur' });
+    const userId = result.insertId;
+
+    // Auto-login (cookies httpOnly) — identique à /login
+    const access = signAccess({ sub: userId, email });
+    const refresh = signRefresh({ sub: userId });
+
+    return res
+      .cookie('access', access, cookieOptsAccess)
+      .cookie('refresh', refresh, cookieOptsRefresh)
+      .status(201)
+      .json({ ok: true, id: userId });
+  } catch (err) {
+    console.error('[auth:register] error:', err?.message);
+    next(err);
   }
-}
+};
+
+export { refreshToken as handleRefreshToken };

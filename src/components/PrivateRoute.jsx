@@ -1,16 +1,29 @@
-import React from 'react';
+// src/components/PrivateRoute.jsx
+import { useEffect, useState } from 'react';
 import { Navigate } from 'react-router-dom';
+import api from '../utils/api';
 
 const PrivateRoute = ({ element }) => {
-  const token = localStorage.getItem('authToken');
+  const [state, setState] = useState({ loading: true, ok: false });
 
-  if (!token) {
-    // Si l'utilisateur n'est pas connecté, rediriger vers la page de connexion
-    return <Navigate to="/login" />;
-  }
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        await api.get('/api/auth/whoami'); // lit le cookie "access"
+        if (!cancelled) setState({ loading: false, ok: true });
+      } catch {
+        if (!cancelled) setState({ loading: false, ok: false });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
-  // Si l'utilisateur est authentifié, afficher la page
-  return element;
+  if (state.loading) return null; // ou un petit spinner
+
+  return state.ok ? element : <Navigate to="/login" replace />;
 };
 
 export default PrivateRoute;

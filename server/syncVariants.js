@@ -1,11 +1,11 @@
-// syncVariants.js
 import dotenv from 'dotenv';
 dotenv.config();
 import axios from 'axios';
 import { logInfo, logError } from './utils/logger.js';
+import { getDb } from './utils/db.js'; // ✅
 
-async function syncVariants(req) {
-  const db = req.app.locals.db;
+async function syncVariants() {
+  const db = await getDb(); // ✅ connexion sans req
 
   try {
     const printfulRes = await axios.get(
@@ -110,4 +110,7 @@ async function syncVariants(req) {
   }
 }
 
-syncVariants();
+syncVariants().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

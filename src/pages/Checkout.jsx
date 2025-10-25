@@ -7,14 +7,6 @@ import toast from 'react-hot-toast';
 import { formatEmail, capitalizeSmart } from '../utils/textHelpers';
 import { provincesCA, statesUS } from '../utils/regionOptions';
 
-const getAuthToken = () => {
-  try {
-    return localStorage.getItem('authToken');
-  } catch {
-    return null;
-  }
-};
-
 const Checkout = () => {
   const {
     cart,
@@ -194,8 +186,6 @@ const Checkout = () => {
     setLoading(true);
 
     try {
-      const token = getAuthToken();
-
       const preparedItems = cart.map((item) => ({
         id: item.id,
         name: capitalizeSmart(item.name),
@@ -220,9 +210,7 @@ const Checkout = () => {
           : null
       };
 
-      const response = await api.post('/api/create-checkout-session', payload, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {}
-      });
+      const response = await api.post('/create-checkout-session', payload);
 
       if (response.data?.url) {
         toast.success('Redirection vers Stripe...');

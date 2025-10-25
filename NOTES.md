@@ -1,0 +1,1 @@
+- 2025-10-21 : Correctifs auth JWT (cookies httpOnly) + alignement front/back. Voir les sections 1–2 de mon rapport.

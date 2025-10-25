@@ -2,79 +2,77 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:4242', // adapte si besoin
-  withCredentials: true // au cas où tu mixes body + cookies
+  baseURL: '/api',
+  withCredentials: true
 });
+
+/**
+ * Gestion centralisée du refresh:
+ * - Quand une réponse 401 arrive, on tente 1 refresh (cookie httpOnly "refresh")
+ * - On file d’attente les requêtes le temps que le refresh se termine
+ * - Un seul retry par requête (flag _retry)
+ */
 
 let isRefreshing = false;
-let failedQueue = [];
+let queue = [];
 
-const processQueue = (error, token = null) => {
-  failedQueue.forEach((prom) => {
-    if (error) {
-      prom.reject(error);
-    } else {
-      prom.resolve(token);
-    }
-  });
-  failedQueue = [];
-};
+function resolveQueue(error = null) {
+  const pending = [...queue];
+  queue = [];
+  for (const { resolve, reject } of pending) {
+    error ? reject(error) : resolve();
+  }
+}
 
-// Intercepteur: attache le JWT d'accès si présent
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('authToken');
-  if (token) config.headers.Authorization = `Bearer ${token}`;
-  return config;
-});
-
-// Intercepteur de réponses: si 401, tente de rafraîchir le token
 api.interceptors.response.use(
-  (response) => response,
+  (res) => res,
   async (error) => {
-    const originalRequest = error.config;
+    const original = error?.config || {};
+    const status = error?.response?.status;
 
-    // Évite de boucler si l’erreur provient déjà de /api/auth/refresh-token
-    if (error.response?.status === 401 && !originalRequest._retry) {
-      originalRequest._retry = true;
+    // Pas d’accès au réseau ou autre
+    if (!status) return Promise.reject(error);
 
+    // Si 401 et pas encore retenté
+    if (status === 401 && !original._retry) {
+      original._retry = true;
+
+      // Mécanisme "file d'attente" pendant le refresh
       if (isRefreshing) {
-        // met la requête en attente
-        return new Promise(function (resolve, reject) {
-          failedQueue.push({ resolve, reject });
-        })
-          .then((token) => {
-            originalRequest.headers['Authorization'] = 'Bearer ' + token;
-            return api(originalRequest);
-          })
-          .catch((err) => Promise.reject(err));
+        // retourne une promesse qui s’exécute après le refresh en cours
+        return new Promise((resolve, reject) => {
+          queue.push({
+            resolve: async () => {
+              try {
+                const resp = await api.request(original);
+                resolve(resp);
+              } catch (e) {
+                reject(e);
+              }
+            },
+            reject
+          });
+        });
       }
 
       isRefreshing = true;
-      const refreshToken = localStorage.getItem('refreshToken');
-
       try {
-        const { data } = await axios.post(
-          `${api.defaults.baseURL}/api/auth/refresh-token`,
-          { refreshToken }
-        );
-        const newAccessToken = data.accessToken;
-        localStorage.setItem('authToken', newAccessToken);
-        api.defaults.headers.common['Authorization'] =
-          'Bearer ' + newAccessToken;
-        processQueue(null, newAccessToken);
-        return api(originalRequest);
-      } catch (refreshError) {
-        processQueue(refreshError, null);
-        localStorage.removeItem('authToken');
-        localStorage.removeItem('refreshToken');
-        // facultatif: rediriger vers la page de connexion
-        window.location.href = '/login';
-        return Promise.reject(refreshError);
+        // Endpoint côté serveur: /auth/refresh-token
+        await api.post('/auth/refresh-token');
+        resolveQueue(null);
+        // Rejoue la requête initiale
+        return api.request(original);
+      } catch (refreshErr) {
+        resolveQueue(refreshErr);
+        // Ici on peut, si désiré, rediriger vers /login
+        // window.location.href = '/login';
+        return Promise.reject(refreshErr);
       } finally {
         isRefreshing = false;
       }
     }
 
+    // Sinon: pas d’auto-gestion → laisse remonter l’erreur
     return Promise.reject(error);
   }
 );

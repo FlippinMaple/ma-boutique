@@ -1,5 +1,5 @@
 // server/app.js
-import 'dotenv/config'; // ✅ charge FRONTEND_URL, NODE_ENV, etc. avant usage
+import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -12,59 +12,77 @@ import { notFound, errorHandler } from './middlewares/errorHandler.js';
 const app = express();
 
 /* ------- Sécu/Perf global ------- */
-const behindProxy =
-  process.env.NODE_ENV === 'production' && process.env.TRUST_PROXY !== 'false';
+const isProd = process.env.NODE_ENV === 'production';
+const behindProxy = isProd && process.env.TRUST_PROXY !== 'false';
 const TRUST_PROXY_HOPS = Number(process.env.TRUST_PROXY_HOPS || 1);
 
 // En local: false. En prod: 1 (ou la valeur fournie)
 app.set('trust proxy', behindProxy ? TRUST_PROXY_HOPS : false);
-app.use(helmet());
+
+// Helmet (désactive CSP par défaut en dev pour éviter des surprises)
+app.use(
+  helmet({
+    contentSecurityPolicy: false
+  })
+);
 app.use(compression());
 
 /* ------- Hook de debug (TLA en ESM Node ≥ 20) ------- */
-if (process.env.NODE_ENV !== 'production') {
+if (!isProd) {
   try {
     await import('./dev/route-debug.js');
   } catch (e) {
-    // Ne pas faire planter en dev si le fichier n'existe pas
     console.warn('[route-debug] non chargé :', e?.message);
   }
 }
 
 /* ------- CORS / parsers ------- */
+
+// Derive allowed origins
+const envOrigins = (process.env.FRONTEND_URL || '')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
+
+const allowedOrigins = [
+  'http://localhost:3000',
+  'http://localhost:5173',
+  ...envOrigins
+];
+
 // CORS strict pour le endpoint "abandoned cart" (POST only, sans credentials)
 app.use(
   '/api/log-abandoned-cart',
   cors({
-    origin: process.env.FRONTEND_URL
-      ? process.env.FRONTEND_URL.split(',').map((s) => s.trim())
-      : true,
+    origin(origin, cb) {
+      if (!origin || allowedOrigins.includes(origin))
+        return cb(null, origin || true);
+      return cb(new Error('Not allowed by CORS'));
+    },
     credentials: false,
     methods: ['POST'],
     allowedHeaders: ['Content-Type']
   })
 );
 
-// CORS général pour le reste de l’API (avec credentials)
-const ALLOWED_ORIGINS = process.env.FRONTEND_URL
-  ? process.env.FRONTEND_URL.split(',').map((s) => s.trim())
-  : ['http://localhost:5173'];
-
-const commonCors = cors({
-  origin: ALLOWED_ORIGINS,
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
-});
-
-app.use(commonCors);
-app.options(/.*/, commonCors);
 // Stripe/Autres webhooks : raw body AVANT json
 app.use('/webhook', bodyParser.raw({ type: 'application/json' }));
 
 // cookies + json global
 app.use(cookieParser());
 app.use(express.json());
+
+// CORS général pour le reste de l’API (avec credentials + origin strict)
+app.use(
+  cors({
+    origin(origin, cb) {
+      if (!origin || allowedOrigins.includes(origin))
+        return cb(null, origin || true);
+      return cb(new Error('Not allowed by CORS'));
+    },
+    credentials: true
+  })
+);
 
 /* ------- Health ------- */
 app.get('/health', (_req, res) => res.json({ ok: true }));

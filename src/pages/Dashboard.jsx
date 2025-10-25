@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+// src/pages/Dashboard.jsx
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { jwtDecode } from 'jwt-decode';
+import api from '../utils/api';
 import { capitalizeSmart } from '../utils/textHelpers';
-import { toast } from 'react-hot-toast'; // ✅ Import du toast
+import { toast } from 'react-hot-toast';
 
 const Dashboard = () => {
   const [user, setUser] = useState(null);
@@ -10,42 +11,39 @@ const Dashboard = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    const token = localStorage.getItem('authToken');
-
-    if (!token) {
-      toast.error('Session expirée. Veuillez vous reconnecter.');
-      navigate('/login');
-    } else {
+    let cancelled = false;
+    (async () => {
       try {
-        const decoded = jwtDecode(token);
-
-        if (decoded.exp * 1000 < Date.now()) {
-          toast.error('Session expirée. Veuillez vous reconnecter.');
-          localStorage.removeItem('authToken');
-          navigate('/login');
-        } else {
-          setUser(decoded);
+        const { data } = await api.get('/api/auth/whoami');
+        if (!cancelled) {
+          setUser(data.user || null);
+          setLoading(false);
         }
-      } catch (error) {
-        toast.error('Token invalide. Veuillez vous reconnecter.');
-        console.error('Token invalide ou expiré:', error);
-        navigate('/login');
+      } catch {
+        if (!cancelled) {
+          toast.error('Session expirée. Veuillez vous reconnecter.');
+          navigate('/login');
+        }
       }
-    }
-
-    setLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [navigate]);
 
-  const handleLogout = () => {
-    localStorage.removeItem('authToken');
-    localStorage.removeItem('refreshToken');
-    toast('Déconnexion effectuée. 👋');
-    navigate('/login');
+  const handleLogout = async () => {
+    try {
+      await api.post('/api/auth/logout'); // nettoie les cookies côté serveur
+    } catch {
+      /* ignore */
+    } finally {
+      toast('Déconnexion effectuée. 👋');
+      navigate('/login');
+    }
   };
 
-  if (loading) return <div>Chargement...</div>;
-
-  if (!user) return null; // L'erreur a déjà été toatée + redirection faite
+  if (loading) return <div>Chargement…</div>;
+  if (!user) return null;
 
   const displayFirst = capitalizeSmart(user.first_name || '');
   const displayLast = capitalizeSmart(user.last_name || '');
@@ -53,9 +51,9 @@ const Dashboard = () => {
   return (
     <div>
       <h2>
-        Bienvenue, {displayFirst} {displayLast}
+        Bienvenue {displayFirst} {displayLast}
       </h2>
-      <p>Bienvenue sur votre tableau de bord sécurisé !</p>
+      <p>{user.email}</p>
       <button onClick={handleLogout}>Se déconnecter</button>
     </div>
   );
