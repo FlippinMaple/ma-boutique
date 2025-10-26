@@ -177,7 +177,7 @@ async function handleStripeWebhook(req, res) {
         );
       }
 
-      // Parse metadata strict
+      // Parse metadata stricte
       let shipping = null;
       if (session.metadata?.shipping) {
         try {
@@ -186,6 +186,7 @@ async function handleStripeWebhook(req, res) {
           /* empty */
         }
       }
+
       let cart_items = [];
       if (session.metadata?.cart_items) {
         try {
@@ -213,10 +214,11 @@ async function handleStripeWebhook(req, res) {
 
       const orderIdFromStripe =
         session.client_reference_id || session.metadata?.order_id || null;
+
       const customer_email =
         (session.customer_details && session.customer_details.email) ||
         session.customer_email ||
-        shipping?.email ||
+        (shipping && shipping.email) ||
         null;
 
       const total = centsToFloat(session.amount_total ?? 0);
@@ -234,12 +236,12 @@ async function handleStripeWebhook(req, res) {
         }
       }
 
-      // --- Upsert de la commande ---
+      // --- Upsert / résolution de la commande ---
       let orderId = orderIdFromStripe;
       const db = req.app.locals.db;
 
       if (orderId) {
-        // fallback coût livraison d’une commande existante
+        // fallback coût livraison d’une commande existante si Stripe a rapporté 0
         try {
           const [[prevOrder]] = await db.query(
             'SELECT shipping_cost FROM orders WHERE id = ?',
@@ -254,16 +256,17 @@ async function handleStripeWebhook(req, res) {
 
         await db.execute(
           `UPDATE orders
-             SET status = ?, total = ?, shipping_cost = ?, updated_at = UTC_TIMESTAMP()
+             SET status = 'paid',
+                 total = ?,
+                 shipping_cost = ?,
+                 paid_at = UTC_TIMESTAMP(),
+                 updated_at = UTC_TIMESTAMP()
            WHERE id = ?`,
-          ['paid', total, shipping_cost, orderId]
+          [total, shipping_cost, orderId]
         );
 
-        if (cart_items.length > 0) {
-          await db.execute(`DELETE FROM order_items WHERE order_id = ?`, [
-            orderId
-          ]);
-        }
+        // ⚠️ pas de DELETE des order_items ici.
+        // Les lignes créées par checkoutController sont légales et immuables.
       } else {
         // Essayer d'associer à la dernière pending du même email
         if (customer_email) {
@@ -273,43 +276,78 @@ async function handleStripeWebhook(req, res) {
              ORDER BY created_at DESC LIMIT 1`,
             [customer_email]
           );
+
           if (existingOrder) {
             orderId = existingOrder.id;
+
             if (shipping_cost === 0 && existingOrder.shipping_cost != null) {
               shipping_cost = Number(existingOrder.shipping_cost);
             }
+
             await db.execute(
               `UPDATE orders
-                 SET status = ?, total = ?, shipping_cost = ?, updated_at = UTC_TIMESTAMP()
+                 SET status = 'paid',
+                     total = ?,
+                     shipping_cost = ?,
+                     paid_at = UTC_TIMESTAMP(),
+                     updated_at = UTC_TIMESTAMP()
                WHERE id = ?`,
-              ['paid', total, shipping_cost, orderId]
+              [total, shipping_cost, orderId]
             );
-            if (cart_items.length > 0) {
-              await db.execute(`DELETE FROM order_items WHERE order_id = ?`, [
-                orderId
-              ]);
-            }
+
+            // ⚠️ pas de DELETE des order_items ici non plus.
           }
         }
-        // Sinon créer une nouvelle commande
+
+        // Sinon créer une nouvelle commande "dégradée"
         if (!orderId) {
           const [ins] = await db.execute(
             `INSERT INTO orders
-               (customer_email, status, total, shipping_cost, created_at, updated_at)
-             VALUES (?, ?, ?, ?, UTC_TIMESTAMP(), UTC_TIMESTAMP())`,
-            [customer_email, 'paid', total, shipping_cost]
+               (customer_email,
+                status,
+                total,
+                shipping_cost,
+                paid_at,
+                created_at,
+                updated_at)
+             VALUES (?, 'paid', ?, ?, UTC_TIMESTAMP(), UTC_TIMESTAMP(), UTC_TIMESTAMP())`,
+            [customer_email, total, shipping_cost]
           );
           orderId = ins.insertId;
         }
       }
 
-      // --- Réinsertion des items si valides
-      if (cart_items.length > 0) {
+      // --- Insérer des items UNIQUEMENT si la commande n'en avait pas déjà ---
+      let shouldInsertItems = true;
+      try {
+        const [existingItems] = await db.query(
+          `SELECT id FROM order_items WHERE order_id = ? LIMIT 1`,
+          [orderId]
+        );
+        if (existingItems.length > 0) {
+          shouldInsertItems = false;
+          await logInfo(
+            `ℹ️ [${traceId}] order_items déjà présents pour order #${orderId}, pas de réinsertion`,
+            'webhook'
+          );
+        }
+      } catch (e) {
+        await logWarn(
+          `⚠️ [${traceId}] Impossible de vérifier order_items existants: ${
+            e?.message || e
+          }`,
+          'webhook',
+          e
+        );
+      }
+
+      if (shouldInsertItems && cart_items.length > 0) {
         for (const item of cart_items) {
           const localVariantId = Number(item.id);
           const pfVariantId = Number(item.printful_variant_id);
           const qty = Number(item.quantity);
-          const price = typeof item.price === 'number' ? item.price : 0;
+          const priceNum = typeof item.price === 'number' ? item.price : 0; // dollars/unité
+          const unitPriceCents = Math.round(priceNum * 100);
 
           if (
             !Number.isFinite(localVariantId) ||
@@ -327,24 +365,33 @@ async function handleStripeWebhook(req, res) {
           const metaPayload = {
             name: item.name ?? null,
             sku: item.sku ?? null,
-            note: 'inserted from stripe webhook (strict metadata)'
+            note: 'inserted from stripe webhook (fallback mode)'
           };
 
           await db.execute(
             `INSERT INTO order_items
-               (order_id, variant_id, printful_variant_id, quantity, price_at_purchase, meta, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, UTC_TIMESTAMP(), UTC_TIMESTAMP())`,
+               (order_id,
+                variant_id,
+                printful_variant_id,
+                quantity,
+                price_at_purchase,
+                unit_price_cents,
+                meta,
+                created_at,
+                updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, UTC_TIMESTAMP(), UTC_TIMESTAMP())`,
             [
               orderId,
               localVariantId,
               pfVariantId,
               qty,
-              price,
+              priceNum.toFixed(2), // ex "29.99"
+              unitPriceCents, // ex 2999
               JSON.stringify(metaPayload)
             ]
           );
         }
-      } else {
+      } else if (shouldInsertItems && cart_items.length === 0) {
         await logWarn(
           `⚠️ [${traceId}] Aucun item inséré (metadata.cart_items absent/invalide).`,
           'webhook'
@@ -353,7 +400,6 @@ async function handleStripeWebhook(req, res) {
 
       // --- Historique de statut
       try {
-        // on historise "pending" -> "paid" (si tu veux le vrai old_status, capture-le avant l'UPDATE)
         await db.execute(
           `INSERT INTO order_status_history (order_id, old_status, new_status, changed_at)
            VALUES (?, ?, ?, UTC_TIMESTAMP())`,
@@ -381,7 +427,7 @@ async function handleStripeWebhook(req, res) {
         );
       }
 
-      // --- Printful (optionnel, inchangé)
+      // --- Printful (optionnel)
       if (
         process.env.PRINTFUL_AUTOMATIC_ORDER === 'true' &&
         cart_items.length > 0 &&

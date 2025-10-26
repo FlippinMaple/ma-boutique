@@ -127,11 +127,14 @@ function App() {
           <Route path="/" element={<Home />} />
           <Route path="/register" element={<Register />} />
           <Route path="/login" element={<Login />} />
+
           <Route
             path="/dashboard"
             element={isAuthenticated ? <Dashboard /> : <Navigate to="/login" />}
           />
+
           <Route path="/shop" element={<Shop />} />
+
           <Route
             path="/checkout"
             element={
@@ -140,8 +143,15 @@ function App() {
               </ProtectedCheckoutRoute>
             }
           />
+
+          {/* ✅ Routes Stripe callback officielles */}
+          <Route path="/checkout/success" element={<Success />} />
+          <Route path="/checkout/cancel" element={<Cancel />} />
+
+          {/* ♻️ Aliases legacy (au cas où ton front appelle encore /success direct) */}
           <Route path="/success" element={<Success />} />
           <Route path="/cancel" element={<Cancel />} />
+
           <Route path="/product/:id" element={<ProductDetail />} />
           <Route path="/preview-order" element={<PreviewOrder />} />
         </Routes>
