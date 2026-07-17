@@ -263,43 +263,7 @@ Décider ce qu’on fait si on supprime une commande mais qu’on garde un histo
 
 1.9 product_variants
 
-Colonnes clés
-id PK AUTO_INCREMENT
-product_id int NOT NULL
-sku varchar(255) INDEX
-color, size, image
-prix : price decimal(10,2) NOT NULL, discount_price, custom_price
-inventaire : stock tinyint(1) DEFAULT 0, is_active tinyint(1) DEFAULT 1
-dimensions/shipping : weight, width, height, length
-options (texte libre, peut contenir des options configurables)
-
-intégrations :
-printful_variant_id bigint(20) NOT NULL → ID externe Printful
-variant_id int(11) NOT NULL → ID interne maison exposé au front / business
-
-catégorisation : main_category_id varchar(255) (actuellement pas FK)
-currency varchar(3)
-created_at, updated_at
-
-PK / Index / FK
-PK(id)
-Index(product_id)
-Index(sku)
-FK product_id → products.id ON DELETE CASCADE
-
-Rôle métier
-Unité vendable concrète (taille/couleur/prix). C’est aussi le passeport vers Printful pour la production.
-
-Connecté à
-order_items.variant_id → product_variants.id
-product_images.variant_id → product_variants.id
-product_promotions.product_variant_id → product_variants.id
-wishlists.variant_id → product_variants.id
-
-Connexions logiques supplémentaires
-main_category_id est un varchar alors que les catégories officielles vivent dans categories (id int, name unique). On doit clarifier ce que c’est : tag marketing libre ou vraie catégorie structurante.
-
-variant_id vs printful_variant_id vs id sont trois identifiants différents, chacun avec un rôle distinct. Ça doit être documenté et respecté.
+→ Descriptif migré vers [engineering/DATA_MODEL.md](engineering/DATA_MODEL.md#product_variants--inventaire-19) (2026-07-16).
 
 TODO
 
@@ -317,32 +281,7 @@ Décider si main_category_id doit devenir une vraie FK vers categories ou si ça
 
 1.10 products
 
-Colonnes clés
-id PK AUTO_INCREMENT
-external_id bigint(20) UNIQUE
-name, description, image, gallery_images, brand, tags
-category varchar(100) (string libre)
-is_visible tinyint(1) DEFAULT 1
-is_featured tinyint(1) DEFAULT 0
-discount_percentage decimal(5,2) DEFAULT 0.00
-views int DEFAULT 0
-printful_product_id varchar(255)
-created_at, updated_at
-
-PK / Index / FK
-PK(id)
-UNIQUE(external_id)
-
-Rôle métier
-Fiche produit marketing (titres, images, branding). C’est le parent d’un ensemble de variantes.
-
-Connecté à
-product_variants.product_id → products.id
-reviews.product_id → products.id
-
-Connexions logiques supplémentaires
-products.category (varchar) n’est pas lié à la table categories.
-printful_product_id est la référence côté Printful au niveau produit global (différent de printful_variant_id qui est par variante).
+→ Descriptif migré vers [engineering/DATA_MODEL.md](engineering/DATA_MODEL.md#products--inventaire-110) (2026-07-16).
 
 TODO
 
@@ -356,22 +295,7 @@ Harmoniser external_id vs printful_product_id si les deux représentent la même
 
 1.11 product_images
 
-Colonnes clés
-id PK AUTO_INCREMENT
-variant_id (FK product_variants.id)
-type, url, filename, mime_type
-width, height, dpi
-status
-preview_url, thumbnail_url
-created_at timestamp DEFAULT current_timestamp()
-
-PK / Index / FK
-PK(id)
-Index(variant_id)
-FK variant_id → product_variants.id ON DELETE CASCADE
-
-Rôle métier
-Images associées à une variante précise (ex: t-shirt rouge Large vs t-shirt noir Small). On stocke aussi des dérivés (thumbnail, preview).
+→ Descriptif migré vers [engineering/DATA_MODEL.md](engineering/DATA_MODEL.md#product_images--inventaire-111) (2026-07-16).
 
 TODO
 
@@ -379,19 +303,7 @@ Décider si on autorise des images pour des variantes désactivées (is_active =
 
 1.12 product_promotions
 
-Colonnes clés
-id PK AUTO_INCREMENT
-product_variant_id FK → product_variants.id
-discount_percent decimal(5,2)
-start_date, end_date
-
-PK / Index / FK
-PK(id)
-Index(product_variant_id)
-FK product_variant_id → product_variants.id ON DELETE CASCADE
-
-Rôle métier
-Promotions ciblées par variante, avec une fenêtre temporelle.
+→ Descriptif migré vers [engineering/DATA_MODEL.md](engineering/DATA_MODEL.md#product_promotions--inventaire-112) (2026-07-16).
 
 TODO
 
@@ -399,22 +311,7 @@ Le backend doit ignorer automatiquement une promo expirée (end_date passée). S
 
 1.13 reviews
 
-Colonnes clés
-id PK AUTO_INCREMENT
-product_id FK → products.id
-author_name
-rating int CHECK rating BETWEEN 1 AND 5
-comment
-created_at timestamp DEFAULT current_timestamp()
-
-PK / Index / FK / CHECK
-PK(id)
-Index(product_id)
-FK product_id → products.id ON DELETE CASCADE
-CHECK rating BETWEEN 1 AND 5
-
-Rôle métier
-Avis clients visibles publiquement. Actuellement pas de lien direct vers un customer_id ou order_id, donc pas de preuve “verified purchase”.
+→ Descriptif migré vers [engineering/DATA_MODEL.md](engineering/DATA_MODEL.md#reviews--inventaire-113) (2026-07-16).
 
 TODO
 
