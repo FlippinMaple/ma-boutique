@@ -37,6 +37,9 @@ Les TODO, décisions ouvertes et dettes techniques restent dans `docs/INVENTAIRE
    - [orders](#orders--inventaire-15)
    - [order_items](#order_items--inventaire-16)
    - [order_status_history](#order_status_history--inventaire-17)
+   - [shipping_logs](#shipping_logs--inventaire-18)
+6. [Paiement — événements Stripe](#paiement--evenements-stripe)
+   - [stripe_events](#stripe_events--inventaire-120)
 
 ---
 
@@ -528,3 +531,42 @@ FK order_id → orders.id ON DELETE CASCADE
 
 Rôle métier
 Historique d’état de chaque commande : pending → paid → fulfilled → shipped → etc.
+
+### shipping_logs ← inventaire §1.8
+
+Colonnes clés
+id PK AUTO_INCREMENT
+order_id int NULL
+provider, tracking_number, status
+shipped_at timestamp DEFAULT current_timestamp()
+
+PK / Index / FK
+PK(id)
+Index(order_id)
+FK order_id → orders.id ON DELETE CASCADE
+
+Rôle métier
+Suivi logistique : numéro de suivi, transporteur, statut d’expédition.
+
+---
+
+## Paiement — événements Stripe
+
+### stripe_events ← inventaire §1.20
+
+Colonnes clés
+event_id varchar(255) PK
+event_type varchar(64) INDEX
+created_at datetime DEFAULT utc_timestamp()
+payload longtext
+received_at datetime DEFAULT current_timestamp()
+
+PK / Index
+PK(event_id)
+Index(event_type,created_at)
+
+Rôle métier
+Log brut des webhooks Stripe (paiement, remboursement, etc.). C’est ta boîte noire Stripe pour audit.
+
+Connexions logiques supplémentaires
+Pas de FK vers orders, mais on peut relier un event Stripe à une commande en utilisant orders.stripe_session_id / orders.stripe_payment_intent_id qu’on retrouve dans le payload.

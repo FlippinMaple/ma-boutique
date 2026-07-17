@@ -120,19 +120,7 @@ Dans la logique serveur, chaque update de orders.status doit créer une ligne ic
 
 1.8 shipping_logs
 
-Colonnes clés
-id PK AUTO_INCREMENT
-order_id int NULL
-provider, tracking_number, status
-shipped_at timestamp DEFAULT current_timestamp()
-
-PK / Index / FK
-PK(id)
-Index(order_id)
-FK order_id → orders.id ON DELETE CASCADE
-
-Rôle métier
-Suivi logistique : numéro de suivi, transporteur, statut d’expédition.
+→ Descriptif migré vers [engineering/DATA_MODEL.md](engineering/DATA_MODEL.md#shipping_logs--inventaire-18) (2026-07-16).
 
 TODO
 
@@ -252,22 +240,7 @@ S’assurer que les webhooks du fournisseur courriel écrivent bien ici, et que 
 
 1.20 stripe_events
 
-Colonnes clés
-event_id varchar(255) PK
-event_type varchar(64) INDEX
-created_at datetime DEFAULT utc_timestamp()
-payload longtext
-received_at datetime DEFAULT current_timestamp()
-
-PK / Index
-PK(event_id)
-Index(event_type,created_at)
-
-Rôle métier
-Log brut des webhooks Stripe (paiement, remboursement, etc.). C’est ta boîte noire Stripe pour audit.
-
-Connexions logiques supplémentaires
-Pas de FK vers orders, mais on peut relier un event Stripe à une commande en utilisant orders.stripe_session_id / orders.stripe_payment_intent_id qu’on retrouve dans le payload.
+→ Descriptif migré vers [engineering/DATA_MODEL.md](engineering/DATA_MODEL.md#stripe_events--inventaire-120) (2026-07-16).
 
 TODO
 
