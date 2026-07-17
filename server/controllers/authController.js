@@ -5,7 +5,6 @@ import { getPool } from '../db.js';
 
 const isProd = process.env.NODE_ENV === 'production';
 
-// Garde-fous ENV très tôt (évite "secretOrPrivateKey must have a value")
 if (!process.env.JWT_ACCESS_SECRET) {
   throw new Error('[auth] JWT_ACCESS_SECRET manquant (server/.env)');
 }
@@ -20,7 +19,7 @@ const cookieOptsAccess = {
   httpOnly: true,
   sameSite: 'lax',
   secure: isProd,
-  maxAge: 1000 * 60 * 60, // 1h (le token lui-même expire plus tôt)
+  maxAge: 1000 * 60 * 60,
   path: '/'
 };
 
@@ -28,7 +27,7 @@ const cookieOptsRefresh = {
   httpOnly: true,
   sameSite: 'lax',
   secure: isProd,
-  maxAge: 1000 * 60 * 60 * 24 * 30, // 30j
+  maxAge: 1000 * 60 * 60 * 24 * 30,
   path: '/'
 };
 
@@ -37,20 +36,12 @@ function signAccess(payload) {
     expiresIn: ACCESS_TTL
   });
 }
-
 function signRefresh(payload) {
   return jwt.sign(payload, process.env.JWT_REFRESH_SECRET, {
     expiresIn: REFRESH_TTL
   });
 }
 
-/**
- * POST /api/auth/login
- * body: { email, password }
- * - Cherche le user dans `customers`
- * - Compare password (bcrypt)
- * - Dépose cookies "access" et "refresh"
- */
 export const login = async (req, res, next) => {
   try {
     const { email, password } = req.body || {};
@@ -60,7 +51,7 @@ export const login = async (req, res, next) => {
 
     const pool = await getPool();
     const [rows] = await pool.query(
-      'SELECT id, email, password_hash FROM customers WHERE email = ? LIMIT 1',
+      'SELECT id, email, password_hash, role, first_name, last_name FROM customers WHERE LOWER(email) = LOWER(?) LIMIT 1',
       [email]
     );
 
@@ -74,25 +65,37 @@ export const login = async (req, res, next) => {
       return res.status(401).json({ message: 'Identifiants invalides.' });
     }
 
-    const access = signAccess({ sub: user.id, email: user.email });
+    const access = signAccess({
+      sub: user.id,
+      email: user.email,
+      role: user.role
+    });
     const refresh = signRefresh({ sub: user.id });
 
-    return res
-      .cookie('access', access, cookieOptsAccess)
-      .cookie('refresh', refresh, cookieOptsRefresh)
-      .status(200)
-      .json({ ok: true });
+    res.cookie('access', access, cookieOptsAccess);
+    res.cookie('refresh', refresh, cookieOptsRefresh);
+
+    return res.status(200).json({
+      ok: true,
+      accessToken: access,
+      refreshToken: refresh,
+      user: {
+        id: user.id,
+        email: user.email,
+        role: user.role,
+        first_name: user.first_name,
+        last_name: user.last_name,
+        name:
+          [user.first_name, user.last_name].filter(Boolean).join(' ') ||
+          user.email
+      }
+    });
   } catch (err) {
     console.error('[auth:login] error:', err?.message);
     next(err);
   }
 };
 
-/**
- * POST /api/auth/refresh-token
- * - Lit cookie "refresh"
- * - Vérifie et émet un nouveau "access"
- */
 export const refreshToken = async (req, res) => {
   try {
     const token = req.cookies?.refresh;
@@ -101,40 +104,73 @@ export const refreshToken = async (req, res) => {
     }
 
     const payload = jwt.verify(token, process.env.JWT_REFRESH_SECRET);
-    const access = signAccess({ sub: payload.sub });
+    const userId = payload?.sub;
+    if (userId == null) {
+      return res.status(401).json({ message: 'Refresh invalide ou expiré.' });
+    }
+
+    let role = payload.role;
+    let email = payload.email;
+
+    if (!role) {
+      const pool = await getPool();
+      const [rows] = await pool.query(
+        'SELECT email, role FROM customers WHERE id = ? LIMIT 1',
+        [userId]
+      );
+      if (!rows.length) {
+        return res.status(401).json({ message: 'Refresh invalide ou expiré.' });
+      }
+      role = rows[0].role;
+      if (!email) {
+        email = rows[0].email;
+      }
+    }
+
+    const access = signAccess({
+      sub: userId,
+      email,
+      role
+    });
 
     return res
       .cookie('access', access, cookieOptsAccess)
       .status(200)
-      .json({ ok: true });
+      .json({ ok: true, accessToken: access });
   } catch (err) {
     console.error('[auth:refreshToken] error:', err?.message);
     return res.status(401).json({ message: 'Refresh invalide ou expiré.' });
   }
 };
 
-/**
- * POST /api/auth/logout
- * - Efface les cookies
- */
-export const logout = (req, res) => {
-  return res
-    .clearCookie('access', cookieOptsAccess)
-    .clearCookie('refresh', cookieOptsRefresh)
-    .status(200)
-    .json({ ok: true });
-};
+export async function logout(req, res) {
+  try {
+    res.clearCookie('access', {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: isProd,
+      path: '/'
+    });
+    res.clearCookie('refresh', {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: isProd,
+      path: '/'
+    });
+    res.json({ ok: true, message: 'Déconnecté avec succès' });
+  } catch (err) {
+    console.error('[auth:logout] error:', err?.message);
+    res.status(500).json({ error: 'Erreur lors de la déconnexion' });
+  }
+}
 
-// --- REMPLACER EN ENTIER la fonction register par ceci ---
 export const register = async (req, res, next) => {
   try {
     const raw = req.body || {};
 
-    // J'accepte tes alias côté front, sans casser ton flux actuel
     const firstName = (raw.first_name ?? raw.firstName ?? '').toString().trim();
     const lastName = (raw.last_name ?? raw.lastName ?? '').toString().trim();
 
-    // Si "name" est fourni, on tente de le splitter "Prénom Nom"
     const fullName = (raw.name ?? '').toString().trim();
     let f = firstName,
       l = lastName;
@@ -156,11 +192,9 @@ export const register = async (req, res, next) => {
       ''
     ).toString();
 
-    // is_subscribed: accepte consentLoi25 de ton form, ou is_subscribed
     const isSubscribedRaw = raw.is_subscribed ?? raw.consentLoi25 ?? false;
     const is_subscribed = isSubscribedRaw ? 1 : 0;
 
-    // Champs requis minimaux
     if (!f || !l) {
       return res.status(400).json({ message: 'Prénom et nom sont requis.' });
     }
@@ -171,7 +205,6 @@ export const register = async (req, res, next) => {
       return res.status(400).json({ message: 'Mot de passe requis.' });
     }
 
-    // Validation basique côté back (ton front a déjà la regex stricte)
     if (password.length < 8 || password.length > 16) {
       return res
         .status(400)
@@ -185,7 +218,6 @@ export const register = async (req, res, next) => {
 
     const pool = await getPool();
 
-    // Unicité du courriel
     const [exists] = await pool.query(
       'SELECT id FROM customers WHERE email = ? LIMIT 1',
       [email]
@@ -198,8 +230,7 @@ export const register = async (req, res, next) => {
 
     const password_hash = await bcrypt.hash(password, 10);
 
-    // INSERT adapté à ta structure exacte
-    const role = 'customer'; // ou utilise la valeur par défaut de ta DB si configurée
+    const role = 'customer';
     const [result] = await pool.query(
       `INSERT INTO customers
         (first_name, last_name, email, password_hash, is_subscribed, role, created_at, updated_at, last_login)
@@ -210,8 +241,7 @@ export const register = async (req, res, next) => {
 
     const userId = result.insertId;
 
-    // Auto-login (cookies httpOnly) — identique à /login
-    const access = signAccess({ sub: userId, email });
+    const access = signAccess({ sub: userId, email, role });
     const refresh = signRefresh({ sub: userId });
 
     return res
