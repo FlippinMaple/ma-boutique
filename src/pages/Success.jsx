@@ -4,41 +4,52 @@ import api from '../utils/api';
 import { useCart } from '../CartContext';
 
 const Success = () => {
-  // On récupère les helpers du contexte
   const { clearCart, clearInCheckoutFlag } = useCart();
 
   useEffect(() => {
     const run = async () => {
+      let isPaid = false;
+
       try {
-        // 1) Nettoie le flag "en checkout" dès l'arrivée ici
+        // Clear inCheckout flag after Stripe return
         try {
           clearInCheckoutFlag();
         } catch {
-          /* empty */
+          /* ignore */
         }
 
-        // 2) Vérifie la session Stripe côté serveur (optionnel)
+        // Confirm payment with backend (not only presence of session_id)
         const url = new URL(window.location.href);
         const sessionId = url.searchParams.get('session_id');
+
         if (sessionId) {
           try {
-            await api.get(
-              `/api/payments/verify?session_id=${encodeURIComponent(sessionId)}`
+            const verifyRes = await api.get(
+              `/payments/verify?session_id=${encodeURIComponent(sessionId)}`
             );
+
+            // Expected shape: { paid: true/false, ... }
+            if (verifyRes?.data?.paid === true) {
+              isPaid = true;
+            }
           } catch (e) {
             console.warn('[Success] verify failed', e);
           }
         }
 
-        // 3) Vide le panier (ne bloque pas la redirection si ça échoue)
-        try {
-          const maybe = clearCart?.();
-          if (maybe && typeof maybe.then === 'function') await maybe;
-        } catch {
-          /* noop */
+        // Clear cart only when backend confirms paid
+        if (isPaid) {
+          try {
+            const maybe = clearCart?.();
+            if (maybe && typeof maybe.then === 'function') {
+              await maybe;
+            }
+          } catch {
+            /* ignore */
+          }
         }
       } finally {
-        // 4) Redirige vers la boutique (une seule fois)
+        // Final redirect to shop
         const target = `${window.location.origin}/shop?flash=merci`;
         window.location.replace(target);
       }
