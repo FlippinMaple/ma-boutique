@@ -40,6 +40,9 @@ Les TODO, décisions ouvertes et dettes techniques restent dans `docs/INVENTAIRE
    - [shipping_logs](#shipping_logs--inventaire-18)
 6. [Paiement — événements Stripe](#paiement--evenements-stripe)
    - [stripe_events](#stripe_events--inventaire-120)
+7. [Observabilité](#observabilite)
+   - [cron_logs](#cron_logs--inventaire-121)
+   - [logs](#logs--inventaire-121)
 
 ---
 
@@ -570,3 +573,26 @@ Log brut des webhooks Stripe (paiement, remboursement, etc.). C’est ta boîte 
 
 Connexions logiques supplémentaires
 Pas de FK vers orders, mais on peut relier un event Stripe à une commande en utilisant orders.stripe_session_id / orders.stripe_payment_intent_id qu’on retrouve dans le payload.
+
+---
+
+## Observabilité
+
+### cron_logs ← inventaire §1.21
+
+Colonnes clés
+id PK AUTO_INCREMENT
+type, message, source, created_at
+
+Rôle métier
+Sert à tracer les jobs planifiés (crons, batchs, synchronisations, etc.).
+
+### logs ← inventaire §1.21
+
+Colonnes clés
+id PK AUTO_INCREMENT (bigint unsigned)
+level enum('debug','info','warn','error') INDEX
+message (texte), context (INDEX), details (longtext), created_at (INDEX)
+
+Rôle métier
+Sert de journal applicatif pour debug et audit interne.

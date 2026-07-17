@@ -250,16 +250,8 @@ Sinon : documenter la procédure “comment retrouver la commande associée à u
 
 1.21 cron_logs / logs
 
-cron_logs
-id PK AUTO_INCREMENT
-type, message, source, created_at
-→ Sert à tracer les jobs planifiés (crons, batchs, synchronisations, etc.).
-
-logs
-id PK AUTO_INCREMENT (bigint unsigned)
-level enum('debug','info','warn','error') INDEX
-message (texte), context (INDEX), details (longtext), created_at (INDEX)
-→ Sert de journal applicatif pour debug et audit interne.
+→ Descriptif `cron_logs` migré vers [engineering/DATA_MODEL.md](engineering/DATA_MODEL.md#cron_logs--inventaire-121) (2026-07-16).
+→ Descriptif `logs` migré vers [engineering/DATA_MODEL.md](engineering/DATA_MODEL.md#logs--inventaire-121) (2026-07-16).
 
 TODO
 
