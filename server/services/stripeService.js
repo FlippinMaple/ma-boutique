@@ -62,6 +62,6 @@ export const createStripeCheckoutSession = async ({
     client_reference_id: clientRef,
     metadata: mergedMetadata,
     success_url: `${process.env.FRONTEND_URL}/success?session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${process.env.FRONTEND_URL}/checkout`
+    cancel_url: `${process.env.FRONTEND_URL}/cancel`
   });
 };
