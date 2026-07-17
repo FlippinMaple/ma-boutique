@@ -29,6 +29,10 @@ Les TODO, décisions ouvertes et dettes techniques restent dans `docs/INVENTAIRE
    - [product_images](#product_images--inventaire-111)
    - [product_promotions](#product_promotions--inventaire-112)
    - [reviews](#reviews--inventaire-113)
+4. [Lot 3 — Panier et listes](#lot-3--panier-et-listes)
+   - [carts](#carts--inventaire-13)
+   - [abandoned_carts](#abandoned_carts--inventaire-14)
+   - [wishlists](#wishlists--inventaire-114)
 
 ---
 
@@ -343,3 +347,87 @@ CHECK rating BETWEEN 1 AND 5
 
 Rôle métier
 Avis clients visibles publiquement. Actuellement pas de lien direct vers un customer_id ou order_id, donc pas de preuve “verified purchase”.
+
+---
+
+## Lot 3 — Panier et listes
+
+### carts ← inventaire §1.3
+
+Colonnes clés
+id int unsigned PK AUTO_INCREMENT
+user_id int unsigned NULL
+status enum('open','ordered','abandoned') DEFAULT 'open'
+created_at, updated_at (timestamps avec ON UPDATE)
+
+PK / Index / Contraintes
+PK(id)
+Index(user_id)
+UNIQUE uq_user_open(user_id, status)
+→ garantit qu’un utilisateur n’a pas deux paniers open
+
+Rôle métier
+Panier actif d’un utilisateur connecté ou invité (en combinaison avec abandoned_carts). Passe par les états open → ordered → (ensuite suivi ailleurs).
+
+Connecté à
+abandoned_carts.cart_id → carts.id
+
+Connexions logiques supplémentaires
+carts.user_id devrait référencer customers.id.
+Il n’y a pas de FK en base, donc aujourd’hui on peut techniquement avoir un panier qui pointe vers un user supprimé.
+
+### abandoned_carts ← inventaire §1.4
+
+Colonnes clés
+id PK AUTO_INCREMENT
+cart_id (FK carts.id)
+user_id (FK customers.id)
+anonymous_token (visiteurs pas loggés)
+customer_email (visiteurs pas loggés ou clients déconnectés)
+cart_snapshot longtext
+cart_contents longtext CHECK json_valid(cart_contents)
+source enum('inactivity','beforeunload','manual') DEFAULT 'beforeunload'
+abandoned_at, last_activity, is_recovered, recovered_at, last_email_sent_at
+checkout_session_id (Stripe Checkout), campaign_id (marketing)
+created_at, updated_at
+
+PK / Index / FK
+PK(id)
+Index sur cart_id, user_id, anonymous_token, customer_email, (customer_email,created_at), created_at, last_email_sent_at, checkout_session_id, is_recovered
+FK cart_id → carts.id ON DELETE SET NULL ON UPDATE CASCADE
+FK user_id → customers.id ON DELETE SET NULL ON UPDATE CASCADE
+CHECK json_valid(cart_contents)
+
+Rôle métier
+Machine de retarget: qui a abandonné quoi, quand, à quelle étape du checkout, et est-ce qu’on lui a envoyé des emails.
+
+Connecté à
+carts via cart_id
+customers via user_id
+
+Connexions logiques supplémentaires
+checkout_session_id est un pont vers Stripe, mais pas de FK interne (normal, Stripe vit hors DB).
+
+### wishlists ← inventaire §1.14
+
+Colonnes clés
+id PK AUTO_INCREMENT
+customer_id (FK customers.id, nullable)
+product_id int NOT NULL
+variant_id int NOT NULL FK → product_variants.id
+printful_variant_id bigint(20) NOT NULL
+created_at, updated_at
+
+PK / Index / FK / Contraintes
+PK(id)
+UNIQUE(customer_id,variant_id)
+Index(variant_id)
+FK customer_id → customers.id ON DELETE CASCADE
+FK variant_id → product_variants.id ON DELETE CASCADE
+
+Rôle métier
+Liste de favoris du client. Peut stocker aussi l’ID Printful pour offrir le bon visuel / prix direct.
+
+Connexions logiques supplémentaires
+product_id n’a pas de FK vers products.id. En théorie variant_id suffit pour remonter au produit. Donc product_id est probablement un cache (optimisation : éviter une jointure quand on affiche la wishlist).
+Si c’est un cache, il peut devenir faux.
