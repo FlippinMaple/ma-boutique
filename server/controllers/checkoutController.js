@@ -1,4 +1,3 @@
-// server/controllers/checkoutController.js
 import Stripe from 'stripe';
 import { getPool } from '../db.js';
 import jwt from 'jsonwebtoken';
@@ -74,48 +73,24 @@ function pickCart(raw) {
   return [];
 }
 
-// 🔒 INVARIANTS CRITIQUES CHECKOUT – NE PAS CASSER 🔒
-//
-// Ordre de ce contrôleur = ordre légal/business du shop. Toute modification
-// doit respecter TOUT ce qui suit:
-//
-// 1. On crée d'abord la commande en DB (table `orders`) avec status='pending',
-//    en stockant des SNAPSHOTS IMMUTABLES:
-//      - email_snapshot (email utilisé pour acheter)
-//      - shipping_name_snapshot
-//      - shipping_address_snapshot (adresse d'expédition normalisée au moment du checkout)
-//    + les montants en cents (subtotal_cents, shipping_cents, total_cents).
-//    Ces snapshots ne doivent jamais être modifiés après coup,
-//    même si le user change son profil ou son adresse.
-//
-// 2. On écrit immédiatement toutes les lignes `order_items` pour cette commande,
-//    avec pour chaque item:
-//      - variant_id (ID interne boutique, pas l'ID Printful!)
-//      - printful_variant_id (ID réel de production chez Printful)
-//      - quantity
-//      - price_at_purchase (prix payé en dollars au moment T)
-//      - unit_price_cents (le même prix mais en cents exacts)
-//      - meta (taille/couleur/etc.)
-//    Ces valeurs représentent le contrat de vente. On NE LES RÉÉCRIT JAMAIS.
-//
-// 3. On insère une ligne initiale dans `order_status_history`
-//    (old_status='pending', new_status='pending', changed_at=NOW())
-//    pour commencer la traçabilité légale de cette commande.
-//
-// 4. On crée ensuite la session Stripe (checkout.sessions.create) et
-//    on met à jour `orders.stripe_session_id` avec l'ID retourné par Stripe.
-//    Ça permet au webhook Stripe de retrouver la commande plus tard.
-//
-// 5. On "verrouille" le panier associé (`carts`):
-//      UPDATE carts SET status='ordered' WHERE id = <cartId> AND status='open';
-//    Ça garantit l'unicité métier "un seul panier 'open' par user"
-//    (contrainte uq_user_open). Sans ça, un même user pourrait checkout
-//    plusieurs fois le même panier.
-//
-// Toute modification qui saute une de ces étapes, ou qui change cet ordre,
-// casse la traçabilité légale, ouvre la porte à des litiges Stripe,
-// ou brise l'unicité du panier actif.
-// 🔒 Fin des invariants critiques 🔒
+/*
+██████████████████████████████████████████████████████████████████████
+INVARIANTS CRITIQUES CHECKOUT – NE PAS CASSER
+----------------------------------------------------------------------
+
+1. L'identité utilisateur vient EXCLUSIVEMENT des cookies httpOnly
+   (`access` / `refresh`). On ignore tout "userId" envoyé par le front.
+
+2. On crée la commande en DB AVANT Stripe (snapshots immuables + items).
+
+3. On crée ENSUITE la session Stripe et on lie stripe_session_id à l'ordre.
+   Pas de lock panier ici.
+
+4. Le lock panier + passage à 'paid' est fait UNIQUEMENT par le webhook.
+
+5. Ici: jamais de status 'paid' ni de paid_at.
+██████████████████████████████████████████████████████████████████████
+*/
 
 export const createCheckoutSession = async (req, res) => {
   try {
@@ -126,7 +101,7 @@ export const createCheckoutSession = async (req, res) => {
       });
     }
 
-    // 1. Auth utilisateur / refresh silencieux
+    // 1) Auth via cookies httpOnly
     let userId = null;
     try {
       const access = req.cookies?.access;
@@ -156,7 +131,7 @@ export const createCheckoutSession = async (req, res) => {
     const FRONTEND_URL = sanitizeBaseUrl(req);
     const raw = req.body || {};
     const cart = pickCart(raw);
-    const cartId = raw.cartId || raw.cart_id || null; // <-- IMPORTANT : on récupère le panier courant
+    const cartId = raw.cartId || raw.cart_id || null;
 
     if (!Array.isArray(cart) || cart.length === 0) {
       return res
@@ -164,7 +139,7 @@ export const createCheckoutSession = async (req, res) => {
         .json({ error: 'Panier vide.', code: 'EMPTY_CART' });
     }
 
-    // 2. Génération des line_items Stripe
+    // 2) Construire les line_items Stripe + valider les prix
     const errors = [];
     const line_items = cart.map((it, idx) => {
       const qty = Math.max(1, Number(it.quantity ?? it.qty ?? 1) || 1);
@@ -223,7 +198,7 @@ export const createCheckoutSession = async (req, res) => {
       });
     }
 
-    // 3. Préparation des snapshots et du total
+    // 3) Montants + snapshot adresse/email
     const currency = (process.env.CURRENCY || 'CAD').toUpperCase();
 
     const cartSubtotalCents = line_items.reduce((sum, li) => {
@@ -242,7 +217,6 @@ export const createCheckoutSession = async (req, res) => {
 
     const totalCents = cartSubtotalCents + shippingCents;
 
-    // snapshot adresse
     const shippingNormalized = {
       name: raw?.shipping?.name || '',
       address1: raw?.shipping?.address1 || '',
@@ -255,11 +229,10 @@ export const createCheckoutSession = async (req, res) => {
     const emailSnapshot = (raw.customer_email || '').toLowerCase();
     const customerId = userId || null;
 
-    // 4. Création de la commande "pending" + insertion des order_items
+    // 4) Créer la commande 'pending' (snapshots immuables)
     const pool = await getPool();
     let orderId = null;
 
-    // on insère la commande avec snapshots
     try {
       const [ins] = await pool.query(
         `INSERT INTO orders
@@ -289,119 +262,130 @@ export const createCheckoutSession = async (req, res) => {
       console.warn('[checkout] orders insert skipped:', e?.message);
     }
 
-    // snapshot des articles vendus, pour traçabilité légale
-    if (orderId) {
-      // 1. Construire la liste des identifiants de variantes fournis par le front
-      // On accepte deux cas:
-      // - it.variant_id / it.variantId = ID métier interne (souvent product_variants.variant_id)
-      // - it.db_variant_id (si un jour le front nous envoie directement la PK DB)
-      //
-      // Objectif : mapper vers la vraie PK product_variants.id pour respecter la FK.
-      const requestedVariantRefs = [];
-      for (const it of cart) {
-        const frontVariant =
-          it.db_variant_id || // si jamais on l’a déjà
-          it.variant_id ||
-          it.variantId ||
-          null;
-        if (frontVariant != null) {
-          requestedVariantRefs.push(Number(frontVariant));
-        }
-      }
+    if (!orderId) {
+      return res.status(500).json({
+        error:
+          "Impossible de créer l'ordre 'pending' avec snapshots avant Stripe.",
+        code: 'ORDER_INIT_FAILED'
+      });
+    }
 
-      // 2. Récupérer les infos variantes depuis la DB
-      // On essaie d'être assez tolérant: soit le front nous a déjà donné la PK DB,
-      // soit il nous a donné variant_id (l’ID métier), donc on doit matcher les deux colonnes.
-      //
-      // NOTE: Hostinger ne nous laisse pas faire de vues propres, donc on fait un SELECT manuel.
-      let variantMap = new Map(); // key= "front ref" -> { dbId, printfulId }
-      if (requestedVariantRefs.length > 0) {
-        // enlever doublons pour un IN plus propre
-        const uniqueRefs = [...new Set(requestedVariantRefs)];
+    // 4a) (Optionnel) Associer des IDs d'adresse si fournis
+    const shippingAddressId =
+      raw.shipping_address_id ?? raw.shippingAddressId ?? null;
+    const billingAddressId =
+      raw.billing_address_id ?? raw.billingAddressId ?? null;
 
-        // On va chercher à la fois par product_variants.id ET par product_variants.variant_id
-        // parce qu’on ne sait pas ce que le front nous a vraiment envoyé.
-        const placeholders = uniqueRefs.map(() => '?').join(',');
-
-        const [variantRows] = await pool.query(
+    if (shippingAddressId != null || billingAddressId != null) {
+      try {
+        await pool.query(
           `
+          UPDATE orders
+             SET shipping_address_id = ?,
+                 billing_address_id  = ?
+           WHERE id = ?
+          `,
+          [shippingAddressId ?? null, billingAddressId ?? null, orderId]
+        );
+      } catch (e) {
+        console.warn('[checkout] orders address IDs skipped:', e?.message);
+      }
+    }
+
+    // 4b) Insérer les lignes order_items avec résolution de la vraie PK DB
+    const requestedVariantRefs = [];
+    for (const it of cart) {
+      const frontVariant =
+        it.db_variant_id || it.variant_id || it.variantId || null;
+      if (frontVariant != null) {
+        requestedVariantRefs.push(Number(frontVariant));
+      }
+    }
+
+    const variantMap = new Map();
+    if (requestedVariantRefs.length > 0) {
+      const uniqueRefs = [...new Set(requestedVariantRefs)];
+      const placeholders = uniqueRefs.map(() => '?').join(',');
+
+      const [variantRows] = await pool.query(
+        `
         SELECT
-          id                AS db_id,
-          variant_id        AS biz_id,
+          id                  AS db_id,
+          variant_id          AS biz_id,
           printful_variant_id AS pf_id
         FROM product_variants
         WHERE id IN (${placeholders})
            OR variant_id IN (${placeholders})
       `,
-          [...uniqueRefs, ...uniqueRefs]
-        );
+        [...uniqueRefs, ...uniqueRefs]
+      );
 
-        // Construire le mapping
-        for (const row of variantRows) {
-          // On mappe à la fois db_id et biz_id comme clés possibles
-          if (row.db_id != null) {
-            variantMap.set(Number(row.db_id), {
-              dbId: row.db_id,
-              pfId: row.pf_id
-            });
-          }
-          if (row.biz_id != null) {
-            variantMap.set(Number(row.biz_id), {
-              dbId: row.db_id,
-              pfId: row.pf_id
-            });
-          }
+      for (const row of variantRows) {
+        if (row.db_id != null) {
+          variantMap.set(Number(row.db_id), {
+            dbId: row.db_id,
+            pfId: row.pf_id
+          });
+        }
+        if (row.biz_id != null) {
+          variantMap.set(Number(row.biz_id), {
+            dbId: row.db_id,
+            pfId: row.pf_id
+          });
         }
       }
+    }
 
-      // 3. Insérer chaque ligne order_items en utilisant la vraie clé primaire DB
-      for (const it of cart) {
-        const qty = Math.max(1, Number(it.quantity ?? it.qty ?? 1) || 1);
+    for (const it of cart) {
+      const qty = Math.max(1, Number(it.quantity ?? it.qty ?? 1) || 1);
 
-        // prix payé pour CETTE variante, maintenant (gelé pour l’historique)
-        const unitPriceCents = toCents(
-          it.unit_price ??
-            it.unitPrice ??
-            it.price ??
-            it.amount ??
-            it.subtotal_per_unit ??
-            0
-        );
+      const unitPriceCents = toCents(
+        it.unit_price ??
+          it.unitPrice ??
+          it.price ??
+          it.amount ??
+          it.subtotal_per_unit ??
+          0
+      );
 
-        // identifiant "variante" tel que reçu du front
-        const rawVariantRef =
-          it.db_variant_id || it.variant_id || it.variantId || null;
+      const rawVariantRef =
+        it.db_variant_id || it.variant_id || it.variantId || null;
 
-        const mapEntry =
-          rawVariantRef != null ? variantMap.get(Number(rawVariantRef)) : null;
+      const mapEntry =
+        rawVariantRef != null ? variantMap.get(Number(rawVariantRef)) : null;
 
-        // dbVariantId = la vraie FK vers product_variants.id
-        const dbVariantId = mapEntry?.dbId || null;
+      const dbVariantId = mapEntry?.dbId || null;
 
-        // printful_variant_id:
-        // - priorité: valeur figée qu’on a dans le cart item (source d’or au moment T)
-        // - fallback: ce qu’on a en DB pour cette variante
-        const effectivePrintfulId =
-          it.printful_variant_id ||
-          it.printfulVariantId ||
-          mapEntry?.pfId ||
-          null;
+      const effectivePrintfulId =
+        it.printful_variant_id ||
+        it.printfulVariantId ||
+        mapEntry?.pfId ||
+        null;
 
-        if (!dbVariantId) {
-          console.warn(
-            '[checkout] variant FK manquante pour item:',
-            it,
-            '(pas trouvé dans product_variants)'
-          );
-          // Si on n'a pas de variante valide en DB, c’est grave:
-          // on empêche la commande bancale d'aller plus loin.
-          throw new Error(
-            'VARIANT_NOT_FOUND_FOR_ORDER_ITEM_FK: ' + JSON.stringify(it)
-          );
-        }
+      if (!dbVariantId) {
+        return res.status(400).json({
+          error:
+            'Variante introuvable en base pour un article du panier. Transaction stoppée.',
+          code: 'VARIANT_NOT_FOUND_FOR_ORDER_ITEM_FK',
+          item: it
+        });
+      }
 
-        await pool.query(
-          `INSERT INTO order_items
+      // Storefront metadata snapshot
+      const metaPayload = {
+        name: it.name ?? it.title ?? it.productName ?? null,
+        sku: it.sku ?? null,
+        color: it.color ?? it.colour ?? null,
+        size: it.size ?? null,
+        image: it.image ?? null,
+        images: Array.isArray(it.images) ? it.images.slice(0, 8) : undefined,
+        options: it.options ?? undefined, // ex. { print_side:"front", … }
+        notes: it.notes ?? undefined,
+        source: 'checkoutController' // trace d’origine
+      };
+
+      await pool.query(
+        `INSERT INTO order_items
          (order_id,
           variant_id,
           printful_variant_id,
@@ -411,29 +395,28 @@ export const createCheckoutSession = async (req, res) => {
           meta,
           created_at,
           updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
-          [
-            orderId,
-            dbVariantId, // <-- FK propre vers product_variants.id
-            effectivePrintfulId,
-            qty,
-            (unitPriceCents / 100).toFixed(2),
-            unitPriceCents,
-            it.meta ? JSON.stringify(it.meta) : null
-          ]
-        );
-      }
-
-      // 4. init historique de statut
-      await pool.query(
-        `INSERT INTO order_status_history
-       (order_id, old_status, new_status, changed_at)
-     VALUES (?, ?, ?, NOW())`,
-        [orderId, 'pending', 'pending']
+         VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+        [
+          orderId,
+          dbVariantId,
+          effectivePrintfulId,
+          qty,
+          (unitPriceCents / 100).toFixed(2),
+          unitPriceCents,
+          JSON.stringify(metaPayload)
+        ]
       );
     }
 
-    // 5. Stripe customer enrichi
+    // 4c) Historique initial (init → pending)
+    await pool.query(
+      `INSERT INTO order_status_history
+       (order_id, old_status, new_status, changed_at)
+       VALUES (?, ?, ?, NOW())`,
+      [orderId, 'init', 'pending']
+    );
+
+    // 5) Stripe customer enrichi
     let stripeCustomerId = null;
     try {
       const existing = emailSnapshot
@@ -487,25 +470,21 @@ export const createCheckoutSession = async (req, res) => {
         stripeCustomerId = c.id;
       }
 
-      if (orderId) {
-        await pool.query(
-          `UPDATE orders
-             SET stripe_customer_id = ?
-           WHERE id = ?`,
-          [stripeCustomerId, orderId]
-        );
-      }
+      await pool.query(
+        `UPDATE orders
+         SET stripe_customer_id = ?
+         WHERE id = ?`,
+        [stripeCustomerId, orderId]
+      );
     } catch (e) {
       console.warn('[checkout] stripe customer upsert skipped:', e?.message);
     }
 
-    // 6. Création de la session Stripe
-    // 6. Création de la session Stripe
-    // On prépare les metadata sérialisables pour le webhook Stripe
+    // 6) Création de la session Stripe
     const metadataCartItems = cart.map((it) => ({
-      id: it.variant_id || it.variantId || null, // ID interne boutique
+      id: it.variant_id || it.variantId || null,
       printful_variant_id:
-        it.printful_variant_id || it.printfulVariantId || null, // ID Printful
+        it.printful_variant_id || it.printfulVariantId || null,
       quantity: it.quantity ?? it.qty ?? 1,
       price: Number(
         it.unit_price ??
@@ -537,7 +516,7 @@ export const createCheckoutSession = async (req, res) => {
       shipping_address_collection: { allowed_countries: ['CA', 'US'] },
       customer: stripeCustomerId || undefined,
       customer_update: { address: 'auto', shipping: 'auto', name: 'auto' },
-      client_reference_id: orderId ? String(orderId) : undefined,
+      client_reference_id: String(orderId),
       shipping_options:
         shippingCents > 0
           ? [
@@ -555,7 +534,7 @@ export const createCheckoutSession = async (req, res) => {
           : undefined,
       metadata: {
         source: 'flippin-maple',
-        order_id: orderId ? String(orderId) : '',
+        order_id: String(orderId),
         cart_id: cartId ? String(cartId) : '',
         shipping_rate: JSON.stringify(raw.shipping_rate || {}),
         shipping: JSON.stringify(metadataShipping),
@@ -563,32 +542,64 @@ export const createCheckoutSession = async (req, res) => {
       }
     });
 
-    // 7. Lier la session Stripe à la commande, et marquer le panier "ordered"
-    if (orderId) {
-      await pool.query(
-        `UPDATE orders
-           SET stripe_session_id = ?
-         WHERE id = ?`,
-        [session.id, orderId]
+    // 7) Lier la session Stripe à la commande (+ miroir client_reference_id)
+    await pool.query(
+      `UPDATE orders
+       SET stripe_session_id = ?, client_reference_id = ?
+       WHERE id = ?`,
+      [session.id, String(orderId), orderId]
+    );
+
+    // 8) Journaliser le panier "abandon potentiel"
+    try {
+      if (cartId) {
+        await pool.query(
+          `INSERT INTO abandoned_carts
+           (cart_id,
+            user_id,
+            anonymous_token,
+            customer_email,
+            cart_snapshot,
+            source,
+            abandoned_at,
+            cart_contents,
+            last_activity,
+            is_recovered,
+            recovered_at,
+            last_email_sent_at,
+            checkout_session_id,
+            campaign_id,
+            created_at,
+            updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, NOW(), ?, NOW(), 0, NULL, NULL, ?, NULL, NOW(), NOW())`,
+          [
+            cartId,
+            customerId || null,
+            null,
+            emailSnapshot || null,
+            JSON.stringify({
+              shipping: shippingNormalized,
+              totals: {
+                subtotal_cents: cartSubtotalCents,
+                shipping_cents: shippingCents,
+                total_cents: totalCents,
+                currency
+              }
+            }),
+            'checkout_init',
+            JSON.stringify(cart || []),
+            session.id
+          ]
+        );
+      }
+    } catch (e) {
+      console.warn(
+        '[checkout] abandoned_carts insert skipped:',
+        e?.message || e
       );
     }
 
-    if (cartId) {
-      // passe le panier en ordered pour libérer le verrou uq_user_open
-      try {
-        await pool.query(
-          `UPDATE carts
-             SET status = 'ordered',
-                 updated_at = NOW()
-           WHERE id = ?
-             AND status = 'open'`,
-          [cartId]
-        );
-      } catch (e) {
-        console.warn('[checkout] cart status update skipped:', e?.message);
-      }
-    }
-
+    // Panier laissé 'open' ici. Le webhook le verrouille après paiement.
     return res.status(200).json({ id: session.id, url: session.url });
   } catch (err) {
     console.error('[checkout] create session error:', {
