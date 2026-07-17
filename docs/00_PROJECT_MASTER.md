@@ -2,7 +2,7 @@
 
 **Document maître** · `docs/00_PROJECT_MASTER.md`  
 **Statut :** officiel · permanent · obligatoire en début de session  
-**Dernière révision stratégique :** 2026-07-16  
+**Dernière révision stratégique :** 2026-07-16 (sync doc DOC-006)  
 **Portée :** stratégie, gouvernance, décisions structurantes  
 **Hors portée :** spécifications techniques, détails branding, backlog opérationnel
 
@@ -34,7 +34,7 @@ Il ne remplace pas les documents spécialisés.
 | Décisions stables | Détails évolutifs |
 | Autorité en cas de conflit de vision | Autorité sur leur domaine technique ou créatif |
 
-**Règle d’autorité :** en cas de contradiction entre ce document et tout autre fichier du dépôt (README template, inventaire technique, notes de session, commentaires de code), **cette Constitution prime sur la vision et les décisions structurantes**. Les détails techniques restent dans leurs documents dédiés, une fois créés.
+**Règle d’autorité :** en cas de contradiction entre ce document et tout autre fichier du dépôt (README, inventaire technique, notes de session, commentaires de code), **cette Constitution prime sur la vision et les décisions structurantes**. Les détails techniques restent dans leurs documents spécialisés officiels lorsqu’ils existent.
 
 **Ce que ce document n’est pas :**
 - une encyclopédie du projet ;
@@ -175,9 +175,11 @@ Ces décisions sont considérées **prises**, jusqu’à révocation formelle da
 |---|---|
 | Vision, positionnement, phases, règles fondamentales | Ce document (`00_PROJECT_MASTER.md`) |
 | Identité visuelle, voix, territoire créatif | Futurs docs `docs/brand/` |
-| Architecture logicielle, données, invariants techniques | Futurs docs `docs/engineering/` |
+| Modèle de données (schéma métier) | `docs/engineering/DATA_MODEL.md` |
+| Contraintes d’hébergement / écarts local–prod | `docs/engineering/HOSTING_CONSTRAINTS.md` |
+| Architecture logicielle, invariants techniques | Futurs docs `docs/engineering/` (ex. ARCHITECTURE, INVARIANTS) |
 | Exploitation, incidents, runbooks | Futurs docs `docs/ops/` |
-| Dette et priorités d’exécution | Futur backlog documenté |
+| Dette et priorités d’exécution | Futur backlog documenté ; TODO encore dans l’inventaire |
 
 ### 9.2 Comment faire évoluer cette Constitution
 
@@ -233,9 +235,18 @@ Production / supply chain plus autonomes, distribution élargie, organisation ca
 
 ---
 
-## 11. Carte des documents spécialisés (à venir)
+## 11. Carte des documents
 
-Ces documents **n’existent pas tous encore**. Cette section fixe leur rôle futur pour éviter le chaos documentaire.
+### 11.1 Documents officiels actifs
+
+| Document | Répond à | Rôle |
+|---|---|---|
+| `docs/00_PROJECT_MASTER.md` | Pourquoi | Constitution (ce document) |
+| `README.md` (racine) | Comment démarrer | Entrée du dépôt et index documentaire |
+| `docs/engineering/DATA_MODEL.md` | Quoi en données | **Source officielle du schéma métier** |
+| `docs/engineering/HOSTING_CONSTRAINTS.md` | Quelles limites infra | **Source officielle des contraintes Hostinger / prod** |
+
+### 11.2 Documents prévus (pas encore créés)
 
 | Document prévu | Répond à | Contenu attendu |
 |---|---|---|
@@ -244,16 +255,14 @@ Ces documents **n’existent pas tous encore**. Cette section fixe leur rôle fu
 | `docs/brand/VISUAL_IDENTITY.md` | Comment on paraît | Logo, type, couleur, règles d’usage |
 | `docs/product/CATALOG_RULES.md` | Quoi vendre | Curation, collections, critères d’entrée/sortie |
 | `docs/engineering/ARCHITECTURE.md` | Comment c’est bâti | Front, API, jobs, webhooks, flux |
-| `docs/engineering/DATA_MODEL.md` | Quoi en données | Tables, relations, écarts local/prod |
 | `docs/engineering/INVARIANTS.md` | Quoi ne jamais casser | Checkout, paiement, snapshots, IDs fulfillment |
 | `docs/engineering/SECURITY.md` | Comment on protège | Auth, sessions, consentements |
 | `docs/ops/RUNBOOKS.md` | Quand ça casse | Stripe, commandes pending, sync production |
 | `docs/backlog/TECH_DEBT.md` | Quoi ensuite | Dette priorisée avec statuts |
-| `README.md` (racine) | Comment démarrer | Entrée repo — doit cesser d’être un template Vite |
 
-**Statut actuel des héritages (non officiels comme Constitution) :**
-- `docs/INVENTAIRE_Flippin_Maple.md` — mémoire technique utile, **non** Constitution ; à terme à découper / archiver vers les docs engineering.
-- `README.md` — template Vite ; **non** représentatif du projet.
+### 11.3 Héritages (non officiels)
+
+- `docs/INVENTAIRE_Flippin_Maple.md` — TODO, dette, invariants et flux encore à migrer ; le descriptif structurel des tables pointe vers `DATA_MODEL.md`. **Non** Constitution, **non** source du schéma.
 - `NOTES.md` — note de session ; **non** gouvernance.
 
 ---
@@ -267,6 +276,7 @@ Format : date · ID · décision · raison.
 | 2026-07-16 | C01 | Création de `docs/00_PROJECT_MASTER.md` comme Constitution | Aucun document existant ne pouvait servir de source stratégique officielle |
 | 2026-07-16 | D01–D12 | Adoption des décisions structurantes §8 | Fixer le cap marque premium et le rôle du POD |
 | 2026-07-16 | C02 | Architecture documentaire : un maître + docs spécialisés futurs | Éviter monolithe et dispersion |
+| 2026-07-16 | C03 | `DATA_MODEL.md` et `HOSTING_CONSTRAINTS.md` reconnus sources officielles ; README et §11 synchronisés | Post-migration Profil BDD ; éviter index et carte documentaire obsolètes |
 | 2025-10-21 | H01 | (Héritage) Auth JWT / cookies httpOnly — alignement front/back | Noté historiquement dans `NOTES.md` ; détail technique hors Constitution |
 
 ---
@@ -279,7 +289,8 @@ Avant de modifier le projet, confirmer :
 2. Est-ce que j’expose un fournisseur ou un template là où le client devrait voir la marque ?  
 3. Est-ce que j’ajoute du volume catalogue sans thèse ?  
 4. Est-ce que je contredis une règle §7 ou une décision §8 ?  
-5. Si je prends une décision structurante nouvelle, l’ai-je écrite au §12 ?
+5. Si je touche au schéma, ai-je consulté `docs/engineering/DATA_MODEL.md` (et non l’inventaire) ?  
+6. Si je prends une décision structurante nouvelle, l’ai-je écrite au §12 ?
 
 Si la réponse à (4) est oui → **arrêter** et trancher explicitement avant de coder.
 

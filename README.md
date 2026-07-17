@@ -17,19 +17,21 @@ Le nom technique historique du dépôt (`mon-shop-artofwhere`) est un héritage 
 - Le socle technique e-commerce est en développement.
 - L’identité de marque est en cours de refondation.
 - Le projet n’est pas encore prêt pour un lancement public.
-- La documentation est en cours de restructuration.
+- La documentation est en cours de restructuration : le modèle de données et les contraintes d’hébergement ont une source officielle ; d’autres sujets techniques restent à extraire de l’inventaire.
 
 ---
 
 ## 3. Source de vérité
 
-La source officielle de vérité stratégique est :
+| Sujet | Document |
+|---|---|
+| Stratégie, vision, gouvernance | [docs/00_PROJECT_MASTER.md](docs/00_PROJECT_MASTER.md) |
+| Schéma / modèle de données | [docs/engineering/DATA_MODEL.md](docs/engineering/DATA_MODEL.md) |
+| Contraintes d’hébergement (Hostinger / prod) | [docs/engineering/HOSTING_CONSTRAINTS.md](docs/engineering/HOSTING_CONSTRAINTS.md) |
 
-**[docs/00_PROJECT_MASTER.md](docs/00_PROJECT_MASTER.md)**
+Toute personne ou tout agent IA doit lire la Constitution avant une analyse ou une modification importante du projet.
 
-Toute personne ou tout agent IA doit lire ce document avant une analyse ou une modification importante du projet.
-
-Ce README sert d’entrée au dépôt et d’index documentaire. Il ne remplace pas la Constitution.
+Ce README sert d’entrée au dépôt et d’index documentaire. Il ne remplace ni la Constitution ni les documents techniques officiels.
 
 ---
 
@@ -83,13 +85,22 @@ Le frontend attend le backend sur `http://localhost:4242` (cible du proxy Vite).
 
 ## 6. Documentation actuelle
 
+### Officiels
+
 | Document | Rôle |
 |---|---|
-| [docs/00_PROJECT_MASTER.md](docs/00_PROJECT_MASTER.md) | Constitution stratégique et source de vérité |
-| [docs/INVENTAIRE_Flippin_Maple.md](docs/INVENTAIRE_Flippin_Maple.md) | Inventaire technique historique, actuellement à migrer |
+| [docs/00_PROJECT_MASTER.md](docs/00_PROJECT_MASTER.md) | Constitution stratégique |
+| [docs/engineering/DATA_MODEL.md](docs/engineering/DATA_MODEL.md) | Source officielle du schéma métier |
+| [docs/engineering/HOSTING_CONSTRAINTS.md](docs/engineering/HOSTING_CONSTRAINTS.md) | Contraintes infrastructure / prod |
+
+### Héritages (non officiels)
+
+| Document | Rôle |
+|---|---|
+| [docs/INVENTAIRE_Flippin_Maple.md](docs/INVENTAIRE_Flippin_Maple.md) | Dette, TODO, invariants et flux encore à migrer (le descriptif des tables pointe vers DATA_MODEL) |
 | [NOTES.md](NOTES.md) | Note historique à évaluer |
 
-`docs/INVENTAIRE_Flippin_Maple.md` et `NOTES.md` ne sont **pas** des sources stratégiques officielles.
+L’inventaire et `NOTES.md` ne sont **pas** des sources stratégiques. Pour le schéma, utiliser DATA_MODEL, pas l’inventaire.
 
 ---
 
