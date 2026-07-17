@@ -33,6 +33,10 @@ Les TODO, décisions ouvertes et dettes techniques restent dans `docs/INVENTAIRE
    - [carts](#carts--inventaire-13)
    - [abandoned_carts](#abandoned_carts--inventaire-14)
    - [wishlists](#wishlists--inventaire-114)
+5. [Domaine Commandes](#domaine-commandes)
+   - [orders](#orders--inventaire-15)
+   - [order_items](#order_items--inventaire-16)
+   - [order_status_history](#order_status_history--inventaire-17)
 
 ---
 
@@ -431,3 +435,96 @@ Liste de favoris du client. Peut stocker aussi l’ID Printful pour offrir le bo
 Connexions logiques supplémentaires
 product_id n’a pas de FK vers products.id. En théorie variant_id suffit pour remonter au produit. Donc product_id est probablement un cache (optimisation : éviter une jointure quand on affiche la wishlist).
 Si c’est un cache, il peut devenir faux.
+
+---
+
+## Domaine Commandes
+
+### orders ← inventaire §1.5
+
+Colonnes clés
+id PK AUTO_INCREMENT
+customer_id (FK customers.id, nullable)
+customer_email (copie email utilisée à l’achat)
+shipping_address_id int NULL
+billing_address_id int NULL
+status varchar(50) DEFAULT 'pending'
+total decimal(10,2)
+valeurs en cents: subtotal_cents, shipping_cents, tax_cents, total_cents
+shipping_cost, currency
+Stripe: stripe_session_id, stripe_payment_intent_id, stripe_customer_id, client_reference_id
+Printful: printful_order_id
+
+Snapshots immuables:
+email_snapshot
+shipping_name_snapshot
+shipping_address_snapshot longtext CHECK json_valid(shipping_address_snapshot)
+
+paid_at datetime NULL
+cancelled_at datetime NULL
+created_at, updated_at
+
+PK / Index / FK / CHECK
+PK(id)
+Index(status), Index(customer_email), Index(customer_id)
+FK customer_id → customers.id ON DELETE SET NULL ON UPDATE CASCADE
+CHECK json_valid(shipping_address_snapshot)
+
+Rôle métier
+Commande e-com complète : montant payé, infos d’expédition, association Stripe et Printful. C’est aussi le conteneur légal du “contrat de vente” (adresse livrable, email de facturation, prix exact à la seconde du checkout).
+
+Connecté à
+customers via customer_id
+order_items.order_id → orders.id
+order_status_history.order_id → orders.id
+shipping_logs.order_id → orders.id
+
+Connexions logiques supplémentaires
+shipping_address_id devrait normalement correspondre à une ligne d’addresses de type 'shipping'.
+billing_address_id devrait normalement correspondre à une ligne d’addresses de type 'billing'.
+
+shipping et billing PEUVENT être différentes (cadeau envoyé à quelqu’un d’autre, facture pour l’acheteur). La base permet deux IDs différents mais ne déclare pas de FK.
+
+### order_items ← inventaire §1.6
+
+Colonnes clés
+id PK AUTO_INCREMENT
+order_id int NOT NULL
+variant_id int NOT NULL
+printful_variant_id bigint NOT NULL
+quantity int NOT NULL
+price_at_purchase decimal(8,2) NOT NULL (prix payé à ce moment précis)
+unit_price_cents int NULL
+meta longtext NULL CHECK json_valid(meta)
+created_at datetime DEFAULT current_timestamp()
+updated_at datetime DEFAULT current_timestamp() ON UPDATE current_timestamp()
+
+PK / Index / FK / CHECK
+PK(id)
+Index(order_id), Index(variant_id)
+FK order_id → orders.id (ON DELETE CASCADE)
+FK variant_id → product_variants.id ON DELETE CASCADE
+CHECK json_valid(meta)
+
+Rôle métier
+Snapshot des lignes d’articles d’une commande. On capture le prix payé, la variante, et l’ID d’exécution Printful.
+
+Connecté à
+orders
+product_variants → products
+
+### order_status_history ← inventaire §1.7
+
+Colonnes clés
+id PK AUTO_INCREMENT
+order_id int NOT NULL
+old_status, new_status
+changed_at timestamp DEFAULT current_timestamp()
+
+PK / Index / FK
+PK(id)
+Index(order_id)
+FK order_id → orders.id ON DELETE CASCADE
+
+Rôle métier
+Historique d’état de chaque commande : pending → paid → fulfilled → shipped → etc.
