@@ -85,6 +85,7 @@ app.use(
 );
 
 /* ------- Health ------- */
+app.get('/', (_req, res) => res.json({ ok: true, service: 'flippin-maple-api' }));
 app.get('/health', (_req, res) => res.json({ ok: true }));
 app.get('/readiness', async (req, res) => {
   try {
