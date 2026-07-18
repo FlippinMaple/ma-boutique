@@ -6,8 +6,17 @@ import helmet from 'helmet';
 import compression from 'compression';
 import bodyParser from 'body-parser';
 import cookieParser from 'cookie-parser';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { notFound, errorHandler } from './middlewares/errorHandler.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const distDir = path.join(__dirname, '..', 'dist');
+const distIndex = path.join(distDir, 'index.html');
+const hasDist = fs.existsSync(distIndex);
 
 const app = express();
 
@@ -85,7 +94,12 @@ app.use(
 );
 
 /* ------- Health ------- */
-app.get('/', (_req, res) => res.json({ ok: true, service: 'flippin-maple-api' }));
+// JSON root only when frontend dist is not available (API-only / local backend)
+if (!hasDist) {
+  app.get('/', (_req, res) =>
+    res.json({ ok: true, service: 'flippin-maple-api' })
+  );
+}
 app.get('/health', (_req, res) => res.json({ ok: true }));
 app.get('/readiness', async (req, res) => {
   try {
@@ -146,6 +160,25 @@ app.use('/api/admin', adminRoutes);
 app.use('/api', ordersRoutes);
 app.use('/api', complianceEmailRoutes);
 app.use('/api', paymentsRoutes);
+
+/* ------- Frontend Vite (dist/) pour deploy meme domaine ------- */
+if (hasDist) {
+  app.use(express.static(distDir, { index: false, fallthrough: true }));
+
+  app.use((req, res, next) => {
+    if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+    const p = req.path || '';
+    if (
+      p.startsWith('/api') ||
+      p.startsWith('/webhook') ||
+      p === '/health' ||
+      p === '/readiness'
+    ) {
+      return next();
+    }
+    return res.sendFile(distIndex);
+  });
+}
 
 /* ------- 404 & erreurs ------- */
 app.use(notFound);
