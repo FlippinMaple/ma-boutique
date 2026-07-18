@@ -9,7 +9,8 @@
   "scripts": {
     "start": "node server.js",
     "jobs": "node jobs/index.js",
-    "dev": "node --watch server.js"
+    "dev": "node --watch server.js",
+    "build": "echo No build required for Express backend"
   },
   "dependencies": {
     "archiver": "^7.0.1",
