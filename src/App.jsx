@@ -1,18 +1,16 @@
-import { useState, useEffect, useRef } from 'react';
+// src/App.jsx
+import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   BrowserRouter as Router,
   Routes,
   Route,
-  Navigate
+  Navigate,
+  useNavigate
 } from 'react-router-dom';
-import { jwtDecode } from 'jwt-decode';
 import api from './utils/api';
-import toast, { Toaster } from 'react-hot-toast'; // ✅ toast + composant
+import { Toaster } from 'react-hot-toast';
 import { ModalProvider } from './context/ModalContext';
-import axios from 'axios';
-axios.defaults.withCredentials = true;
 
-// Pages et composants
 import Header from './components/Header';
 import Home from './pages/Home';
 import Shop from './pages/Shop';
@@ -26,138 +24,130 @@ import Dashboard from './pages/Dashboard';
 import Login from './pages/Login';
 import ProtectedCheckoutRoute from './components/ProtectedCheckoutRoute';
 
-function App() {
+import { adminRoutes } from './admin/AdminRoutes';
+
+function AppInner() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [userRole, setUserRole] = useState(null);
+  const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // 🔒 Gardes anti-doublons (React 18 StrictMode / effets concurrents)
   const initRanRef = useRef(false);
-  const refreshingRef = useRef(false);
+  const navigate = useNavigate();
 
-  // 🔁 Rafraîchir le token d'accès sans dupliquer les toasts / requêtes
-  const refreshAccessToken = async (refreshToken) => {
-    if (refreshingRef.current) return null;
-    refreshingRef.current = true;
-    try {
-      if (!refreshToken) throw new Error('No refresh token');
-      const { data } = await api.post('/api/auth/refresh-token', {
-        refreshToken
-      });
-      localStorage.setItem('authToken', data.accessToken);
-
+  const applyUser = useCallback((nextUser) => {
+    if (nextUser) {
       setIsAuthenticated(true);
-      toast.success('Session renouvelée ✔️', { id: 'refresh-ok' });
-      return data.accessToken;
-    } catch (error) {
-      const status = error?.response?.status;
-      if (status === 401) {
-        // token absent/expiré/invalide → logout doux
-        toast.error('Session expirée. Connecte-toi de nouveau.', {
-          id: 'session-expired'
-        });
-      } else {
-        toast.error('Erreur serveur. Réessaie plus tard.', {
-          id: 'refresh-fail'
-        });
-      }
+      setUser(nextUser);
+      setUserRole(nextUser.role || null);
+    } else {
       setIsAuthenticated(false);
-      return null;
-    } finally {
-      refreshingRef.current = false;
+      setUser(null);
+      setUserRole(null);
     }
-  };
+  }, []);
 
-  // 🔐 Initialisation auth (protégée contre le double-run en dev)
+  const fetchWhoami = useCallback(async () => {
+    const { data } = await api.get('/auth/whoami');
+    return data?.user || null;
+  }, []);
+
   useEffect(() => {
-    if (initRanRef.current) return; // évite double exécution en dev
+    if (initRanRef.current) return;
     initRanRef.current = true;
 
     (async () => {
       try {
-        const token = localStorage.getItem('authToken');
-        const refreshToken = localStorage.getItem('refreshToken');
-
-        if (token) {
-          let valid = false;
+        try {
+          const u = await fetchWhoami();
+          applyUser(u);
+        } catch (err) {
+          if (err?.response?.status !== 401) {
+            applyUser(null);
+            return;
+          }
           try {
-            const decoded = jwtDecode(token);
-            valid = decoded?.exp * 1000 > Date.now();
+            await api.post('/auth/refresh-token');
+            const u = await fetchWhoami();
+            applyUser(u);
           } catch {
-            valid = false;
+            applyUser(null);
           }
-
-          if (valid) {
-            setIsAuthenticated(true);
-          } else if (refreshToken) {
-            await refreshAccessToken(refreshToken);
-          } else {
-            setIsAuthenticated(false);
-            toast.error('Session expirée. Connecte-toi de nouveau.', {
-              id: 'session-expired'
-            });
-          }
-        } else {
-          setIsAuthenticated(false);
         }
-      } catch (error) {
-        console.error('Init auth error:', error);
-        setIsAuthenticated(false);
       } finally {
         setLoading(false);
       }
     })();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [applyUser, fetchWhoami]);
 
-  const handleLogout = () => {
-    localStorage.removeItem('authToken');
-    localStorage.removeItem('refreshToken');
-    setIsAuthenticated(false);
-    window.location.href = '/login';
+  const handleAuthSuccess = useCallback(
+    (nextUser) => {
+      applyUser(nextUser || null);
+    },
+    [applyUser]
+  );
+
+  const handleLogout = async () => {
+    try {
+      await api.post('/auth/logout');
+    } catch {
+      /* ignore */
+    } finally {
+      applyUser(null);
+      navigate('/login', { replace: true });
+    }
   };
 
   if (loading) return <div>Chargement...</div>;
 
   return (
+    <>
+      <Header
+        isAuthenticated={isAuthenticated}
+        onLogout={handleLogout}
+        userRole={userRole}
+        user={user}
+      />
+      <Toaster position="top-right" />
+      <Routes>
+        <Route path="/" element={<Home />} />
+        <Route path="/register" element={<Register />} />
+        <Route
+          path="/login"
+          element={<Login onAuthSuccess={handleAuthSuccess} />}
+        />
+        <Route
+          path="/dashboard"
+          element={isAuthenticated ? <Dashboard /> : <Navigate to="/login" />}
+        />
+        <Route path="/shop" element={<Shop />} />
+        <Route
+          path="/checkout"
+          element={
+            <ProtectedCheckoutRoute>
+              <Checkout />
+            </ProtectedCheckoutRoute>
+          }
+        />
+        <Route path="/checkout/success" element={<Success />} />
+        <Route path="/checkout/cancel" element={<Cancel />} />
+        <Route path="/success" element={<Success />} />
+        <Route path="/cancel" element={<Cancel />} />
+        <Route path="/product/:id" element={<ProductDetail />} />
+        <Route path="/preview-order" element={<PreviewOrder />} />
+        {adminRoutes}
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </>
+  );
+}
+
+export default function App() {
+  return (
     <ModalProvider>
       <Router>
-        <Header onLogout={handleLogout} />
-        {/* ✅ Un seul Toaster global */}
-        <Toaster position="top-right" />
-        <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/register" element={<Register />} />
-          <Route path="/login" element={<Login />} />
-
-          <Route
-            path="/dashboard"
-            element={isAuthenticated ? <Dashboard /> : <Navigate to="/login" />}
-          />
-
-          <Route path="/shop" element={<Shop />} />
-
-          <Route
-            path="/checkout"
-            element={
-              <ProtectedCheckoutRoute>
-                <Checkout />
-              </ProtectedCheckoutRoute>
-            }
-          />
-
-          {/* ✅ Routes Stripe callback officielles */}
-          <Route path="/checkout/success" element={<Success />} />
-          <Route path="/checkout/cancel" element={<Cancel />} />
-
-          {/* ♻️ Aliases legacy (au cas où ton front appelle encore /success direct) */}
-          <Route path="/success" element={<Success />} />
-          <Route path="/cancel" element={<Cancel />} />
-
-          <Route path="/product/:id" element={<ProductDetail />} />
-          <Route path="/preview-order" element={<PreviewOrder />} />
-        </Routes>
+        <AppInner />
       </Router>
     </ModalProvider>
   );
 }
-
-export default App;

@@ -1,26 +1,157 @@
 // server/controllers/adminController.js
 import { logError } from '../utils/logger.js';
 
-export async function adminDebug(req, res) {
+/** GET /api/admin/health/paid-without-items */
+export async function healthPaidWithoutItems(req, res) {
   const db = req.app.locals.db;
-
   try {
-    const [orders] = await db.query(
-      'SELECT * FROM orders ORDER BY id DESC LIMIT 10'
-    );
-    const [items] = await db.query(
-      'SELECT * FROM order_items ORDER BY id DESC LIMIT 10'
-    );
-    const [statuses] = await db.query(
-      'SELECT * FROM order_status_history ORDER BY id DESC LIMIT 10'
-    );
-    res.json({ orders, order_items: items, order_status_history: statuses });
+    const [rows] = await db.query(`
+      SELECT o.id, o.customer_email, o.total, o.currency, o.created_at
+      FROM orders o
+      LEFT JOIN order_items oi ON oi.order_id = o.id
+      WHERE o.status = 'paid'
+      GROUP BY o.id
+      HAVING COUNT(oi.id) = 0
+      ORDER BY o.created_at DESC
+      LIMIT 100
+    `);
+    return res.json(rows);
   } catch (err) {
-    await logError(
-      `❌ Erreur récupération debug: ${err?.message || err}`,
-      'admin',
-      err
+    await logError(err, 'admin.healthPaidWithoutItems');
+    return res.status(500).json({ error: 'Admin health failed' });
+  }
+}
+
+/** GET /api/admin/orders?q=&status=&page=&pageSize= */
+export async function listOrders(req, res) {
+  const db = req.app.locals.db;
+  try {
+    const q = String(req.query.q || '').trim();
+    const status = String(req.query.status || '').trim();
+    const page = Math.max(1, Number(req.query.page || 1));
+    const pageSize = Math.min(
+      100,
+      Math.max(1, Number(req.query.pageSize || 25))
     );
-    res.status(500).json({ error: 'Erreur debug.' });
+    const offset = (page - 1) * pageSize;
+
+    const where = [];
+    const params = [];
+    if (status) {
+      where.push(`o.status = ?`);
+      params.push(status);
+    }
+    if (q) {
+      where.push(`(o.customer_email LIKE ? OR o.id = ?)`);
+      params.push(`%${q}%`, Number.isFinite(Number(q)) ? Number(q) : -1);
+    }
+    const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
+    const [rows] = await db.query(
+      `
+      SELECT o.id, o.status, o.total, o.currency, o.customer_email, o.created_at,
+             COUNT(oi.id) AS items_count
+      FROM orders o
+      LEFT JOIN order_items oi ON oi.order_id = o.id
+      ${whereSql}
+      GROUP BY o.id
+      ORDER BY o.id DESC
+      LIMIT ? OFFSET ?
+      `,
+      [...params, pageSize, offset]
+    );
+
+    const [[{ cnt }]] = await db.query(
+      `SELECT COUNT(*) AS cnt FROM orders o ${whereSql}`,
+      params
+    );
+
+    return res.json({ page, pageSize, total: cnt, results: rows });
+  } catch (err) {
+    await logError(err, 'admin.listOrders');
+    return res.status(500).json({ error: 'Admin orders failed' });
+  }
+}
+
+/** GET /api/admin/orders/:id */
+export async function getOrderDetail(req, res) {
+  const db = req.app.locals.db;
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ error: 'Bad id' });
+
+    const [[order]] = await db.query(`SELECT * FROM orders WHERE id = ?`, [id]);
+    if (!order) return res.status(404).json({ error: 'Not found' });
+
+    const [items] = await db.query(
+      `
+      SELECT
+        oi.*,
+        pv.variant_id AS variant_business_id
+      FROM order_items oi
+      LEFT JOIN product_variants pv ON pv.id = oi.variant_id
+      WHERE oi.order_id = ?
+      ORDER BY oi.id ASC
+      `,
+      [id]
+    );
+
+    const [history] = await db.query(
+      `SELECT old_status, new_status, changed_at FROM order_status_history WHERE order_id = ? ORDER BY changed_at ASC`,
+      [id]
+    );
+
+    return res.json({ order, items, history });
+  } catch (err) {
+    await logError(err, 'admin.getOrderDetail');
+    return res.status(500).json({ error: 'Admin order detail failed' });
+  }
+}
+
+/** GET /api/admin/stripe-events?type=&q=&page=&pageSize= */
+export async function listStripeEvents(req, res) {
+  const db = req.app.locals.db;
+  try {
+    const type = String(req.query.type || '').trim();
+    const q = String(req.query.q || '').trim();
+    const page = Math.max(1, Number(req.query.page || 1));
+    const pageSize = Math.min(
+      100,
+      Math.max(1, Number(req.query.pageSize || 25))
+    );
+    const offset = (page - 1) * pageSize;
+
+    const where = [];
+    const params = [];
+    if (type) {
+      where.push(`event_type = ?`);
+      params.push(type);
+    }
+    if (q) {
+      where.push(`(event_id = ? OR order_id = ?)`);
+      params.push(q, Number.isFinite(Number(q)) ? Number(q) : -1);
+    }
+    const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
+    const [rows] = await db.query(
+      `
+      SELECT event_id, event_type, created_at, order_id
+      FROM stripe_events
+      ${whereSql}
+      ORDER BY created_at DESC
+      LIMIT ? OFFSET ?
+      `,
+      [...params, pageSize, offset]
+    );
+
+    const [[{ cnt }]] = await db.query(
+      `SELECT COUNT(*) AS cnt FROM stripe_events ${whereSql}`,
+      params
+    );
+
+    return res.json({ page, pageSize, total: cnt, results: rows });
+  } catch (err) {
+    await logError(err, 'admin.listStripeEvents');
+    return res.status(500).json({ error: 'Admin stripe events failed' });
   }
 }

@@ -111,7 +111,8 @@ const [
   { default: inventoryRoutes },
   { default: shippingRoutes },
   { default: ordersRoutes },
-  { default: complianceEmailRoutes }
+  { default: complianceEmailRoutes },
+  { default: paymentsRoutes }
 ] = await Promise.all([
   import('./routes/webhookRoutes.js'),
   import('./routes/abandonedCartRoutes.js'),
@@ -123,7 +124,8 @@ const [
   import('./routes/inventoryRoutes.js'),
   import('./routes/shippingRoutes.js'),
   import('./routes/ordersRoutes.js'),
-  import('./routes/complianceEmailRoutes.js')
+  import('./routes/complianceEmailRoutes.js'),
+  import('./routes/paymentsRoutes.js')
 ]);
 
 // Abandoned cart (si la route gère son propre parser, elle le fait en interne)
@@ -142,6 +144,7 @@ app.use('/api/shipping', shippingRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api', ordersRoutes);
 app.use('/api', complianceEmailRoutes);
+app.use('/api', paymentsRoutes);
 
 /* ------- 404 & erreurs ------- */
 app.use(notFound);

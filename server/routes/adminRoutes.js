@@ -1,9 +1,20 @@
+// server/routes/adminRoutes.js
 import express from 'express';
-import { adminDebug } from '../controllers/adminController.js';
+import { requireRole } from '../middlewares/requireRole.js';
+import {
+  healthPaidWithoutItems,
+  listOrders,
+  getOrderDetail,
+  listStripeEvents
+} from '../controllers/adminController.js';
 
 const router = express.Router();
 
-// final: GET /api/admin/debug-orders
-router.get('/debug-orders', adminDebug);
+router.use(requireRole('admin')); // Protect all admin routes
+
+router.get('/health/paid-without-items', healthPaidWithoutItems);
+router.get('/orders', listOrders);
+router.get('/orders/:id', getOrderDetail);
+router.get('/stripe-events', listStripeEvents);
 
 export default router;

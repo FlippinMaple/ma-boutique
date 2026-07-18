@@ -1,7 +1,7 @@
 import { useCart } from '../CartContext';
-import api from '../utils/api'; // chemin corrigé
+import api from '../utils/api';
 import { useNavigate } from 'react-router-dom';
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import ShippingOptions from '../components/ShippingOptions';
 import toast from 'react-hot-toast';
 import { formatEmail, capitalizeSmart } from '../utils/textHelpers';
@@ -13,8 +13,8 @@ const Checkout = () => {
     removeFromCart,
     clearCart,
     addToCart,
-    shouldSuppressAbandonedLog, // NEW
-    setInCheckoutFlag, // NEW
+    shouldSuppressAbandonedLog,
+    setInCheckoutFlag,
     updateQuantity
   } = useCart();
 
@@ -27,11 +27,17 @@ const Checkout = () => {
     country: '',
     zip: ''
   });
+
+  // Estimate cartId from first cart line if no global cartId
+  const cartId =
+    cart?.[0]?.cart_id || cart?.[0]?.cartId || cart?.[0]?.cart_id_db || null;
+
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const [shippingRate, setShippingRate] = useState(null);
   const hasRedirected = useRef(false);
 
+  // Reset shippingRate when address changes
   useEffect(() => {
     setShippingRate(null);
   }, [
@@ -43,6 +49,7 @@ const Checkout = () => {
     shipping.zip
   ]);
 
+  // Empty cart -> redirect to shop
   useEffect(() => {
     if (!Array.isArray(cart) || cart.length === 0) {
       hasRedirected.current = true;
@@ -53,25 +60,26 @@ const Checkout = () => {
     }
   }, [cart, navigate]);
 
+  // Abandoned checkout tracking
   useEffect(() => {
-    // 🔧 Nettoie un flag éventuel si on revient sur /checkout après une annulation Stripe
+    // Clear inCheckout when landing on /checkout (back from Stripe)
     try {
       localStorage.removeItem('inCheckout');
     } catch {
-      /* empty */
+      /* no-op */
     }
 
     const API_BASE =
       (import.meta.env.VITE_SERVER_URL &&
         import.meta.env.VITE_SERVER_URL.replace(/\/+$/, '')) ||
-      window.location.origin; // fallback même domaine
+      window.location.origin;
 
     let sent = false;
 
     const sendAbandon = () => {
       if (sent) return;
 
-      // ✅ RE-vérifie le flag au moment de quitter (pas en closure)
+      // Skip abandoned log when payment redirect flag is set
       if (
         typeof shouldSuppressAbandonedLog === 'function' &&
         shouldSuppressAbandonedLog()
@@ -79,7 +87,6 @@ const Checkout = () => {
         return;
       }
 
-      // Email tolérant (fallback si formatEmail rend vide)
       const raw = (userEmail || '').trim();
       const emailClean =
         (typeof formatEmail === 'function' && formatEmail(raw)) ||
@@ -98,22 +105,24 @@ const Checkout = () => {
             variant_id,
             printful_variant_id
           })
-        ), // <= compact pour éviter la limite ~64KB
+        ),
         reason: 'beforeunload'
       };
+
       const body = JSON.stringify(payload);
       const url = `${API_BASE}/api/log-abandoned-cart`;
 
       try {
         if (navigator.sendBeacon) {
-          // text/plain: super compatible pendant l'unload
-          const blob = new Blob([body], { type: 'text/plain;charset=UTF-8' });
+          const blob = new Blob([body], {
+            type: 'text/plain;charset=UTF-8'
+          });
           const ok = navigator.sendBeacon(url, blob);
           sent = ok;
           if (ok) return;
         }
 
-        // Fallback: fetch keepalive (no credentials)
+        // fallback fetch keepalive
         fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -127,7 +136,6 @@ const Checkout = () => {
       }
     };
 
-    // Déclencheurs robustes
     const onBeforeUnload = () => sendAbandon();
     const onPageHide = () => sendAbandon();
     const onVisibilityChange = () => {
@@ -138,7 +146,7 @@ const Checkout = () => {
     window.addEventListener('pagehide', onPageHide);
     document.addEventListener('visibilitychange', onVisibilityChange);
 
-    // 🔎 TEST MANUEL sans quitter la page
+    // Optional manual debug hook
     window.__abandonTest = sendAbandon;
 
     return () => {
@@ -157,7 +165,7 @@ const Checkout = () => {
     ? cart.reduce((sum, item) => sum + item.price * item.quantity, 0)
     : 0;
 
-  const validateCheckout = () => {
+  const validateCheckout = useCallback(() => {
     if (
       !userEmail ||
       !shipping.name ||
@@ -167,17 +175,17 @@ const Checkout = () => {
       !shipping.country ||
       !shipping.zip
     ) {
-      toast.error('Tous les champs de livraison doivent être remplis.');
+      toast.error('Tous les champs de livraison doivent etre remplis.');
       return false;
     }
     if (!shippingRate) {
-      toast.error('Veuillez sélectionner un mode de livraison.');
+      toast.error('Veuillez selectionner un mode de livraison.');
       return false;
     }
     return true;
-  };
+  }, [userEmail, shipping, shippingRate]);
 
-  const handleCheckout = async () => {
+  const handleCheckout = useCallback(async () => {
     if (!validateCheckout()) return;
 
     const confirmed = window.confirm('Confirmer le paiement ?');
@@ -195,11 +203,13 @@ const Checkout = () => {
         color: item.color,
         size: item.size,
         printful_variant_id: item.printful_variant_id,
-        variant_id: item.variant_id
+        variant_id: item.variant_id,
+        db_variant_id: item.db_variant_id
       }));
 
       const payload = {
-        items: preparedItems,
+        cartItems: preparedItems,
+        cartId: cartId || null,
         customer_email: formatEmail(userEmail),
         shipping: {
           ...shipping,
@@ -210,15 +220,20 @@ const Checkout = () => {
           : null
       };
 
-      const response = await api.post('/create-checkout-session', payload);
+      // api.baseURL already includes /api
+      const response = await api.post('/create-checkout-session', payload, {
+        withCredentials: true
+      });
 
       if (response.data?.url) {
         toast.success('Redirection vers Stripe...');
-        // === UPDATED: utilise le helper du contexte (évite les faux logs)
+        // Mark checkout-in-progress before Stripe redirect
         setInCheckoutFlag();
+
+        // Do not clearCart here
         window.location.href = response.data.url;
       } else {
-        toast.error('Erreur : aucune URL de paiement reçue.');
+        toast.error('Erreur : aucune URL de paiement recue.');
       }
     } catch (err) {
       console.error(
@@ -229,11 +244,20 @@ const Checkout = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [
+    cart,
+    cartId,
+    setInCheckoutFlag,
+    shipping,
+    shippingRate,
+    userEmail,
+    validateCheckout
+  ]);
 
   return (
     <div style={{ padding: '2rem', maxWidth: '500px', margin: 'auto' }}>
       <h2>Panier</h2>
+
       <div style={{ marginBottom: '1rem' }}>
         <label htmlFor="email">Adresse courriel :</label>
         <input
@@ -284,24 +308,24 @@ const Checkout = () => {
           style={{ marginBottom: 6, width: '100%' }}
           required
         >
-          <option value="">Sélectionner un pays</option>
+          <option value="">Selectionner un pays</option>
           <option value="CA">Canada</option>
-          <option value="US">États-Unis</option>
+          <option value="US">Etats-Unis</option>
         </select>
+
         <select
           value={shipping.state}
           onChange={(e) => setShipping({ ...shipping, state: e.target.value })}
           style={{ marginBottom: 6, width: '100%' }}
           required
         >
-          <option value="">Sélectionner une province ou un état</option>
+          <option value="">Selectionner une province ou un etat</option>
           {shipping.country === 'CA' &&
             provincesCA.map((prov) => (
               <option key={prov.code} value={prov.code}>
                 {prov.name}
               </option>
             ))}
-
           {shipping.country === 'US' &&
             statesUS.map((state) => (
               <option key={state.code} value={state.code}>
@@ -309,6 +333,7 @@ const Checkout = () => {
               </option>
             ))}
         </select>
+
         <input
           placeholder="Code postal"
           value={shipping.zip}
@@ -335,36 +360,36 @@ const Checkout = () => {
           />
           <div>
             <strong>{capitalizeSmart(item.name)}</strong>
+
             <div className="shop-quantity-controls">
               <button
                 className="shop-qty-btn"
                 onClick={() => updateQuantity(item.id, item.quantity - 1)}
-                disabled={item.quantity <= 1} // évite de tomber à 0 d'un coup
+                disabled={item.quantity <= 1}
                 title={
-                  item.quantity <= 1 ? 'Quantité minimale atteinte' : 'Diminuer'
+                  item.quantity <= 1 ? 'Quantite minimale atteinte' : 'Diminuer'
                 }
               >
-                ➖
+                -
               </button>
 
               <span className="shop-qty-count">{item.quantity}</span>
 
               <button
                 className="shop-qty-btn"
-                onClick={() => addToCart({ ...item, quantity: 1 })} // +1 conserve ton logique
+                onClick={() => addToCart({ ...item, quantity: 1 })}
                 title="Augmenter"
               >
-                ➕
+                +
               </button>
 
-              {/* Optionnel : un bouton dédié pour supprimer l'article */}
               <button
                 className="shop-qty-btn"
                 onClick={() => removeFromCart(item.id)}
                 title="Supprimer l'article"
                 style={{ marginLeft: 8 }}
               >
-                🗑️
+                x
               </button>
             </div>
 
@@ -400,7 +425,7 @@ const Checkout = () => {
         </p>
       )}
       <p>
-        <strong>Total à payer :</strong>{' '}
+        <strong>Total a payer :</strong>{' '}
         {(total + (shippingRate ? parseFloat(shippingRate.rate) : 0)).toFixed(
           2
         )}{' '}
@@ -408,6 +433,7 @@ const Checkout = () => {
       </p>
 
       <button onClick={clearCart}>Vider le panier</button>
+
       <button
         onClick={handleCheckout}
         disabled={loading || !shippingRate}
@@ -428,7 +454,7 @@ const Checkout = () => {
 
       {loading && (
         <div style={{ marginTop: '1rem', color: '#007bff' }}>
-          🔄 Redirection vers Stripe...
+          Redirection vers Stripe...
         </div>
       )}
     </div>
