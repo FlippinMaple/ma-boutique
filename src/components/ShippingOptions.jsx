@@ -20,7 +20,7 @@ const ShippingOptions = ({ cartItems, shippingInfo, onShippingSelected }) => {
 
       try {
         const response = await axios.post(
-          'http://localhost:4242/api/shipping/rates',
+          '/api/shipping/rates',
           {
             recipient: shippingInfo,
             items: cartItems.map((item) => ({

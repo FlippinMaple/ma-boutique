@@ -9,7 +9,7 @@ const PreviewOrder = () => {
   useEffect(() => {
     const timer = setTimeout(() => {
       if (cartItems.length > 0 && userEmail) {
-        axios.post('http://localhost:4242/api/log-abandoned-cart', {
+        axios.post('/api/log-abandoned-cart', {
           customer_email: userEmail,
           cart_contents: JSON.stringify(cartItems)
         });
