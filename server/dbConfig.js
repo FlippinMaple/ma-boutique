@@ -1,10 +1,42 @@
 // server/dbConfig.js
+
+function normalizeEnvValue(value) {
+  if (typeof value !== 'string') return value;
+
+  let v = value.trim();
+
+  // Strip common invisible / zero-width chars around pasted Hostinger values
+  v = v.replace(/^[\u200B-\u200D\uFEFF\u00A0]+|[\u200B-\u200D\uFEFF\u00A0]+$/g, '');
+  v = v.trim();
+
+  if (
+    (v.startsWith('"') && v.endsWith('"') && v.length >= 2) ||
+    (v.startsWith("'") && v.endsWith("'") && v.length >= 2)
+  ) {
+    v = v.slice(1, -1).trim();
+  }
+
+  return v;
+}
+
 export function resolveDbConfig() {
   // Compat: accepte encore MYSQL_* mais cible DB_*
-  const host = process.env.MYSQL_HOST || process.env.MYSQLHOST || process.env.DB_HOST;
-  const user = process.env.MYSQL_USER || process.env.MYSQLUSER || process.env.DB_USER;
-  const password = process.env.MYSQL_PASSWORD || process.env.MYSQLPASSWORD || process.env.DB_PASSWORD;
-  const database = process.env.MYSQL_DATABASE || process.env.MYSQLDATABASE || process.env.DB_NAME;
+  const host = normalizeEnvValue(
+    process.env.MYSQL_HOST || process.env.MYSQLHOST || process.env.DB_HOST
+  );
+  const user = normalizeEnvValue(
+    process.env.MYSQL_USER || process.env.MYSQLUSER || process.env.DB_USER
+  );
+  const password = normalizeEnvValue(
+    process.env.MYSQL_PASSWORD ||
+      process.env.MYSQLPASSWORD ||
+      process.env.DB_PASSWORD
+  );
+  const database = normalizeEnvValue(
+    process.env.MYSQL_DATABASE ||
+      process.env.MYSQLDATABASE ||
+      process.env.DB_NAME
+  );
 
   console.warn('DB config selected:', {
     host,
