@@ -1,10 +1,10 @@
 // server/dbConfig.js
 export function resolveDbConfig() {
   // Compat: accepte encore MYSQL_* mais cible DB_*
-  const host = process.env.MYSQL_HOST || process.env.DB_HOST;
-  const user = process.env.MYSQL_USER || process.env.DB_USER;
-  const password = process.env.MYSQL_PASSWORD || process.env.DB_PASSWORD;
-  const database = process.env.MYSQL_DATABASE || process.env.DB_NAME;
+  const host = process.env.MYSQL_HOST || process.env.MYSQLHOST || process.env.DB_HOST;
+  const user = process.env.MYSQL_USER || process.env.MYSQLUSER || process.env.DB_USER;
+  const password = process.env.MYSQL_PASSWORD || process.env.MYSQLPASSWORD || process.env.DB_PASSWORD;
+  const database = process.env.MYSQL_DATABASE || process.env.MYSQLDATABASE || process.env.DB_NAME;
 
   if (!host || !user || !password || !database) {
     // aide debug si ça re-casse
