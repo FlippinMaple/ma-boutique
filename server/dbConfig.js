@@ -9,11 +9,25 @@ function normalizeEnvValue(value) {
   v = v.replace(/^[\u200B-\u200D\uFEFF\u00A0]+|[\u200B-\u200D\uFEFF\u00A0]+$/g, '');
   v = v.trim();
 
-  if (
-    (v.startsWith('"') && v.endsWith('"') && v.length >= 2) ||
-    (v.startsWith("'") && v.endsWith("'") && v.length >= 2)
-  ) {
-    v = v.slice(1, -1).trim();
+  // Outer wrappers only (do not touch quotes inside the value)
+  const wrappers = [
+    ['\\"', '\\"'], // escaped straight doubles: \"...\"
+    ['"', '"'], // straight doubles
+    ["'", "'"], // straight singles
+    ['\u201C', '\u201D'], // curly doubles “...”
+    ['\u00AB', '\u00BB'], // guillemets «...»
+    ['\u2018', '\u2019'] // curly singles ‘...’
+  ];
+
+  for (const [open, close] of wrappers) {
+    if (
+      v.length >= open.length + close.length &&
+      v.startsWith(open) &&
+      v.endsWith(close)
+    ) {
+      v = v.slice(open.length, v.length - close.length).trim();
+      break;
+    }
   }
 
   return v;
