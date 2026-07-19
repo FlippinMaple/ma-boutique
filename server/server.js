@@ -36,9 +36,12 @@ const HOST = process.env.HOST || '0.0.0.0';
     console.log('Connexion DB etablie');
   } catch (err) {
     console.warn('DB indisponible, fallback fichier/console pour les logs');
-    if (process.env.NODE_ENV !== 'production') {
-      console.warn(err?.message || err);
-    }
+    console.warn('DB error detail:', {
+      code: err?.code,
+      errno: err?.errno,
+      sqlState: err?.sqlState,
+      message: err?.message
+    });
   }
 
   if (db) app.locals.db = db;
