@@ -41,12 +41,30 @@ export function resolveDbConfig() {
   const user = normalizeEnvValue(
     process.env.MYSQL_USER || process.env.MYSQLUSER || process.env.DB_USER
   );
-  const password = normalizeEnvValue(
-    process.env.DB_PASSWORD_OVERRIDE ||
-      process.env.MYSQL_PASSWORD ||
-      process.env.MYSQLPASSWORD ||
-      process.env.DB_PASSWORD
-  );
+  let passwordSource = null;
+  let rawPassword;
+
+  if (process.env.DB_PASSWORD_B64) {
+    passwordSource = 'DB_PASSWORD_B64';
+    rawPassword = Buffer.from(
+      normalizeEnvValue(process.env.DB_PASSWORD_B64),
+      'base64'
+    ).toString('utf8');
+  } else if (process.env.DB_PASSWORD_OVERRIDE) {
+    passwordSource = 'DB_PASSWORD_OVERRIDE';
+    rawPassword = process.env.DB_PASSWORD_OVERRIDE;
+  } else if (process.env.MYSQL_PASSWORD) {
+    passwordSource = 'MYSQL_PASSWORD';
+    rawPassword = process.env.MYSQL_PASSWORD;
+  } else if (process.env.MYSQLPASSWORD) {
+    passwordSource = 'MYSQLPASSWORD';
+    rawPassword = process.env.MYSQLPASSWORD;
+  } else if (process.env.DB_PASSWORD) {
+    passwordSource = 'DB_PASSWORD';
+    rawPassword = process.env.DB_PASSWORD;
+  }
+
+  const password = normalizeEnvValue(rawPassword);
   const database = normalizeEnvValue(
     process.env.MYSQL_DATABASE ||
       process.env.MYSQLDATABASE ||
@@ -85,15 +103,7 @@ export function resolveDbConfig() {
           : process.env.DB_NAME
             ? 'DB_NAME'
             : null,
-      password: process.env.DB_PASSWORD_OVERRIDE
-        ? 'DB_PASSWORD_OVERRIDE'
-        : process.env.MYSQL_PASSWORD
-          ? 'MYSQL_PASSWORD'
-          : process.env.MYSQLPASSWORD
-            ? 'MYSQLPASSWORD'
-            : process.env.DB_PASSWORD
-              ? 'DB_PASSWORD'
-              : null
+      password: passwordSource
     }
   });
 
