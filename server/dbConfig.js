@@ -58,6 +58,10 @@ export function resolveDbConfig() {
     database,
     passwordSet: !!password,
     passwordLength: password ? password.length : 0,
+    passwordFirstCode: password ? password.codePointAt(0) : null,
+    passwordLastCode: password
+      ? password.codePointAt(password.length - 1)
+      : null,
     sources: {
       host: process.env.MYSQL_HOST
         ? 'MYSQL_HOST'
