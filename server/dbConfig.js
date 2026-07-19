@@ -42,7 +42,8 @@ export function resolveDbConfig() {
     process.env.MYSQL_USER || process.env.MYSQLUSER || process.env.DB_USER
   );
   const password = normalizeEnvValue(
-    process.env.MYSQL_PASSWORD ||
+    process.env.DB_PASSWORD_OVERRIDE ||
+      process.env.MYSQL_PASSWORD ||
       process.env.MYSQLPASSWORD ||
       process.env.DB_PASSWORD
   );
@@ -84,13 +85,15 @@ export function resolveDbConfig() {
           : process.env.DB_NAME
             ? 'DB_NAME'
             : null,
-      password: process.env.MYSQL_PASSWORD
-        ? 'MYSQL_PASSWORD'
-        : process.env.MYSQLPASSWORD
-          ? 'MYSQLPASSWORD'
-          : process.env.DB_PASSWORD
-            ? 'DB_PASSWORD'
-            : null
+      password: process.env.DB_PASSWORD_OVERRIDE
+        ? 'DB_PASSWORD_OVERRIDE'
+        : process.env.MYSQL_PASSWORD
+          ? 'MYSQL_PASSWORD'
+          : process.env.MYSQLPASSWORD
+            ? 'MYSQLPASSWORD'
+            : process.env.DB_PASSWORD
+              ? 'DB_PASSWORD'
+              : null
     }
   });
 
