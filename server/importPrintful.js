@@ -1,6 +1,8 @@
 // importPrintful.js
 import axios from 'axios';
 import dotenv from 'dotenv';
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 dotenv.config();
 
 import { getDb } from './utils/db.js';
@@ -50,7 +52,17 @@ export async function importProducts() {
       const { name, description, thumbnail_url, sync_product, sync_variants } =
         detailData.result;
 
-      // Upsert du produit principal (is_visible à 1)
+      const productName =
+        sync_product?.name ?? name ?? product.name ?? '';
+      const productDescription =
+        sync_product?.description ?? description ?? productName;
+      const productImage =
+        sync_product?.thumbnail_url ??
+        thumbnail_url ??
+        product.thumbnail_url ??
+        '';
+
+      // Upsert du produit principal (is_visible à 1) — external_id UNIQUE
       await db.execute(
         `INSERT INTO products
           (name, description, image, external_id, created_at, updated_at, brand, category, is_featured, is_visible)
@@ -62,9 +74,9 @@ export async function importProducts() {
           is_visible = 1,
           updated_at = NOW()`,
         [
-          name ?? '',
-          description ?? sync_product?.description ?? '',
-          sync_product?.thumbnail_url ?? thumbnail_url ?? '',
+          productName,
+          productDescription,
+          productImage,
           external_id ?? '',
           sync_product?.brand ?? null,
           sync_product?.category ?? null,
@@ -80,47 +92,78 @@ export async function importProducts() {
       );
       const product_id = productRow.id;
 
-      // Traitement des variantes
+      // Traitement des variantes (pas de ON DUPLICATE KEY : printful_variant_id n'est pas UNIQUE)
       for (const variant of sync_variants) {
         const optionsJson = JSON.stringify(variant.options ?? []);
         const previewImage =
           variant.files?.find((f) => f.type === 'preview')?.preview_url || '';
+        const printful_variant_id = variant.id?.toString() ?? null;
+        const stock = variant.stock ?? 1;
 
-        importedVariantIds.push(variant.id.toString());
+        if (printful_variant_id) {
+          importedVariantIds.push(printful_variant_id);
+        }
 
-        await db.execute(
-          `INSERT INTO product_variants
-            (product_id, sku, price, custom_price, discount_price, image, size, color, stock,
-             is_active, created_at, options, printful_variant_id, variant_id)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?, ?)
-          ON DUPLICATE KEY UPDATE
-            price = VALUES(price),
-            custom_price = VALUES(custom_price),
-            discount_price = VALUES(discount_price),
-            image = VALUES(image),
-            size = VALUES(size),
-            color = VALUES(color),
-            stock = VALUES(stock),
-            is_active = 1,
-            options = VALUES(options),
-            printful_variant_id = VALUES(printful_variant_id),
-            variant_id = VALUES(variant_id)`,
-          [
-            product_id,
-            variant.sku ?? '',
-            variant.retail_price ?? 0,
-            null,
-            null,
-            previewImage,
-            variant.size ?? null,
-            variant.color ?? null,
-            variant.stock ?? null,
-            1, // is_active
-            optionsJson,
-            variant.id?.toString() ?? null, // printful_variant_id
-            variant.variant_id?.toString() ?? null // variant_id (court)
-          ]
+        const [existingRows] = await db.execute(
+          'SELECT id FROM product_variants WHERE printful_variant_id = ? LIMIT 1',
+          [printful_variant_id]
         );
+        const existing = existingRows[0];
+
+        if (existing) {
+          await db.execute(
+            `UPDATE product_variants
+                SET product_id = ?,
+                    sku = ?,
+                    price = ?,
+                    custom_price = ?,
+                    discount_price = ?,
+                    image = ?,
+                    size = ?,
+                    color = ?,
+                    stock = ?,
+                    is_active = 1,
+                    options = ?,
+                    variant_id = ?
+              WHERE id = ?`,
+            [
+              product_id,
+              variant.sku ?? '',
+              variant.retail_price ?? 0,
+              null,
+              null,
+              previewImage,
+              variant.size ?? null,
+              variant.color ?? null,
+              stock,
+              optionsJson,
+              variant.variant_id?.toString() ?? null,
+              existing.id
+            ]
+          );
+        } else {
+          await db.execute(
+            `INSERT INTO product_variants
+              (product_id, sku, price, custom_price, discount_price, image, size, color, stock,
+               is_active, created_at, options, printful_variant_id, variant_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?, ?)`,
+            [
+              product_id,
+              variant.sku ?? '',
+              variant.retail_price ?? 0,
+              null,
+              null,
+              previewImage,
+              variant.size ?? null,
+              variant.color ?? null,
+              stock,
+              1,
+              optionsJson,
+              printful_variant_id,
+              variant.variant_id?.toString() ?? null
+            ]
+          );
+        }
       }
     }
 
@@ -151,8 +194,12 @@ export async function importProducts() {
   }
 }
 
-// Si ce module est exécuté directement (node importPrintful.js)
-if (process.argv[1] === import.meta.url || require.main === module) {
+// Exécution directe (ESM) : node server/importPrintful.js
+const isDirectRun =
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href;
+
+if (isDirectRun) {
   importProducts().catch((err) => {
     console.error(err);
     process.exit(1);
