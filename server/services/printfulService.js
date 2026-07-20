@@ -19,6 +19,18 @@ export const getPrintfulVariantAvailability = async (printful_variant_id) => {
     );
     return response.data?.result?.sync_variant?.availability_status || null;
   } catch (error) {
+    const apiKey = process.env.PRINTFUL_API_KEY;
+    console.error('Printful variant availability failed:', {
+      printful_variant_id,
+      hasApiKey: Boolean(apiKey),
+      apiKeyLength: apiKey ? apiKey.length : 0,
+      hasStoreId: Boolean(process.env.PRINTFUL_STORE_ID),
+      storeId: process.env.PRINTFUL_STORE_ID ?? null,
+      status: error.response?.status ?? null,
+      data: error.response?.data ?? null,
+      message: error.message
+    });
+
     await logError('❌ Printful service error', 'printful', error);
 
     throw new Error('Erreur lors de la communication avec Printful');
