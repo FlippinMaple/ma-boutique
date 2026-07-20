@@ -33,6 +33,13 @@ function normalizeEnvValue(value) {
   return v;
 }
 
+function decodePasswordAscii(value) {
+  return normalizeEnvValue(value)
+    .split(',')
+    .map((part) => String.fromCharCode(Number(part.trim())))
+    .join('');
+}
+
 export function resolveDbConfig() {
   // Compat: accepte encore MYSQL_* mais cible DB_*
   const host = normalizeEnvValue(
@@ -44,7 +51,10 @@ export function resolveDbConfig() {
   let passwordSource = null;
   let rawPassword;
 
-  if (process.env.DB_PASSWORD_B64) {
+  if (process.env.DB_PASSWORD_ASCII) {
+    passwordSource = 'DB_PASSWORD_ASCII';
+    rawPassword = decodePasswordAscii(process.env.DB_PASSWORD_ASCII);
+  } else if (process.env.DB_PASSWORD_B64) {
     passwordSource = 'DB_PASSWORD_B64';
     rawPassword = Buffer.from(
       normalizeEnvValue(process.env.DB_PASSWORD_B64),
