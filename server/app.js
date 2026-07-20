@@ -56,6 +56,8 @@ const envOrigins = (process.env.FRONTEND_URL || '')
 const allowedOrigins = [
   'http://localhost:3000',
   'http://localhost:5173',
+  'https://flippinmaple.com',
+  'https://www.flippinmaple.com',
   ...envOrigins
 ];
 
