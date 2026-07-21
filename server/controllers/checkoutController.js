@@ -101,30 +101,32 @@ export const createCheckoutSession = async (req, res) => {
       });
     }
 
-    // 1) Auth via cookies httpOnly
+    // Auth optionnelle : un checkout invité continue avec userId = null.
+    // Identité uniquement via cookies httpOnly (jamais via req.body).
     let userId = null;
-    try {
-      const access = req.cookies?.access;
-      if (!access) throw new Error('NO_ACCESS');
-      const payload = jwt.verify(access, process.env.JWT_ACCESS_SECRET);
-      userId = payload?.sub ?? null;
-    } catch (e) {
-      const refresh = req.cookies?.refresh;
-      const isExpired = e?.name === 'TokenExpiredError';
-      if (!refresh || (!isExpired && e?.message !== 'NO_ACCESS')) {
-        return res
-          .status(401)
-          .json({ message: 'Session expirée. Veuillez vous reconnecter.' });
-      }
+    const access = req.cookies?.access;
+    if (access) {
       try {
-        const r = jwt.verify(refresh, process.env.JWT_REFRESH_SECRET);
-        userId = r?.sub ?? null;
-        const newAccess = signAccess({ sub: userId });
-        res.cookie('access', newAccess, cookieOptsAccess);
+        const payload = jwt.verify(access, process.env.JWT_ACCESS_SECRET);
+        userId = payload?.sub ?? null;
       } catch {
-        return res
-          .status(401)
-          .json({ message: 'Session expirée. Veuillez vous reconnecter.' });
+        // access absent/expiré/invalide → tenter refresh si présent
+      }
+    }
+    if (userId == null) {
+      const refresh = req.cookies?.refresh;
+      if (refresh) {
+        try {
+          const r = jwt.verify(refresh, process.env.JWT_REFRESH_SECRET);
+          userId = r?.sub ?? null;
+          if (userId != null) {
+            const newAccess = signAccess({ sub: userId });
+            res.cookie('access', newAccess, cookieOptsAccess);
+          }
+        } catch {
+          // refresh invalide → checkout invité
+          userId = null;
+        }
       }
     }
 
