@@ -452,6 +452,27 @@ const Checkout = () => {
         Payer maintenant
       </button>
 
+      {/* TEMP: guest checkout — same flow as Payer maintenant, no login */}
+      <button
+        type="button"
+        onClick={handleCheckout}
+        disabled={loading || !shippingRate}
+        style={{
+          marginLeft: '1rem',
+          marginTop: '0.75rem',
+          padding: '10px 20px',
+          backgroundColor: 'transparent',
+          color: '#28a745',
+          border: '2px solid #28a745',
+          borderRadius: '8px',
+          cursor: 'pointer',
+          fontWeight: 'bold',
+          fontSize: '16px'
+        }}
+      >
+        Continuer comme invité
+      </button>
+
       {loading && (
         <div style={{ marginTop: '1rem', color: '#007bff' }}>
           Redirection vers Stripe...
