@@ -422,9 +422,18 @@ Le bois est un **actif secondaire**. Il ne définit pas seul la marque.
 
 - sur toutes les cartes produits ;
 - comme fond global permanent ;
+- derrière le logo ;
 - derrière de petits textes ;
-- derrière le logo en permanence ;
+- comme substitut au logo ;
+- comme feuille d’érable figurative ou décorative ;
 - lorsqu’il réduit la lisibilité.
+
+### Feuille d’érable figurative vs veinage abstrait
+
+- **Veinage / fibre abstraite** (non figurative, non reconnaissable comme une feuille, contemporaine, subtile) : permise avec retenue comme texture secondaire.
+- **Feuille d’érable visible** (générique, rouge canadienne, motif répété, pictogramme, badge, faux logo) : **interdite** dans les actifs visibles de la page d’accueil actuelle (Hero, Déclaration, Éditorial, Catégories, Capsule, Courriel, Footer, textures, icônes provisoires).
+- Une **future exploration propriétaire** d’un symbole inspiré de l’érable (original, mature, non folklorique) demeure une décision de marque **distincte et ouverte** — elle n’autorise **pas** l’usage d’une feuille visible sur la page d’accueil actuelle.
+- **Aucun faux logo** ni symbole provisoire ne doit être fabriqué pour combler l’absence du logo final.
 
 ---
 
@@ -460,18 +469,19 @@ Rôle : bandeau d’accueil, premier plan visuel
 Sujet : silhouette urbaine froide, vêtement Flippin’ Maple porté naturellement
 Direction : lumière naturelle, ciel couvert, béton / asphalte, pose non théâtrale
 Cadrage : horizontal éditorial, sujet décentré
-Espace négatif : zone claire à gauche ou à droite pour titre + CTA
+Espace négatif : zone claire dédiée (composition séparée / split privilégiée)
 Palette : tons Maple Bone / Charcoal / Deep Forest ; pas de saturation touristique
 Ratio : 16:9 (desktop) ; recadrage 4:5 prévu mobile
 Dimensions minimales : 2400 × 1350 px (desktop)
 Format cible : WebP / JPEG haute qualité
-Contraste : moyen ; texte overlay lisible sur zone réservée
+Contraste : moyen ; lisibilité du texte dans une zone dédiée (pas d’overlay photographique par défaut sur la page d’accueil)
 Contexte : page d’accueil — premier viewport
-Interdits : mockup Printful dominant, logos tiers, néons, sourire publicitaire
+Interdits : mockup Printful dominant, logos tiers, néons, sourire publicitaire, feuille d’érable visible
 Responsive : conserver le sujet principal ; rogner les bords, pas le visage / produit clé
 Alt attendu : description factuelle du sujet et du lieu, sans slogan
 ```
 
+**Clarification page d’accueil :** la possibilité générale d’un texte superposé sur une photographie (contraste et espace négatif garantis) demeure **contextuelle** dans le système de marque. Pour la page d’accueil actuelle, la direction spécifique est : **composition séparée ou split par défaut** — **pas d’overlay photographique par défaut**. Un overlay n’est envisageable qu’en exception validée en maquette ou à l’intégration.
 ### Exemple 2 — Placeholder motif veinage d’érable
 
 ```

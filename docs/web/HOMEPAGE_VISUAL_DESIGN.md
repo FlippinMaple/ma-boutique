@@ -61,7 +61,14 @@ Ce fichier traduit la fondation de marque, la spécification fonctionnelle et le
 - aucun empilement français / anglais dans les mêmes composants ;
 - **tutoiement** comme registre français ;
 - **`NO FIXED LINE.`** identique (anglais) dans les deux langues ;
-- sélecteur de langue futur : discret et fonctionnel (conception détaillée hors portée ici).
+- sélecteur de langue futur : discret et fonctionnel (conception détaillée hors portée ici) ;
+- CTA Hero : `Voir la boutique` / `Shop all` ;
+- section homepage nommée **Catégories** ;
+- composition Hero **split / séparée** par défaut ; **pas d’overlay photographique par défaut** ;
+- feuille d’érable **visible** interdite dans les actifs homepage ;
+- veinage abstrait non figuratif permis avec retenue ;
+- Courriel **retiré** si formulaire non fonctionnel ;
+- aucun faux logo / symbole provisoire.
 
 ### Provisoire
 
@@ -72,11 +79,12 @@ Ce fichier traduit la fondation de marque, la spécification fonctionnelle et le
 - split Hero autour de 40/60 ;
 - Header sticky ;
 - nombre exact de produits ;
-- nombre exact de catégories ;
+- nombre exact de catégories (2 recommandées) ;
 - dimensions finales ;
 - intensité du motif ;
 - titres provisoires ;
-- maintien des sections éditoriale et courriel.
+- maintien de la section éditoriale ;
+- présence de la section Courriel (si et seulement si formulaire fonctionnel).
 
 ### Ouvert
 
@@ -90,7 +98,9 @@ Ce fichier traduit la fondation de marque, la spécification fonctionnelle et le
 - conception détaillée du sélecteur de langue ;
 - mécanisme technique bilingue (mémorisation, routes, SEO) ;
 - mécanisme technique des produits vedettes ;
-- validation juridique de **`NO FIXED LINE.`**.
+- validation juridique de **`NO FIXED LINE.`** ;
+- mécanisme technique d’inscription courriel ;
+- future exploration propriétaire d’un symbole inspiré de l’érable (distincte de la page d’accueil actuelle).
 
 ---
 
@@ -113,9 +123,11 @@ Combinaison à rendre visible :
 
 Par la chaleur contenue des fonds (Maple Bone), les matières (textile, bois abstrait), la retenue canadienne, et un vert profond discret (Deep Forest) — jamais par folklore souvenir.
 
+**Page d’accueil :** toute **feuille d’érable visible** (générique, rouge, motif répété, pictogramme, faux logo) est **interdite** dans les actifs visibles. Un veinage / fibre **abstrait, non figuratif et subtil** reste permis avec retenue. Une future exploration propriétaire de symbole reste **ouverte** et **distincte** — elle n’autorise pas une feuille visible ici.
+
 ### Veinage d’érable
 
-Actif **secondaire** : lignes abstraites, monochromes, peu contrastées, seamless. Matière, pas illustration. Jamais chalet, jamais logo.
+Actif **secondaire** : lignes abstraites, monochromes, peu contrastées, seamless. Matière, pas illustration. Jamais chalet, jamais logo, **jamais feuille figurative**.
 
 La page doit paraître indépendante, urbaine, froide mais humaine, robuste, éditoriale, tactile, sobre, mature — crédible comme marque de vêtements, distincte d’un template e-commerce.
 
@@ -283,14 +295,16 @@ Pas de conversion CSS définitive ici.
 
 ## 9. Hero — direction visuelle
 
-### Recommandation principale (**Provisoire**)
+### Recommandation principale (**Validé** comme défaut de composition · **Provisoire** pour le ratio exact)
 
-- split ~**40 % texte / 60 % image** ;
+- split ~**40 % texte / 60 % image** (ratio exact Provisoire) ;
 - texte à gauche, image à droite (bureau) ;
-- empilé sur mobile (image puis texte, ou image 4:5 avec texte sous zone contrastée) ;
-- **aucun overlay par défaut** ;
+- empilé sur mobile (image puis texte, ou image 4:5 avec texte dans zone dédiée) ;
+- **aucun overlay photographique par défaut** ;
+- zone de lecture suffisante pour textes FR et EN **séparément** ;
 - alignement volontaire ;
-- fallback Deep Forest ou Charcoal si aucune photo crédible.
+- fallback Deep Forest ou Charcoal si aucune photo crédible ;
+- aucune feuille d’érable visible.
 
 ```
 ┌──────────────────┬─────────────────────────────┐
@@ -299,7 +313,8 @@ Pas de conversion CSS définitive ici.
 │ FLIPPIN’ MAPLE   │                             │
 │ NO FIXED LINE.   │                             │
 │ Appui            │                             │
-│ [CTA]            │                             │
+│ [CTA selon langue]│                             │
+│                  │                             │
 └──────────────────┴─────────────────────────────┘
 ```
 
@@ -308,17 +323,19 @@ Pas de conversion CSS définitive ici.
 | Fond | Maple Bone côté texte ; image ou Deep Forest / Charcoal |
 | Sur-titre | `FLIPPIN’ MAPLE` — discret |
 | Titre | `NO FIXED LINE.` — H1, emplacement de travail |
-| Paragraphe | 1–2 phrases max |
-| CTA | Principal Ink Black / texte Maple Bone → boutique |
-| Image | Voir §19 ; espace négatif gauche pour texte |
+| Paragraphe | 1–2 phrases max (selon `HOMEPAGE_COPY.md`) |
+| CTA | `Voir la boutique` (FR) / `Shop all` (EN) — Ink Black / texte Maple Bone → boutique réelle |
+| Image | Voir §19 ; espace négatif pour zone texte dédiée (split) |
 | Recadrage | 16:9 ou 3:2 bureau ; 4:5 mobile |
-| Contraste | Texte jamais sur zone illisible |
+| Contraste | Texte jamais sur zone illisible ; split par défaut |
 | Hauteur / flottaison | Immersif mais produit amorcé rapidement |
 | Fallback | Deep Forest ou Charcoal + Maple Bone |
 
 **Premier regard :** marque indépendante, direction, mouvement, confiance — pas de survente.
 
-**Variante overlay :** secondaire, uniquement si contraste et espace négatif garantis.
+**Ancienne formulation CTA non retenue :** `Découvrir la collection` / `Shop the collection`.
+
+**Variante overlay :** exception seulement — contraste mesurable, zone négative réelle, lecture FR/EN séparée, mobile crédible, sans voile excessif, validation maquette / intégration. **Jamais le comportement par défaut.**
 
 ---
 
@@ -379,13 +396,16 @@ Composition asymétrique : image verticale (3:4 ou 4:5) + texte adjacent sur Map
 
 ## 13. Catégories — direction visuelle
 
-**Recommandation lancement : 2 grandes catégories.**
+**Nom de section :** `Catégories` / `Categories`.
+`Essentiels` n’est **pas** le nom de cette section (nav provisoire ou collection réelle seulement si destination réelle).
+
+**Recommandation lancement : 2 grandes catégories** réelles.
 
 Deux blocs égaux, images 4:5 ou 3:4, titre hors image, carte entière cliquable, fond Maple Bone.
 
-Variante **3 catégories** = alternative provisoire, moins prioritaire pour un petit catalogue (risque de dilution et d’images faibles).
+Variante **3 catégories** seulement si trois destinations réelles existent.
 
-Mobile : empilement (ou 2 col si lisible). Pas de catégories vides. Non validées → retrait.
+Mobile : empilement (ou 2 col si lisible). Pas de catégories vides. Non validées / sans destination → **retrait ou réduction**. Aucune fausse catégorie. Aucune feuille d’érable figurative sur les tuiles.
 
 ---
 
@@ -402,14 +422,17 @@ Seulement si capsule **réelle**.
 
 ## 15. Inscription courriel
 
+**Conditionnelle.** Formulaire non fonctionnel → **retrait complet** (repli normal). Mécanisme technique hors portée. Aucun faux formulaire.
+
 Fond Weathered Maple pâle ou Maple Bone contrasté.
 
 - bureau : champ + bouton horizontaux possibles ;
 - mobile : stack pleine largeur ;
-- label, champ, bouton « S’inscrire », lien confidentialité ;
-- états : normal, focus, erreur, succès, désactivé ;
+- label, champ, bouton « S’inscrire », lien confidentialité **réelle** ;
+- états : normal, focus, erreur, succès, désactivé — **seulement si branchement réel** ;
 - aucun popup auto, aucune réduction artificielle, aucune fausse urgence ;
-- texte final (**Ouvert**) ; formulations selon `VOICE.md` (stratégie linguistique **Validée** : FR source, tutoiement, EN adapté, une langue à la fois).
+- motif abstrait optionnel seulement ; **aucune feuille d’érable visible** ;
+- texte final (**Ouvert**) ; formulations selon `HOMEPAGE_COPY.md` / `VOICE.md`.
 
 ---
 
@@ -612,16 +635,18 @@ Aucun de ces actifs n’est présenté comme déjà produit.
 | Aspect | Règle |
 |---|---|
 | Rôle | Secondaire, matière |
-| Abstraction | Fil d’érable, pas planche |
+| Abstraction | Fil / fibre abstrait — **pas** planche, **pas** feuille figurative |
 | Fréquence / densité | Faible ; une section max typiquement |
 | Contraste / échelle | Très bas ; échelle large seamless |
 | Placement autorisé | Déclaration ; ponctuellement courriel / manifeste |
-| Interdit | Produits toutes cartes, fond global permanent, derrière logo, derrière petit texte, chalet |
+| Homepage | Feuille visible **interdite** ; veinage abstrait seulement avec retenue |
+| Futur symbole propriétaire | Décision **ouverte et distincte** — n’autorise pas une feuille sur la page actuelle |
+| Interdit | Produits toutes cartes, fond global permanent, derrière logo, derrière petit texte, chalet, feuille générique / rouge / répétée, faux logo |
 | Mobile | Plus discret |
 | Fallback | Aplat |
 | A11y | Décoratif |
 
-Ne jamais : illustration rustique, couverture totale, compromission de lecture, remplacement photo, devenir logo, décor chalet.
+Ne jamais : illustration rustique, couverture totale, compromission de lecture, remplacement photo, devenir logo, décor chalet, feuille figurative.
 
 ---
 

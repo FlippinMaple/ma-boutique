@@ -145,7 +145,7 @@ Ordre proposé :
 3. Sélection principale de produits
 4. Déclaration de marque
 5. Bloc éditorial matière / territoire
-6. Essentiels ou catégories principales
+6. Catégories principales
 7. Capsule ou mise en avant secondaire
 8. Inscription courriel
 9. Footer global
@@ -238,6 +238,8 @@ Le Hero est le **principal moment de marque**.
 - aucune réduction permanente ;
 - hauteur immersive mais sans repousser complètement le produit sous la ligne de flottaison ;
 - contenu lisible sur mobile ;
+- composition **séparée / split** par défaut ; **pas d’overlay photographique par défaut** ;
+- aucune feuille d’érable visible dans l’actif Hero ;
 - la signature **`NO FIXED LINE.`** ne doit pas être soudée graphiquement au logo.
 
 ### Contenu de travail
@@ -247,8 +249,19 @@ Le Hero est le **principal moment de marque**.
 | Sur-titre possible | `FLIPPIN’ MAPLE` |
 | Titre principal | `NO FIXED LINE.` (emplacement de travail) |
 | Texte d’appui | à définir ; maximum une ou deux courtes phrases |
-| CTA principal | `Découvrir la collection` |
-| CTA secondaire | optionnel ; uniquement s’il sert une action distincte |
+| CTA principal | `Voir la boutique` (FR) · `Shop all` (EN) |
+| CTA secondaire | aucun par défaut |
+
+**Composition (Validé pour la page d’accueil) :**
+
+- composition **séparée / split** texte–image par défaut (texte à gauche, image à droite sur bureau — direction de travail) ;
+- zone de lecture dédiée ; longueurs FR et EN adaptées **séparément** ;
+- **pas d’overlay photographique par défaut** ;
+- overlay = exception seulement si contraste mesurable, zone négative réelle, lecture FR/EN bonne séparément, recadrage mobile crédible, et validation en maquette / intégration ;
+- mobile : stack ou recadrage distinct (4:5) ;
+- destination du CTA = boutique réelle (route technique à confirmer à l’intégration — **aucune URL inventée ici**).
+
+**Ancienne formulation non retenue pour le Hero :** `Découvrir la collection` / `Shop the collection`.
 
 **Emplacement de travail (Provisoire) :**
 
@@ -531,7 +544,7 @@ Description factuelle des matières et objets visibles.
 
 ---
 
-## 11. Essentiels ou catégories principales
+## 11. Catégories principales
 
 ### Rôle
 
@@ -539,11 +552,17 @@ Description factuelle des matières et objets visibles.
 - structurer la sélection ;
 - éviter une longue grille de produits.
 
+**Nom de section :** `Catégories` (EN : `Categories`).
+`Essentiels` n’est **pas** le nom de cette section ; il peut seulement apparaître comme libellé de navigation provisoire ou nom d’une collection réelle si destination et contenu existent.
+
 ### Nombre recommandé
 
-- 2 ou 3 catégories maximum.
+- **2** catégories réelles de préférence ;
+- **3** seulement si trois destinations réelles existent ;
+- section **réduite ou retirée** si les catégories réelles ne sont pas disponibles ;
+- **aucune** fausse catégorie pour remplir la mise en page.
 
-### Exemples provisoires
+### Exemples provisoires (libellés de travail, non verrouillés)
 
 - T-shirts
 - Cotons ouatés
@@ -646,13 +665,23 @@ La section est supprimée si aucun actif ou concept de capsule suffisamment fort
 - annoncer les collections et contenus ;
 - éviter les popups agressifs.
 
-### Structure
+### Statut : Conditionnel
+
+La section est **complètement retirée** de la page si le formulaire n’est pas réellement fonctionnel.
+L’absence de la section est un **repli normal et prévu**.
+Le mécanisme technique d’inscription demeure **hors portée** de cette spécification.
+
+**Interdit de conserver :** faux formulaire · formulaire visuel sans branchement · bouton inerte · fausse confirmation · inscription simulée · rabais inventé · promesse de fréquence non validée · popup agressif.
+
+**Pour être présente**, la section doit éventuellement disposer de : saisie fonctionnelle · validation d’adresse · état d’erreur · état de succès · politique de confidentialité réelle · traitement réel de l’inscription · conformité légale applicable.
+
+### Structure (si présente)
 
 - titre court ;
 - une phrase ;
 - champ courriel ;
 - bouton ;
-- lien vers la politique de confidentialité si requis.
+- lien vers la politique de confidentialité réelle.
 
 ### Ton
 
@@ -673,7 +702,7 @@ Versions attendues : **française source** (tutoiement) et **anglaise adaptée**
 
 - fond Maple Bone ou Weathered Maple très pâle ;
 - bordure supérieure ;
-- motif de bois optionnel à très faible contraste ;
+- motif de bois abstrait optionnel à très faible contraste (**aucune feuille d’érable visible**) ;
 - aucun popup automatique dans cette spécification.
 
 ---
@@ -801,8 +830,10 @@ Les noms de couleurs renvoient à la palette de travail de `VISUAL_IDENTITY.md` 
 | Hero sans photo | Fond Deep Forest ou Charcoal, texte Maple Bone ; aucune image générique temporaire |
 | Produits sans photos cohérentes | Ne pas afficher une grande sélection automatique ; utiliser une sélection réduite validée |
 | Capsule inexistante | Section **supprimée** |
-| Motif non produit | Aplat de couleur ; aucun faux bois temporaire |
-| Logo non finalisé | Placeholder typographique neutre (mêmes règles que le header) |
+| Catégories non validées / sans destination réelle | Section **réduite ou retirée** ; aucune fausse catégorie |
+| Inscription courriel non fonctionnelle | Section **supprimée** (repli normal) ; aucun formulaire factice |
+| Motif non produit | Aplat de couleur ; aucun faux bois temporaire ; aucune feuille figurative |
+| Logo non finalisé | Placeholder typographique neutre (mêmes règles que le header) ; aucun faux symbole |
 | Contenu éditorial non disponible | Section retirée ou réduite à un titre + lien `À propos` si le texte est prêt |
 
 ---
