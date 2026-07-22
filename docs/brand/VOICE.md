@@ -60,8 +60,15 @@ Il guide les futurs contenus sans remplacer :
 - aucune histoire de fabrication inventée ;
 - produit et fonction toujours compréhensibles ;
 - écriture accessible ;
+- **français québécois naturel** = langue source et langue principale de la marque et du site ;
+- **tutoiement** = registre principal (direct, mature, accessible, cohérent ; jamais adolescent, caricatural, trop familier ou rempli de slang) ;
+- **anglais canadien** offert comme version complète et adaptée naturellement (jamais traduction mot à mot) ;
+- **une seule langue affichée à la fois** dans les contenus principaux du site ;
+- **`NO FIXED LINE.`** demeure en anglais dans les versions française et anglaise ; aucune traduction automatique ;
+- **cohérence du registre** dans une même page, une même surface ou un même échange ;
+- service client : tutoiement par défaut ; adaptation possible au registre du client sans alternance arbitraire `tu` / `vous` ;
 - français naturel au Québec sans caricature ;
-- anglais canadien adapté (même personnalité) ;
+- anglais canadien adapté (même personnalité, maturité et retenue) ;
 - signature utilisée avec retenue ;
 - voix légèrement irrévérencieuse, mais jamais insolente, agressive ou adolescente ;
 - POD = moyen de production, jamais sujet identitaire ;
@@ -69,8 +76,7 @@ Il guide les futurs contenus sans remplacer :
 
 ### Provisoire
 
-- signature **`NO FIXED LINE.`** (usage de travail) ;
-- équilibre exact français / anglais ;
+- signature **`NO FIXED LINE.`** (usage de travail verbal) ;
 - intensité du ton brut ;
 - intensité exacte de l’irrévérence et contextes où elle peut apparaître ;
 - fréquence des fragments ;
@@ -78,15 +84,18 @@ Il guide les futurs contenus sans remplacer :
 - vocabulaire final des collections ;
 - certains CTA ;
 - titres de campagne ;
-- tutoiement comme direction de travail (à confirmer).
+- orthographe canadienne anglaise exacte (ex. colour) à figer en rédaction.
 
 ### Ouvert
 
 - validation juridique de la signature ;
-- langue principale finale du site ;
-- stratégie bilingue complète ;
+- mécanisme technique du sélecteur de langue ;
+- méthode de mémorisation de la préférence linguistique ;
+- architecture technique d’internationalisation (routes, URLs, SEO bilingue détaillé) ;
+- textes finaux français et anglais approuvés ;
 - noms de collections et de produits ;
 - textes définitifs de la page d’accueil ;
+- politique complète du service client ;
 - politique éditoriale réseaux sociaux ;
 - ton des collaborations ;
 - termes propriétaires éventuels.
@@ -200,7 +209,7 @@ Il guide les futurs contenus sans remplacer :
 - questions rares, jamais rhétoriques vagues ;
 - humour rare et sec ;
 - émotion contenue ;
-- tutoiement de travail (**Provisoire**) : proximité sans familiarité caricaturale.
+- tutoiement (**Validé**) : direct, mature, accessible, cohérent ; proximité sans familiarité caricaturale.
 
 **Contractions :**
 
@@ -244,8 +253,8 @@ Fragments interdits dès que la clarté est critique : instructions, formulaires
 
 | Sujet | Direction de travail |
 |---|---|
-| Tutoiement / vouvoiement | **Tutoiement** recommandé en boutique et UX (**Provisoire**) : proximité naturelle pour une marque indépendante ; cohérence avec une boutique destinée directement au consommateur ; ton accessible sans familiarité excessive. Le service client conserve un registre cohérent durant l’interaction et peut s’adapter au registre employé par le client si nécessaire ; ne jamais alterner `tu` et `vous` dans un même échange ou une même surface. |
-| Cohérence | Un registre principal par surface ; ne pas mélanger tu/vous dans la même page |
+| Tutoiement / vouvoiement | **Tutoiement** = registre principal (**Validé**) : proximité naturelle pour une marque indépendante ; cohérence avec une boutique destinée directement au consommateur ; ton accessible sans familiarité excessive ; jamais adolescent, caricatural, trop familier ou rempli de slang. Le service client utilise normalement le tutoiement ; il peut s’adapter au registre employé par le client lorsque cela améliore l’échange ; ne jamais alterner `tu` et `vous` dans un même échange ou une même surface. |
+| Cohérence | Un registre cohérent par page, surface ou échange (**Validé**) ; ne pas mélanger tu/vous dans la même interaction |
 | Contractions | `c’est`, `on` : permis. `t’es` et oral très familier : évités hors campagne familière approuvée. Aucun registre oral forcé. |
 | Anglicismes OK | Termes produit établis si clairs (hoodie si nécessaire → préférer « coton ouaté » quand pertinent) |
 | Anglicismes à éviter | Slang importé, CTA anglais dans UI française (« Let’s go ») |
@@ -259,14 +268,16 @@ Fragments interdits dès que la clarté est critique : instructions, formulaires
 
 ## 9. Anglais de marque
 
-- canadien, naturel, direct ;
+- canadien, naturel, direct (**Validé** comme direction linguistique) ;
+- version **complète et adaptée** naturellement ;
 - adaptation, pas calque ;
 - même personnalité, maturité et retenue qu’en français.
 
 | Sujet | Direction |
 |---|---|
-| Orthographe | Canadienne comme direction de travail (**Provisoire**) ; à figer lors de la validation (ex. colour si style CA choisi) |
-| Signature | `NO FIXED LINE.` non traduite tant que la stratégie bilingue n’est pas tranchée |
+| Statut | Anglais canadien adapté complet = **Validé** |
+| Orthographe | Canadienne (**Provisoire** pour le détail exact ; à figer en rédaction, ex. colour) |
+| Signature | `NO FIXED LINE.` demeure en anglais ; **ne pas traduire** |
 | Capitalisation | Title case pour libellés courts ; phrases normales ailleurs |
 | Ponctuation | Sobre ; peu d’exclamations |
 | Dates / devises / unités | Adaptation naturelle au contexte CA/EN (pas de calque FR) |
@@ -278,14 +289,26 @@ Fragments interdits dès que la clarté est critique : instructions, formulaires
 
 ## 10. Stratégie bilingue
 
-**Décision ouverte.** Direction de travail recommandée (non validée) : **français principal + anglais adapté complet**.
+**Validé** comme direction de travail : **français québécois source et principal + anglais canadien complet adapté**.
 
-| Option | Bénéfices | Risques | UX | SEO | Marque | Condition |
-|---|---|---|---|---|---|---|
-| 1. FR principal + EN complet | Cohérence locale, portée | Coût de maintenance | Sélecteur clair | Contenu dédié | Identité QC/CA | Traduction = adaptation |
-| 2. Langue au choix utilisateur | Équité perçue | Double charge | Cookie/préférence | Deux arbres | Neutre | Parité qualité |
-| 3. Bilingue simultané partiel | Campagnes ciblées | Bruit visuel | Confusion | Faible | Dilution | Supports limités |
-| 4. Signature EN + contenu localisé | Force signature | Incohérence | Acceptable si rare | Mixte | OK si maîtrisé | Validation signature |
+| Règle | Statut |
+|---|---|
+| Français = langue source et principale | **Validé** |
+| Anglais = version complète adaptée (pas calque) | **Validé** |
+| Une seule langue affichée à la fois dans les contenus principaux | **Validé** |
+| Tutoiement dans la version française | **Validé** |
+| `NO FIXED LINE.` en anglais dans les deux versions | **Validé** |
+| Sélecteur de langue clair (éventuel) | **Ouvert / hors portée technique** |
+| Mémorisation de la préférence utilisateur (éventuelle) | **Ouvert / hors portée technique** |
+| Architecture d’internationalisation, routes, URLs, SEO bilingue détaillé | **Hors portée** de cette documentation voix |
+
+**Options non retenues** (conservées pour mémoire, non comme directions possibles) :
+
+| Option | Motif de non-retenue |
+|---|---|
+| Affichage bilingue simultané dans les mêmes blocs | Bruit visuel, dilution, confusion |
+| Parité « langue au choix » sans français source | Contredit la langue source québécoise |
+| Traduction littérale FR → EN | Calque ; perte de personnalité |
 
 ---
 
@@ -303,7 +326,7 @@ Fragments interdits dès que la clarté est critique : instructions, formulaires
 | Relation aux titres secondaires | Les titres secondaires **complètent** ; ils ne paraphrasent pas la signature |
 | Hero | Emplacement de travail possible comme H1 (**Provisoire**) |
 | Campagnes / vêtements / éditorial | Usages forts possibles |
-| FR / EN | Forme anglaise conservée ; **aucune traduction automatique** tant que le bilinguisme reste ouvert |
+| FR / EN | Forme **anglaise conservée** dans les versions française et anglaise (**Validé**) ; **aucune traduction** (automatique ou manuelle de la signature) |
 | Fréquence | Rare et intentionnelle |
 | Fréquence maximale | Un usage dominant par page / par pièce visuelle forte |
 | Juridique | **Ouvert** — validation avant exploitation commerciale finale |
@@ -730,39 +753,37 @@ Valider s’il : est immédiatement compréhensible ; a une personnalité reconn
 
 ## 33. Décisions requises avant les textes finaux
 
-1. stratégie bilingue ;
-2. langue principale ;
-3. tutoiement ou vouvoiement ;
-4. validation de `NO FIXED LINE.` ;
-5. textes du Hero ;
-6. titre de déclaration ;
-7. catégories ;
-8. noms de collections ;
-9. noms de produits ;
-10. preuves factuelles disponibles ;
-11. politique sur les affirmations de qualité ;
-12. politique sur l’origine et la fabrication ;
-13. ton des réseaux sociaux ;
-14. ton des campagnes ;
-15. règles de service client.
+1. validation juridique de `NO FIXED LINE.` ;
+2. textes du Hero ;
+3. titre de déclaration ;
+4. catégories ;
+5. noms de collections ;
+6. noms de produits ;
+7. preuves factuelles disponibles ;
+8. politique sur les affirmations de qualité ;
+9. politique sur l’origine et la fabrication ;
+10. ton des réseaux sociaux ;
+11. ton des campagnes ;
+12. politique complète du service client ;
+13. mécanisme technique du sélecteur de langue (hors portée voix) ;
+14. mémorisation de la préférence linguistique (hors portée voix).
 
 ---
 
 ## 34. Prochaine étape
 
 1. validation de `VOICE.md` ;
-2. décision sur la stratégie linguistique ;
-3. rédaction des textes de travail de la page d’accueil ;
-4. validation des textes ;
-5. maquette haute fidélité bureau ;
-6. maquette mobile ;
-7. sélection ou production des actifs ;
-8. inventaire des composants existants ;
-9. plan d’intégration technique ;
-10. intégration progressive ;
-11. tests ;
-12. commit séparé ;
-13. aucun déploiement sans autorisation.
+2. rédaction des textes de travail de la page d’accueil (FR source, EN adapté) ;
+3. validation des textes ;
+4. maquette haute fidélité bureau ;
+5. maquette mobile ;
+6. sélection ou production des actifs ;
+7. inventaire des composants existants ;
+8. plan d’intégration technique ;
+9. intégration progressive ;
+10. tests ;
+11. commit séparé ;
+12. aucun déploiement sans autorisation.
 
 ---
 

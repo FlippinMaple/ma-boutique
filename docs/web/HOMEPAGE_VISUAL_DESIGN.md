@@ -55,7 +55,13 @@ Ce fichier traduit la fondation de marque, la spécification fonctionnelle et le
 - placeholders descriptifs obligatoires ;
 - aucun actif fictif présenté comme réel ;
 - priorité mobile ;
-- logo final encore absent.
+- logo final encore absent ;
+- **une seule langue affichée à la fois** ;
+- longueurs de texte adaptées **séparément** en français et en anglais ;
+- aucun empilement français / anglais dans les mêmes composants ;
+- **tutoiement** comme registre français ;
+- **`NO FIXED LINE.`** identique (anglais) dans les deux langues ;
+- sélecteur de langue futur : discret et fonctionnel (conception détaillée hors portée ici).
 
 ### Provisoire
 
@@ -78,11 +84,11 @@ Ce fichier traduit la fondation de marque, la spécification fonctionnelle et le
 - wordmark final ;
 - photographies ;
 - motifs finaux ;
-- textes approuvés ;
+- textes approuvés (FR et EN) ;
 - produits réels ;
 - capsule réelle ;
-- langue finale ;
-- contenu de `VOICE.md` ;
+- conception détaillée du sélecteur de langue ;
+- mécanisme technique bilingue (mémorisation, routes, SEO) ;
 - mécanisme technique des produits vedettes ;
 - validation juridique de **`NO FIXED LINE.`**.
 
@@ -157,12 +163,15 @@ Couleurs documentées dans `VISUAL_IDENTITY.md` (**codes hex provisoires** jusqu
 
 Capitales : réservées aux textes courts. Pas de capitales intégrales dans les longs paragraphes.
 
+**Langue et composition (Validé) :** une seule langue visible à la fois ; prévoir des longueurs FR et EN adaptées séparément ; aucun empilement bilingue dans un même composant ; tutoiement en français ; `NO FIXED LINE.` identique dans les deux langues.
+
 ### Traitement de `NO FIXED LINE.`
 
 - grand, franc, compact, lisible ;
 - **une seule occurrence dominante** ;
 - aucun effet décoratif complexe, aucune déformation, aucune texture qui compromet la lecture ;
 - distinct du logo ;
+- forme anglaise inchangée en FR et EN (**Validé**) ;
 - placement Hero = **Provisoire** (si au Hero, déclaration = titre complémentaire).
 
 ---
@@ -400,7 +409,7 @@ Fond Weathered Maple pâle ou Maple Bone contrasté.
 - label, champ, bouton « S’inscrire », lien confidentialité ;
 - états : normal, focus, erreur, succès, désactivé ;
 - aucun popup auto, aucune réduction artificielle, aucune fausse urgence ;
-- texte final dépend de `VOICE.md` (**Ouvert**).
+- texte final (**Ouvert**) ; formulations selon `VOICE.md` (stratégie linguistique **Validée** : FR source, tutoiement, EN adapté, une langue à la fois).
 
 ---
 
@@ -802,7 +811,7 @@ Valider si :
 9. maintien du formulaire courriel ;
 10. capsule réelle ou absente ;
 11. textes approuvés ;
-12. langue ;
+12. conception détaillée du sélecteur de langue (hors portée actuelle) ;
 13. intensité du motif ;
 14. Header sticky ou statique.
 

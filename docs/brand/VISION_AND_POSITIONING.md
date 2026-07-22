@@ -163,7 +163,7 @@ Elle ne doit pas reposer sur :
 
 Flippin’ Maple se construit progressivement, honnêtement, avec contrôle. Indépendante ne veut pas dire improvisée. Cela veut dire : direction claire, décisions assumées, rythme réaliste.
 
-Le Print-on-Demand est un **moyen de production initial**.  
+Le Print-on-Demand est un **moyen de production initial**.
 Il ne constitue **ni l’identité ni la proposition de valeur** de la marque.
 
 ---
@@ -329,7 +329,7 @@ Exemples utiles pour juger **cohérence**, **crédibilité** ou **reconnaissance
 - Patagonia ;
 - certaines marques indépendantes de skate, workwear et outdoor.
 
-**Inspiration stratégique autorisée.**  
+**Inspiration stratégique autorisée.**
 **Imitation visuelle interdite.**
 
 ---
@@ -384,7 +384,21 @@ Aucune origine, qualité de fabrication ou exclusivité ne doit être inventée 
 
 ---
 
-## 19. Conséquences pour les prochains documents
+## 19. Langue de marque
+
+Direction linguistique **validée** (détail rédactionnel dans `docs/brand/VOICE.md`) :
+
+- le **français québécois naturel** est la langue source et principale ;
+- le **tutoiement** est le registre principal (direct, mature, accessible, cohérent) ;
+- l’**anglais canadien** est offert comme version complète, adaptée naturellement — jamais une traduction littérale ;
+- **une seule langue** est affichée à la fois dans les contenus principaux ;
+- **`NO FIXED LINE.`** demeure en anglais dans les versions française et anglaise ; il ne se traduit pas.
+
+Le sélecteur de langue, la mémorisation de préférence et l’architecture technique bilingue relèvent de l’intégration future, hors portée de ce document.
+
+---
+
+## 20. Conséquences pour les prochains documents
 
 Ce document guidera ensuite :
 
@@ -399,7 +413,7 @@ Ce document guidera ensuite :
 
 ---
 
-## 20. Checklist de validation stratégique
+## 21. Checklist de validation stratégique
 
 Avant d’adopter une proposition (visuelle, produit, message, offre) :
 
@@ -416,7 +430,7 @@ Avant d’adopter une proposition (visuelle, produit, message, offre) :
 
 ---
 
-## 21. Statut des décisions
+## 22. Statut des décisions
 
 ### Décisions établies
 
@@ -426,20 +440,22 @@ Avant d’adopter une proposition (visuelle, produit, message, offre) :
 - le POD est un **moyen initial**, pas l’identité ;
 - la **cohérence prime sur le volume** ;
 - le branding doit **précéder** les gros changements visuels du site ;
-- la marque doit rester **honnête** sur sa réalité actuelle.
+- la marque doit rester **honnête** sur sa réalité actuelle ;
+- **français québécois** = langue source et principale ; **tutoiement** ; **anglais canadien adapté** ; une langue à la fois ; `NO FIXED LINE.` en anglais dans les deux versions.
 
 ### Décisions encore ouvertes
 
 - définition plus précise des segments de clientèle ;
 - promesse finale condensée (formulation signature) ;
-- signature verbale éventuelle ;
+- signature verbale éventuelle (validation juridique de `NO FIXED LINE.` si retenue) ;
 - territoires créatifs à explorer en détail ;
 - direction visuelle ;
 - système de logo ;
 - palette ;
 - typographies ;
 - architecture exacte des collections ;
-- niveau de prix et stratégie produit à valider.
+- niveau de prix et stratégie produit à valider ;
+- mécanisme technique bilingue (sélecteur, mémorisation, routes, SEO).
 
 ---
 

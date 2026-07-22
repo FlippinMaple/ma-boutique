@@ -6,14 +6,15 @@
 | **Statut** | **Draft — Homepage Specification v1** |
 | **Date** | 2026-07-21 |
 | **Portée** | structure, contenu, règles visuelles, responsive, accessibilité, performance et actifs nécessaires pour la future page d’accueil |
-| **Documents supérieurs** | `docs/00_PROJECT_MASTER.md` · `docs/brand/VISION_AND_POSITIONING.md` · `docs/brand/VISUAL_IDENTITY.md` |
+| **Documents supérieurs** | `docs/00_PROJECT_MASTER.md` · `docs/brand/VISION_AND_POSITIONING.md` · `docs/brand/VISUAL_IDENTITY.md` · `docs/brand/VOICE.md` |
 | **Hors portée** | implémentation React/CSS · logo final · photographies finales · catalogue de lancement · architecture technique détaillée |
 
 **Ordre d’autorité en cas de conflit :**
 
 1. `docs/00_PROJECT_MASTER.md` (décisions structurantes) ;
 2. `docs/brand/VISION_AND_POSITIONING.md` (stratégie de marque) ;
-3. `docs/brand/VISUAL_IDENTITY.md` (direction visuelle de travail).
+3. `docs/brand/VISUAL_IDENTITY.md` (direction visuelle de travail) ;
+4. `docs/brand/VOICE.md` (voix et stratégie linguistique).
 
 Statuts utilisés : **Validé** · **Provisoire** · **Ouvert**.
 
@@ -58,7 +59,12 @@ La page ne doit pas tenter de présenter tout le catalogue.
 - **`NO FIXED LINE.`** est la signature verbale principale de travail ;
 - le motif inspiré du bois d’érable est un actif secondaire ;
 - tout actif visuel manquant doit être représenté par un placeholder descriptif précis ;
-- les fonctions e-commerce stables devront être protégées lors de l’intégration future.
+- les fonctions e-commerce stables devront être protégées lors de l’intégration future ;
+- **français québécois** = version source et principale de la page ;
+- **tutoiement** dans la version française ;
+- **anglais canadien adapté** = version complète parallèle ;
+- **une seule langue visible à la fois** dans les contenus principaux ;
+- **`NO FIXED LINE.`** inchangé (anglais) dans les deux langues.
 
 ### Provisoire
 
@@ -66,7 +72,7 @@ La page ne doit pas tenter de présenter tout le catalogue.
 - la palette exacte (hex encore provisoires dans `VISUAL_IDENTITY.md`) ;
 - les typographies d’interface ;
 - l’ordre final de certaines sections ;
-- les textes de travail ;
+- les textes de travail (FR et EN) ;
 - le nombre exact de produits mis en avant ;
 - les ratios d’image précis lorsque plusieurs options restent possibles.
 
@@ -77,8 +83,9 @@ La page ne doit pas tenter de présenter tout le catalogue.
 - produits permanents ;
 - photos finales ;
 - direction précise de la première campagne ;
-- textes définitifs ;
-- stratégie bilingue ou langue finale du site ;
+- textes définitifs approuvés (FR et EN) ;
+- mécanisme technique du sélecteur de langue et de la mémorisation de préférence ;
+- architecture technique d’internationalisation ;
 - système final de collections ;
 - contenus éditoriaux réels ;
 - mécanisme technique permettant de sélectionner les produits vedettes ;
@@ -658,9 +665,9 @@ La section est supprimée si aucun actif ou concept de capsule suffisamment fort
 ### Exemples de texte provisoire
 
 Titre :
-À définir lors de la validation de la voix de marque.
+À définir lors de la validation des textes (formulations de travail uniquement).
 
-Prévoir aussi une version française selon la stratégie linguistique future (**Ouvert**).
+Versions attendues : **française source** (tutoiement) et **anglaise adaptée** ; une seule langue visible à la fois. `NO FIXED LINE.` demeure inchangé si utilisé.
 
 ### Direction visuelle
 
