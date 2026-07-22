@@ -1,13 +1,64 @@
 :root {
   --flippinmaple-build-cache-buster: 20260720;
 
-  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
+  /* Palette de travail */
+  --color-ink-black: #11110f;
+  --color-maple-bone: #f1ece2;
+  --color-charcoal: #292a27;
+  --color-deep-forest: #304238;
+  --color-weathered-maple: #b6a184;
+  --color-cold-concrete: #737772;
+  --color-oxide-red: #893b32;
+
+  /* Tokens sémantiques */
+  --color-bg: var(--color-maple-bone);
+  --color-bg-dark: var(--color-charcoal);
+  --color-text: var(--color-ink-black);
+  --color-text-inverse: var(--color-maple-bone);
+  --color-text-secondary: var(--color-cold-concrete);
+  --color-border: color-mix(in srgb, var(--color-ink-black) 12%, transparent);
+  --color-accent-rare: var(--color-oxide-red);
+
+  /* Typographie de travail (chargement des fichiers séparé) */
+  --font-display:
+    'Archivo SemiCondensed', 'Arial Narrow', 'Roboto Condensed',
+    'Helvetica Neue', Arial, sans-serif;
+  --font-body:
+    'Source Sans 3', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+
+  /* Espacements (base 4px) */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-7: 3rem;
+  --space-8: 4rem;
+
+  /* Largeurs */
+  --width-content: 80rem;
+  --width-prose: 42rem;
+  --gutter: clamp(1rem, 4vw, 3rem);
+
+  /* Rayons (sobres) */
+  --radius-sm: 0.125rem;
+  --radius-md: 0.25rem;
+
+  /* Bordures et ombres */
+  --border-subtle: 1px solid var(--color-border);
+  --shadow-soft: 0 1px 2px color-mix(in srgb, var(--color-ink-black) 6%, transparent);
+
+  /* Mouvement */
+  --duration-fast: 150ms;
+  --duration-normal: 250ms;
+  --ease-natural: cubic-bezier(0.22, 1, 0.36, 1);
+
+  font-family: var(--font-body);
   line-height: 1.5;
   font-weight: 400;
-
-  color-scheme: light dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #242424;
+  color: var(--color-text);
+  background-color: var(--color-bg);
 
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -15,127 +66,158 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
 }
-a:hover {
-  color: #535bf2;
+
+html {
+  width: 100%;
+  min-height: 100%;
+  color: var(--color-text);
+  background-color: var(--color-bg);
+  text-size-adjust: 100%;
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
   margin: 0;
-  display: flex;
-  place-items: center;
+  width: 100%;
   min-width: 320px;
+  min-height: 100vh;
+  font-family: var(--font-body);
+  font-weight: 400;
+  line-height: 1.5;
+  color: var(--color-text);
+  background-color: var(--color-bg);
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: clip;
+}
+
+#root {
+  width: 100%;
   min-height: 100vh;
 }
 
-h1 {
-  font-size: 3.2em;
-  line-height: 1.1;
+img,
+picture,
+video,
+canvas,
+svg {
+  display: block;
+  max-width: 100%;
 }
 
-button {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
-  font-family: inherit;
-  background-color: #1a1a1a;
+input,
+button,
+textarea,
+select {
+  font: inherit;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  line-height: 1.15;
+  color: var(--color-text);
+  margin-block-start: 0;
+}
+
+p {
+  margin-block: 0 1em;
+}
+
+a {
+  color: inherit;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.15em;
+}
+
+a:hover {
+  color: var(--color-deep-forest);
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-oxide-red);
+  outline-offset: 3px;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.skip-link {
+  position: fixed;
+  top: var(--space-3);
+  left: var(--space-3);
+  z-index: 1000;
+  padding: var(--space-3) var(--space-4);
+  color: var(--color-text-inverse);
+  background-color: var(--color-ink-black);
+  transform: translateY(calc(-100% - var(--space-6)));
+  transition: transform var(--duration-fast) var(--ease-natural);
+}
+
+.skip-link:focus-visible {
+  transform: translateY(0);
+}
+
+.fm-container {
+  width: min(100%, var(--width-content));
+  margin-inline: auto;
+  padding-inline: var(--gutter);
+}
+
+.fm-section {
+  padding-block: clamp(3.5rem, 8vw, 7rem);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+img {
+  height: auto;
+}
+
+button:not(:disabled) {
   cursor: pointer;
-  transition: border-color 0.25s;
-}
-button:hover {
-  border-color: #646cff;
-}
-button:focus,
-button:focus-visible {
-  outline: 4px auto -webkit-focus-ring-color;
 }
 
-@media (prefers-color-scheme: light) {
-  :root {
-    color: #213547;
-    background-color: #ffffff;
-  }
-  a:hover {
-    color: #747bff;
-  }
-  button {
-    background-color: #f9f9f9;
-  }
+button:disabled {
+  cursor: not-allowed;
 }
 
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: scale(0.95);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
-.fade-in {
-  animation: fadeIn 0.8s ease-out;
-}
-
-@keyframes pop {
-  0% {
-    transform: scale(0);
-    opacity: 0;
-  }
-  50% {
-    transform: scale(1.2);
-    opacity: 1;
-  }
-  100% {
-    transform: scale(1);
-  }
-}
-
-.checkmark-container {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  margin-bottom: 1rem;
-}
-
-.checkmark {
-  font-size: 4rem;
-  animation: pop 0.6s ease-out;
-}
-
-@keyframes shake {
-  0% {
-    transform: translateX(0);
-  }
-  25% {
-    transform: translateX(-5px);
-  }
-  50% {
-    transform: translateX(5px);
-  }
-  75% {
-    transform: translateX(-5px);
-  }
-  100% {
-    transform: translateX(0);
-  }
-}
-
-.cancelmark-container {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  margin-bottom: 1rem;
-}
-
-.cancelmark {
-  font-size: 4rem;
-  animation: shake 0.6s ease-in-out;
+::selection {
+  color: var(--color-ink-black);
+  background-color: var(--color-weathered-maple);
 }
