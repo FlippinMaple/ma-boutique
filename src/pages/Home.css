@@ -1,0 +1,170 @@
+/* Home — Hero uniquement (Northern Utility Editorial) */
+
+.home {
+  width: 100%;
+  background-color: var(--color-maple-bone);
+  color: var(--color-ink-black);
+}
+
+.home-hero {
+  width: 100%;
+  background-color: var(--color-maple-bone);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.home-hero__inner {
+  display: grid;
+  grid-template-areas:
+    'visual'
+    'content';
+  width: 100%;
+}
+
+.home-hero__content {
+  grid-area: content;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  padding: clamp(var(--space-5), 5vw, var(--space-7)) var(--gutter);
+  background-color: var(--color-maple-bone);
+}
+
+.home-hero__eyebrow {
+  margin: 0 0 var(--space-3);
+  font-family: var(--font-display);
+  font-size: clamp(0.7rem, 1.4vw, 0.8rem);
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-deep-forest);
+}
+
+.home-hero__title {
+  margin: 0 0 var(--space-4);
+  max-width: 14ch;
+  font-family: var(--font-display);
+  font-size: clamp(2.25rem, 7vw, 4.25rem);
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--color-ink-black);
+}
+
+.home-hero__copy {
+  margin: 0 0 var(--space-6);
+  max-width: min(100%, 28rem);
+  font-family: var(--font-body);
+  font-size: clamp(1rem, 2.2vw, 1.125rem);
+  line-height: 1.55;
+  color: var(--color-text);
+}
+
+.home-hero__cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  max-width: 100%;
+  padding: var(--space-3) var(--space-5);
+  font-family: var(--font-display);
+  font-size: clamp(0.75rem, 1.5vw, 0.875rem);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-decoration: none;
+  color: var(--color-maple-bone);
+  background-color: var(--color-ink-black);
+  border: 1px solid var(--color-ink-black);
+  border-radius: var(--radius-sm);
+  transition:
+    color var(--duration-fast) var(--ease-natural),
+    background-color var(--duration-fast) var(--ease-natural),
+    border-color var(--duration-fast) var(--ease-natural),
+    transform var(--duration-fast) var(--ease-natural);
+}
+
+.home-hero__visual {
+  grid-area: visual;
+  position: relative;
+  overflow: hidden;
+  min-height: clamp(16rem, 70vw, 28rem);
+  aspect-ratio: 4 / 5;
+  background-color: var(--color-deep-forest);
+}
+
+.home-hero__visual::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(
+      155deg,
+      color-mix(in srgb, var(--color-charcoal) 55%, transparent) 0%,
+      transparent 48%
+    ),
+    linear-gradient(
+      25deg,
+      color-mix(in srgb, var(--color-ink-black) 35%, transparent) 0%,
+      transparent 42%
+    );
+  pointer-events: none;
+}
+
+.home-hero__visual::after {
+  content: '';
+  position: absolute;
+  top: 12%;
+  right: -8%;
+  width: 55%;
+  height: 120%;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--color-maple-bone) 8%, transparent),
+    transparent 70%
+  );
+  transform: skewX(-18deg);
+  pointer-events: none;
+}
+
+@media (min-width: 28rem) {
+  .home-hero__cta {
+    width: auto;
+    max-width: max-content;
+  }
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .home-hero__cta:hover {
+    color: var(--color-maple-bone);
+    background-color: var(--color-deep-forest);
+    border-color: var(--color-deep-forest);
+    transform: translateY(-1px);
+  }
+
+  .home-hero__cta:active {
+    transform: translateY(0);
+  }
+}
+
+@media (min-width: 56rem) {
+  .home-hero__inner {
+    grid-template-columns: minmax(0, 0.4fr) minmax(0, 0.6fr);
+    grid-template-areas: 'content visual';
+    width: min(100%, var(--width-content));
+    margin-inline: auto;
+    min-height: clamp(28rem, 62vh, 44rem);
+  }
+
+  .home-hero__content {
+    padding: clamp(var(--space-6), 5vw, var(--space-8))
+      clamp(var(--gutter), 4vw, var(--space-7));
+  }
+
+  .home-hero__visual {
+    aspect-ratio: auto;
+    min-height: 100%;
+    height: 100%;
+  }
+}
