@@ -82,3 +82,61 @@ export const getProductDetails = async (req, res) => {
     res.status(500).json({ error: 'Erreur serveur.' });
   }
 };
+
+// GET /api/products/featured
+export const getFeaturedProducts = async (req, res) => {
+  try {
+    const db = req.app.locals.db;
+    const [rows] = await db.execute(
+      `SELECT p.id, p.name, p.description, p.image,
+              v.id AS local_variant_id,
+              v.variant_id,
+              v.printful_variant_id,
+              v.price, v.size, v.color, v.image AS variant_image
+       FROM (
+         SELECT id, name, description, image, updated_at
+         FROM products
+         WHERE is_visible = 1
+           AND is_featured = 1
+           AND name IS NOT NULL
+           AND TRIM(name) <> ''
+         ORDER BY updated_at DESC, id DESC
+         LIMIT 4
+       ) p
+       LEFT JOIN product_variants v ON v.product_id = p.id
+       ORDER BY p.updated_at DESC, p.id DESC, v.id ASC`
+    );
+
+    const productsMap = new Map();
+    for (const row of rows) {
+      if (!productsMap.has(row.id)) {
+        productsMap.set(row.id, {
+          id: row.id,
+          name: row.name,
+          description: row.description,
+          image: row.image,
+          variants: []
+        });
+      }
+      if (row.local_variant_id) {
+        productsMap.get(row.id).variants.push({
+          id: row.local_variant_id,
+          variant_id: row.variant_id,
+          printful_variant_id: row.printful_variant_id,
+          price: row.price,
+          size: row.size,
+          color: row.color,
+          image: row.variant_image
+        });
+      }
+    }
+
+    res.json([...productsMap.values()]);
+  } catch (err) {
+    await logError(
+      `[GET /api/products/featured] ${err?.message || err}`,
+      'products'
+    );
+    res.status(500).json({ error: 'Erreur serveur.' });
+  }
+};
