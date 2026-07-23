@@ -5,6 +5,7 @@ import AdminGuard from './AdminGuard';
 
 const AdminLayout = lazy(() => import('./AdminLayout'));
 const AdminDashboard = lazy(() => import('./pages/Dashboard'));
+const AdminProducts = lazy(() => import('./pages/Products'));
 const AdminOrders = lazy(() => import('./pages/Orders'));
 const AdminOrderDetail = lazy(() => import('./pages/OrderDetail'));
 const AdminAbandoned = lazy(() => import('./pages/AbandonedCarts'));
@@ -28,6 +29,14 @@ export const adminRoutes = (
       element={
         <Suspense fallback={<div className="p-6">Chargement...</div>}>
           <AdminDashboard />
+        </Suspense>
+      }
+    />
+    <Route
+      path="products"
+      element={
+        <Suspense fallback={<div className="p-6">Chargement...</div>}>
+          <AdminProducts />
         </Suspense>
       }
     />

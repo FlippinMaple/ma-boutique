@@ -55,6 +55,9 @@ export default function AdminLayout() {
           <NavLink to="/admin" end style={linkStyle}>
             Dashboard
           </NavLink>
+          <NavLink to="/admin/products" style={linkStyle}>
+            Produits
+          </NavLink>
           <NavLink to="/admin/orders" style={linkStyle}>
             Commandes
           </NavLink>
