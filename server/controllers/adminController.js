@@ -155,3 +155,123 @@ export async function listStripeEvents(req, res) {
     return res.status(500).json({ error: 'Admin stripe events failed' });
   }
 }
+
+/** GET /api/admin/products */
+export async function listAdminProducts(req, res) {
+  const db = req.app.locals.db;
+  try {
+    const [rows] = await db.query(
+      `
+      SELECT
+        p.id,
+        p.name,
+        p.image,
+        p.is_visible,
+        p.is_featured,
+        p.updated_at,
+        (
+          SELECT MIN(pv.price)
+          FROM product_variants pv
+          WHERE pv.product_id = p.id
+            AND pv.is_active = 1
+        ) AS price
+      FROM products p
+      WHERE p.name IS NOT NULL
+        AND TRIM(p.name) <> ''
+      ORDER BY p.is_featured DESC, p.updated_at DESC, p.id DESC
+      `
+    );
+
+    return res.json({ maxFeatured: 4, results: rows });
+  } catch (err) {
+    await logError(err, 'admin.listAdminProducts');
+    return res.status(500).json({ error: 'Admin products failed' });
+  }
+}
+
+/** PATCH /api/admin/products/:id/featured */
+export async function updateProductFeatured(req, res) {
+  const db = req.app.locals.db;
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) {
+      return res.status(400).json({ error: 'Bad id' });
+    }
+
+    const body = req.body || {};
+    const { is_featured } = body;
+    if (typeof is_featured !== 'boolean') {
+      return res.status(400).json({ error: 'is_featured must be boolean' });
+    }
+
+    const [[product]] = await db.query(
+      `
+      SELECT id, name, image, is_visible, is_featured, updated_at
+      FROM products
+      WHERE id = ?
+      `,
+      [id]
+    );
+    if (!product) {
+      return res.status(404).json({ error: 'Not found' });
+    }
+
+    if (is_featured) {
+      if (!product.is_visible) {
+        return res
+          .status(409)
+          .json({ error: 'Invisible product cannot be featured' });
+      }
+
+      const name = product.name;
+      if (name == null || String(name).trim() === '') {
+        return res
+          .status(409)
+          .json({ error: 'Unnamed product cannot be featured' });
+      }
+
+      if (product.is_featured) {
+        return res.json({ product, maxFeatured: 4 });
+      }
+
+      const [[{ cnt }]] = await db.query(
+        `
+        SELECT COUNT(*) AS cnt
+        FROM products
+        WHERE is_featured = 1
+          AND is_visible = 1
+          AND name IS NOT NULL
+          AND TRIM(name) <> ''
+          AND id <> ?
+        `,
+        [id]
+      );
+
+      if (cnt >= 4) {
+        return res.status(409).json({
+          error: 'Maximum featured products reached',
+          maxFeatured: 4,
+        });
+      }
+    }
+
+    await db.query(`UPDATE products SET is_featured = ? WHERE id = ?`, [
+      is_featured ? 1 : 0,
+      id,
+    ]);
+
+    const [[updated]] = await db.query(
+      `
+      SELECT id, name, image, is_visible, is_featured, updated_at
+      FROM products
+      WHERE id = ?
+      `,
+      [id]
+    );
+
+    return res.json({ product: updated, maxFeatured: 4 });
+  } catch (err) {
+    await logError(err, 'admin.updateProductFeatured');
+    return res.status(500).json({ error: 'Admin product update failed' });
+  }
+}
