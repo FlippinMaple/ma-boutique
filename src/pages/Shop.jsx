@@ -98,13 +98,6 @@ const Shop = () => {
   return (
     <div className="shop-container">
       <h1>Ma boutique</h1>
-      <Link
-        to="/preview-order"
-        className="shop-btn btn-details"
-        style={{ marginBottom: '1rem', display: 'inline-block' }}
-      >
-        🧾 Aperçu de la commande
-      </Link>
       <input
         type="text"
         placeholder="Rechercher un produit..."

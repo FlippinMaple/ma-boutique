@@ -5,6 +5,11 @@ import { logError } from '../utils/logger.js';
 export const getVisibleProducts = async (req, res) => {
   try {
     const db = req.app.locals.db; // injecté par server/server.js
+    const q = String(req.query.q || '').trim();
+    const searchSql = q
+      ? `AND (p.name LIKE ? OR p.description LIKE ?)`
+      : '';
+    const params = q ? [`%${q}%`, `%${q}%`] : [];
     const [rows] = await db.execute(
       `SELECT p.id, p.name, p.description, p.image,
               v.id AS local_variant_id,
@@ -14,7 +19,9 @@ export const getVisibleProducts = async (req, res) => {
        FROM products p
        LEFT JOIN product_variants v ON v.product_id = p.id
        WHERE p.is_visible = 1
-       ORDER BY p.id DESC`
+       ${searchSql}
+       ORDER BY p.id DESC`,
+      params
     );
 
     const productsMap = {};
