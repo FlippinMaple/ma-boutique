@@ -88,6 +88,26 @@ const Home = () => {
           </div>
         </section>
       ) : null}
+
+      <section
+        className="home-declaration"
+        aria-labelledby="home-declaration-title"
+      >
+        <div className="home-declaration__inner">
+          <h2
+            id="home-declaration-title"
+            className="home-declaration__title"
+          >
+            Ta ligne. Ton rythme.
+          </h2>
+          <p className="home-declaration__copy">
+            Flippin’ Maple puise dans la culture skate une idée simple : choisir
+            sa direction. Mouvement, liberté et confiance calme guident la
+            marque, sans t’enfermer dans une scène. Tu avances à ton rythme. Tu
+            changes de direction quand tu le décides.
+          </p>
+        </div>
+      </section>
     </main>
   );
 };
