@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { useCart } from '../CartContext';
 import api from '../utils/api';
 import './styles/ProductDetail.css';
@@ -68,7 +68,15 @@ const ProductDetail = () => {
     fetchAvailability();
   }, [selectedVariant]);
 
-  if (!product) return <div>Chargement...</div>;
+  if (!product) {
+    return (
+      <main className="product-page" id="main-content">
+        <div className="product-page__state" role="status">
+          Chargement du produit...
+        </div>
+      </main>
+    );
+  }
 
   const colors = [
     ...new Set((product.variants || []).map((v) => v.color).filter(Boolean))
@@ -80,131 +88,178 @@ const ProductDetail = () => {
   const canAddToCart =
     !!selectedVariant && availableStock >= quantity && quantity > 0;
 
+  const productImage =
+    selectedVariant?.image && selectedVariant.image !== ''
+      ? selectedVariant.image
+      : product.image;
+
+  const rawPrice = selectedVariant?.price;
+  const numericPrice = Number(rawPrice);
+  const formattedPrice =
+    rawPrice !== undefined &&
+    rawPrice !== null &&
+    rawPrice !== '' &&
+    Number.isFinite(numericPrice)
+      ? new Intl.NumberFormat('fr-CA', {
+          style: 'currency',
+          currency: 'CAD'
+        }).format(numericPrice)
+      : null;
+
+  const stockStatusClass =
+    loading || availableStock === null
+      ? 'product-stock product-stock--checking'
+      : availableStock === 0
+        ? 'product-stock product-stock--unavailable'
+        : availableStock <= 10
+          ? 'product-stock product-stock--limited'
+          : 'product-stock product-stock--available';
+
   return (
-    <div className="product-detail">
-      <img
-        src={
-          selectedVariant?.image && selectedVariant.image !== ''
-            ? selectedVariant.image
-            : product.image
-        }
-        alt={product.name}
-        style={{ maxWidth: 300, borderRadius: 10 }}
-      />
+    <main className="product-page" id="main-content">
+      <div className="product-page__inner">
+        <Link className="product-page__back" to="/shop">
+          Retour à la boutique
+        </Link>
 
-      <h2>{product.name}</h2>
-      <p>{product.description}</p>
+        <article className="product-detail">
+          <div className="product-detail__media">
+            {productImage ? (
+              <img
+                src={productImage}
+                alt={product.name}
+                className="product-detail__image"
+              />
+            ) : (
+              <div
+                className="product-detail__image-fallback"
+                aria-hidden="true"
+              />
+            )}
+          </div>
 
-      <div style={{ margin: '10px 0' }}>
-        <span>Couleur :</span>
-        {colors.map((color) => (
-          <button
-            key={color}
-            className={`pastille ${selectedColor === color ? 'active' : ''}`}
-            onClick={() => setSelectedColor(color)}
-            style={{
-              margin: 3,
-              padding: 8,
-              borderRadius: 16,
-              border: '1px solid #ddd',
-              background: selectedColor === color ? '#2196f3' : '#eee',
-              color: selectedColor === color ? '#fff' : '#333',
-              minWidth: 32
-            }}
-          >
-            {color}
-          </button>
-        ))}
+          <div className="product-detail__content">
+            <p className="product-detail__eyebrow">FLIPPIN’ MAPLE</p>
+
+            <h1 className="product-detail__title">{product.name}</h1>
+
+            {formattedPrice ? (
+              <p className="product-detail__price">{formattedPrice}</p>
+            ) : null}
+
+            {typeof product.description === 'string' &&
+            product.description.trim() !== '' ? (
+              <p className="product-detail__description">
+                {product.description}
+              </p>
+            ) : null}
+
+            <fieldset className="product-options">
+              <legend className="product-options__legend">Couleur</legend>
+              <div className="product-options__choices">
+                {colors.map((color) => {
+                  const isActive = selectedColor === color;
+
+                  return (
+                    <button
+                      key={color}
+                      type="button"
+                      className={`product-option ${isActive ? 'is-active' : ''}`}
+                      aria-pressed={isActive}
+                      onClick={() => setSelectedColor(color)}
+                    >
+                      {color}
+                    </button>
+                  );
+                })}
+              </div>
+            </fieldset>
+
+            <fieldset className="product-options">
+              <legend className="product-options__legend">Taille</legend>
+              <div className="product-options__choices">
+                {sizes.map((size) => {
+                  const isActive = selectedSize === size;
+
+                  return (
+                    <button
+                      key={size}
+                      type="button"
+                      className={`product-option ${isActive ? 'is-active' : ''}`}
+                      aria-pressed={isActive}
+                      onClick={() => setSelectedSize(size)}
+                    >
+                      {size}
+                    </button>
+                  );
+                })}
+              </div>
+            </fieldset>
+
+            <div className="product-purchase">
+              <label className="product-quantity">
+                <span className="product-quantity__label">Quantité</span>
+                <input
+                  type="number"
+                  value={quantity}
+                  min={1}
+                  max={availableStock || 1}
+                  onChange={(e) =>
+                    setQuantity(
+                      Math.max(
+                        1,
+                        Math.min(Number(e.target.value), availableStock || 1)
+                      )
+                    )
+                  }
+                  className="product-quantity__input"
+                  disabled={!selectedVariant}
+                />
+              </label>
+
+              <p className={stockStatusClass} aria-live="polite">
+                {loading || availableStock === null
+                  ? 'Vérification de la disponibilité...'
+                  : availableStock === 0
+                    ? 'Indisponible'
+                    : availableStock <= 10
+                      ? `Stock limité : ${availableStock} disponible${
+                          availableStock > 1 ? 's' : ''
+                        }`
+                      : 'Disponible'}
+              </p>
+            </div>
+
+            <button
+              type="button"
+              className="product-add-button"
+              onClick={() => {
+                if (!selectedVariant) return;
+
+                validateStockBeforeAdd({
+                  id: selectedVariant.id,
+                  name: product.name,
+                  price: Number(selectedVariant.price),
+                  image: selectedVariant.image || product.image,
+                  quantity,
+                  color: selectedVariant.color,
+                  size: selectedVariant.size,
+                  printful_variant_id: selectedVariant.printful_variant_id,
+                  variant_id: selectedVariant.variant_id
+                });
+              }}
+              disabled={!canAddToCart}
+            >
+              {loading
+                ? 'Vérification...'
+                : availableStock === 0
+                  ? 'Indisponible'
+                  : 'Ajouter au panier'}
+            </button>
+          </div>
+        </article>
       </div>
-
-      <div style={{ margin: '10px 0' }}>
-        <span>Taille :</span>
-        {sizes.map((size) => (
-          <button
-            key={size}
-            className={`pastille ${selectedSize === size ? 'active' : ''}`}
-            onClick={() => setSelectedSize(size)}
-            style={{
-              margin: 3,
-              padding: 8,
-              borderRadius: 16,
-              border: '1px solid #ddd',
-              background: selectedSize === size ? '#2196f3' : '#eee',
-              color: selectedSize === size ? '#fff' : '#333',
-              minWidth: 32
-            }}
-          >
-            {size}
-          </button>
-        ))}
-      </div>
-
-      <div style={{ margin: '10px 0' }}>
-        <span>Quantité :</span>
-        <input
-          type="number"
-          value={quantity}
-          min={1}
-          max={availableStock || 1}
-          onChange={(e) =>
-            setQuantity(
-              Math.max(1, Math.min(Number(e.target.value), availableStock || 1))
-            )
-          }
-          style={{ width: 60 }}
-          disabled={!selectedVariant}
-        />
-        <span
-          style={{
-            color:
-              loading || availableStock === null
-                ? '#888'
-                : availableStock <= 10
-                ? 'red'
-                : 'green',
-            fontSize: 13,
-            marginLeft: 8
-          }}
-        >
-          {loading
-            ? '(Vérification...)'
-            : availableStock === 0
-            ? 'Indisponible'
-            : availableStock <= 10
-            ? `Stock limité : seulement ${availableStock}`
-            : 'Disponible'}
-        </span>
-      </div>
-
-      <div style={{ fontWeight: 'bold', margin: '12px 0' }}>
-        Prix:{' '}
-        {selectedVariant
-          ? `${Number(selectedVariant.price).toFixed(2)} $`
-          : 'Sélectionne une variante'}
-      </div>
-
-      <button
-        onClick={() => {
-          if (!selectedVariant) return;
-
-          validateStockBeforeAdd({
-            id: selectedVariant.id,
-            name: product.name,
-            price: Number(selectedVariant.price),
-            image: selectedVariant.image || product.image,
-            quantity,
-            color: selectedVariant.color,
-            size: selectedVariant.size,
-            printful_variant_id: selectedVariant.printful_variant_id,
-            variant_id: selectedVariant.variant_id
-          });
-        }}
-        disabled={!canAddToCart}
-        className="shop-btn"
-      >
-        Ajouter au panier
-      </button>
-    </div>
+    </main>
   );
 };
 
