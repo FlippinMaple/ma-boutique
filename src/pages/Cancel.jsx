@@ -20,14 +20,9 @@ const Cancel = () => {
     if (hasShownToast.current) return;
     hasShownToast.current = true;
 
-    toast.error('Transaction annulee. Retour a la boutique...', {
+    toast.error('Transaction annulée. Retour à la boutique…', {
       duration: 3000,
-      position: 'top-center',
-      style: {
-        background: '#fff0f0',
-        color: '#1a202c',
-        fontWeight: '500'
-      }
+      id: 'checkout-cancelled'
     });
 
     const timer = setTimeout(() => {
