@@ -6,6 +6,15 @@ import ShippingOptions from '../components/ShippingOptions';
 import toast from 'react-hot-toast';
 import { formatEmail, capitalizeSmart } from '../utils/textHelpers';
 import { provincesCA, statesUS } from '../utils/regionOptions';
+import './styles/Checkout.css';
+
+const currencyFormatter = new Intl.NumberFormat('fr-CA', {
+  style: 'currency',
+  currency: 'CAD'
+});
+
+const formatCurrency = (value) =>
+  currencyFormatter.format(Number(value) || 0);
 
 const Checkout = () => {
   const {
@@ -165,6 +174,12 @@ const Checkout = () => {
     ? cart.reduce((sum, item) => sum + item.price * item.quantity, 0)
     : 0;
 
+  const shippingTotal = shippingRate
+    ? Number.parseFloat(shippingRate.rate) || 0
+    : 0;
+
+  const orderTotal = total + shippingTotal;
+
   const validateCheckout = useCallback(() => {
     if (
       !userEmail ||
@@ -175,11 +190,11 @@ const Checkout = () => {
       !shipping.country ||
       !shipping.zip
     ) {
-      toast.error('Tous les champs de livraison doivent etre remplis.');
+      toast.error('Tous les champs de livraison doivent être remplis.');
       return false;
     }
     if (!shippingRate) {
-      toast.error('Veuillez selectionner un mode de livraison.');
+      toast.error('Veuillez sélectionner un mode de livraison.');
       return false;
     }
     return true;
@@ -233,7 +248,7 @@ const Checkout = () => {
         // Do not clearCart here
         window.location.href = response.data.url;
       } else {
-        toast.error('Erreur : aucune URL de paiement recue.');
+        toast.error('Erreur : aucune URL de paiement reçue.');
       }
     } catch (err) {
       console.error(
@@ -255,230 +270,408 @@ const Checkout = () => {
   ]);
 
   return (
-    <div style={{ padding: '2rem', maxWidth: '500px', margin: 'auto' }}>
-      <h2>Panier</h2>
+    <main className="checkout-page" id="main-content">
+      <div className="checkout-page__inner">
+        <header className="checkout-intro">
+          <p className="checkout-intro__eyebrow">FLIPPIN’ MAPLE</p>
+          <h1 className="checkout-intro__title">Finaliser la commande</h1>
+          <p className="checkout-intro__copy">
+            Vérifie tes articles et entre les renseignements nécessaires à la
+            livraison.
+          </p>
+        </header>
 
-      <div style={{ marginBottom: '1rem' }}>
-        <label htmlFor="email">Adresse courriel :</label>
-        <input
-          id="email"
-          type="email"
-          value={userEmail}
-          onChange={(e) => setUserEmail(e.target.value)}
-          placeholder="exemple@courriel.com"
-          style={{
-            marginLeft: '0.5rem',
-            padding: '0.4rem',
-            borderRadius: '6px',
-            border: '1px solid #ccc'
-          }}
-          required
-        />
-      </div>
+        <div className="checkout-layout">
+          <div className="checkout-main">
+            <section
+              className="checkout-section"
+              aria-labelledby="checkout-contact-title"
+            >
+              <div className="checkout-section__header">
+                <p className="checkout-section__number">01</p>
+                <h2
+                  className="checkout-section__title"
+                  id="checkout-contact-title"
+                >
+                  Coordonnées
+                </h2>
+              </div>
 
-      <div style={{ marginBottom: '1rem' }}>
-        <input
-          placeholder="Nom complet"
-          value={shipping.name}
-          onChange={(e) => setShipping({ ...shipping, name: e.target.value })}
-          style={{ marginBottom: 6, width: '100%' }}
-          required
-        />
-        <input
-          placeholder="Adresse"
-          value={shipping.address1}
-          onChange={(e) =>
-            setShipping({ ...shipping, address1: e.target.value })
-          }
-          style={{ marginBottom: 6, width: '100%' }}
-          required
-        />
-        <input
-          placeholder="Ville"
-          value={shipping.city}
-          onChange={(e) => setShipping({ ...shipping, city: e.target.value })}
-          style={{ marginBottom: 6, width: '100%' }}
-          required
-        />
-        <select
-          value={shipping.country}
-          onChange={(e) =>
-            setShipping({ ...shipping, country: e.target.value })
-          }
-          style={{ marginBottom: 6, width: '100%' }}
-          required
-        >
-          <option value="">Selectionner un pays</option>
-          <option value="CA">Canada</option>
-          <option value="US">Etats-Unis</option>
-        </select>
+              <div className="checkout-fields">
+                <div className="checkout-field checkout-field--full">
+                  <label
+                    className="checkout-field__label"
+                    htmlFor="checkout-email"
+                  >
+                    Adresse courriel
+                  </label>
+                  <input
+                    className="checkout-field__control"
+                    id="checkout-email"
+                    name="email"
+                    type="email"
+                    autoComplete="email"
+                    value={userEmail}
+                    onChange={(e) => setUserEmail(e.target.value)}
+                    placeholder="exemple@courriel.com"
+                    required
+                  />
+                </div>
+              </div>
+            </section>
 
-        <select
-          value={shipping.state}
-          onChange={(e) => setShipping({ ...shipping, state: e.target.value })}
-          style={{ marginBottom: 6, width: '100%' }}
-          required
-        >
-          <option value="">Selectionner une province ou un etat</option>
-          {shipping.country === 'CA' &&
-            provincesCA.map((prov) => (
-              <option key={prov.code} value={prov.code}>
-                {prov.name}
-              </option>
-            ))}
-          {shipping.country === 'US' &&
-            statesUS.map((state) => (
-              <option key={state.code} value={state.code}>
-                {state.name}
-              </option>
-            ))}
-        </select>
+            <section
+              className="checkout-section"
+              aria-labelledby="checkout-address-title"
+            >
+              <div className="checkout-section__header">
+                <p className="checkout-section__number">02</p>
+                <h2
+                  className="checkout-section__title"
+                  id="checkout-address-title"
+                >
+                  Adresse de livraison
+                </h2>
+              </div>
 
-        <input
-          placeholder="Code postal"
-          value={shipping.zip}
-          onChange={(e) => setShipping({ ...shipping, zip: e.target.value })}
-          style={{ marginBottom: 6, width: '100%' }}
-          required
-        />
-      </div>
+              <div className="checkout-fields">
+                <div className="checkout-field">
+                  <label
+                    className="checkout-field__label"
+                    htmlFor="shipping-name"
+                  >
+                    Nom complet
+                  </label>
+                  <input
+                    className="checkout-field__control"
+                    id="shipping-name"
+                    name="name"
+                    type="text"
+                    autoComplete="name"
+                    value={shipping.name}
+                    onChange={(e) =>
+                      setShipping({ ...shipping, name: e.target.value })
+                    }
+                    placeholder="Prénom et nom"
+                    required
+                  />
+                </div>
 
-      {cart.map((item) => (
-        <div
-          key={item.id}
-          style={{
-            marginBottom: '1.5rem',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '1rem'
-          }}
-        >
-          <img
-            src={item.image}
-            alt={item.name}
-            style={{ width: '60px', height: '60px', borderRadius: '6px' }}
-          />
-          <div>
-            <strong>{capitalizeSmart(item.name)}</strong>
+                <div className="checkout-field checkout-field--full">
+                  <label
+                    className="checkout-field__label"
+                    htmlFor="shipping-address"
+                  >
+                    Adresse
+                  </label>
+                  <input
+                    className="checkout-field__control"
+                    id="shipping-address"
+                    name="address1"
+                    type="text"
+                    autoComplete="street-address"
+                    value={shipping.address1}
+                    onChange={(e) =>
+                      setShipping({ ...shipping, address1: e.target.value })
+                    }
+                    placeholder="Numéro et rue"
+                    required
+                  />
+                </div>
 
-            <div className="shop-quantity-controls">
-              <button
-                className="shop-qty-btn"
-                onClick={() => updateQuantity(item.id, item.quantity - 1)}
-                disabled={item.quantity <= 1}
-                title={
-                  item.quantity <= 1 ? 'Quantite minimale atteinte' : 'Diminuer'
-                }
+                <div className="checkout-field">
+                  <label
+                    className="checkout-field__label"
+                    htmlFor="shipping-city"
+                  >
+                    Ville
+                  </label>
+                  <input
+                    className="checkout-field__control"
+                    id="shipping-city"
+                    name="city"
+                    type="text"
+                    autoComplete="address-level2"
+                    value={shipping.city}
+                    onChange={(e) =>
+                      setShipping({ ...shipping, city: e.target.value })
+                    }
+                    required
+                  />
+                </div>
+
+                <div className="checkout-field">
+                  <label
+                    className="checkout-field__label"
+                    htmlFor="shipping-country"
+                  >
+                    Pays
+                  </label>
+                  <select
+                    className="checkout-field__control"
+                    id="shipping-country"
+                    name="country"
+                    autoComplete="country"
+                    value={shipping.country}
+                    onChange={(e) =>
+                      setShipping({ ...shipping, country: e.target.value })
+                    }
+                    required
+                  >
+                    <option value="">Sélectionner un pays</option>
+                    <option value="CA">Canada</option>
+                    <option value="US">États-Unis</option>
+                  </select>
+                </div>
+
+                <div className="checkout-field">
+                  <label
+                    className="checkout-field__label"
+                    htmlFor="shipping-state"
+                  >
+                    Province ou État
+                  </label>
+                  <select
+                    className="checkout-field__control"
+                    id="shipping-state"
+                    name="state"
+                    autoComplete="address-level1"
+                    value={shipping.state}
+                    onChange={(e) =>
+                      setShipping({ ...shipping, state: e.target.value })
+                    }
+                    required
+                  >
+                    <option value="">
+                      Sélectionner une province ou un État
+                    </option>
+                    {shipping.country === 'CA' &&
+                      provincesCA.map((prov) => (
+                        <option key={prov.code} value={prov.code}>
+                          {prov.name}
+                        </option>
+                      ))}
+                    {shipping.country === 'US' &&
+                      statesUS.map((state) => (
+                        <option key={state.code} value={state.code}>
+                          {state.name}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+
+                <div className="checkout-field">
+                  <label
+                    className="checkout-field__label"
+                    htmlFor="shipping-zip"
+                  >
+                    Code postal
+                  </label>
+                  <input
+                    className="checkout-field__control"
+                    id="shipping-zip"
+                    name="zip"
+                    type="text"
+                    autoComplete="postal-code"
+                    value={shipping.zip}
+                    onChange={(e) =>
+                      setShipping({ ...shipping, zip: e.target.value })
+                    }
+                    required
+                  />
+                </div>
+              </div>
+            </section>
+
+            {shipping.name &&
+              shipping.address1 &&
+              shipping.city &&
+              shipping.state &&
+              shipping.country &&
+              shipping.zip && (
+                <section
+                  className="checkout-section"
+                  aria-labelledby="checkout-shipping-title"
+                >
+                  <div className="checkout-section__header">
+                    <p className="checkout-section__number">03</p>
+                    <h2
+                      className="checkout-section__title"
+                      id="checkout-shipping-title"
+                    >
+                      Livraison
+                    </h2>
+                  </div>
+
+                  <ShippingOptions
+                    cartItems={cart}
+                    shippingInfo={shipping}
+                    onShippingSelected={setShippingRate}
+                  />
+                </section>
+              )}
+          </div>
+
+          <aside
+            className="checkout-summary"
+            aria-labelledby="checkout-summary-title"
+          >
+            <div className="checkout-summary__header">
+              <p className="checkout-summary__eyebrow">Ta sélection</p>
+              <h2
+                className="checkout-summary__title"
+                id="checkout-summary-title"
               >
-                -
+                Résumé de la commande
+              </h2>
+            </div>
+
+            <div className="checkout-items">
+              {cart.map((item) => {
+                const itemPrice = Number(item.price) || 0;
+                const itemTotal = itemPrice * item.quantity;
+
+                return (
+                  <article className="checkout-item" key={item.id}>
+                    <div className="checkout-item__media">
+                      {item.image ? (
+                        <img
+                          className="checkout-item__image"
+                          src={item.image}
+                          alt=""
+                          loading="lazy"
+                          decoding="async"
+                        />
+                      ) : (
+                        <div
+                          className="checkout-item__image-fallback"
+                          aria-hidden="true"
+                        />
+                      )}
+                    </div>
+
+                    <div className="checkout-item__content">
+                      <h3 className="checkout-item__name">
+                        {capitalizeSmart(item.name)}
+                      </h3>
+
+                      {item.color || item.size ? (
+                        <p className="checkout-item__variant">
+                          {[item.color, item.size].filter(Boolean).join(' · ')}
+                        </p>
+                      ) : null}
+
+                      <div
+                        className="checkout-item__quantity"
+                        aria-label={`Quantité pour ${capitalizeSmart(item.name)}`}
+                      >
+                        <button
+                          type="button"
+                          className="checkout-quantity-button"
+                          onClick={() =>
+                            updateQuantity(item.id, item.quantity - 1)
+                          }
+                          disabled={item.quantity <= 1}
+                          aria-label={`Diminuer la quantité de ${capitalizeSmart(item.name)}`}
+                        >
+                          −
+                        </button>
+
+                        <span
+                          className="checkout-quantity-value"
+                          aria-live="polite"
+                        >
+                          {item.quantity}
+                        </span>
+
+                        <button
+                          type="button"
+                          className="checkout-quantity-button"
+                          onClick={() => addToCart({ ...item, quantity: 1 })}
+                          aria-label={`Augmenter la quantité de ${capitalizeSmart(item.name)}`}
+                        >
+                          +
+                        </button>
+
+                        <button
+                          type="button"
+                          className="checkout-item__remove"
+                          onClick={() => removeFromCart(item.id)}
+                          aria-label={`Supprimer ${capitalizeSmart(item.name)} du panier`}
+                        >
+                          Supprimer
+                        </button>
+                      </div>
+
+                      <p className="checkout-item__price">
+                        {formatCurrency(itemPrice)} × {item.quantity}
+                      </p>
+                    </div>
+
+                    <p className="checkout-item__total">
+                      {formatCurrency(itemTotal)}
+                    </p>
+                  </article>
+                );
+              })}
+            </div>
+
+            <div className="checkout-totals">
+              <div className="checkout-total-row">
+                <span>Sous-total</span>
+                <span>{formatCurrency(total)}</span>
+              </div>
+
+              {shippingRate ? (
+                <div className="checkout-total-row">
+                  <span>Livraison — {shippingRate.name}</span>
+                  <span>{formatCurrency(shippingTotal)}</span>
+                </div>
+              ) : (
+                <div className="checkout-total-row checkout-total-row--muted">
+                  <span>Livraison</span>
+                  <span>À sélectionner</span>
+                </div>
+              )}
+
+              <div className="checkout-total-row checkout-total-row--grand">
+                <span>Total</span>
+                <span>{formatCurrency(orderTotal)}</span>
+              </div>
+            </div>
+
+            <div className="checkout-actions">
+              <button
+                type="button"
+                className="checkout-button checkout-button--secondary"
+                onClick={clearCart}
+              >
+                Vider le panier
               </button>
 
-              <span className="shop-qty-count">{item.quantity}</span>
-
               <button
-                className="shop-qty-btn"
-                onClick={() => addToCart({ ...item, quantity: 1 })}
-                title="Augmenter"
+                type="button"
+                className="checkout-button checkout-button--primary"
+                onClick={handleCheckout}
+                disabled={loading || !shippingRate}
               >
-                +
-              </button>
-
-              <button
-                className="shop-qty-btn"
-                onClick={() => removeFromCart(item.id)}
-                title="Supprimer l'article"
-                style={{ marginLeft: 8 }}
-              >
-                x
+                {loading ? 'Redirection...' : 'Passer au paiement'}
               </button>
             </div>
 
-            <p style={{ marginTop: '5px' }}>
-              {(Number(item.price) || 0).toFixed(2)} $ x {item.quantity} ={' '}
-              {((Number(item.price) || 0) * item.quantity).toFixed(2)} $
-            </p>
-          </div>
+            {loading ? (
+              <p
+                className="checkout-status"
+                role="status"
+                aria-live="polite"
+              >
+                Redirection sécurisée vers Stripe...
+              </p>
+            ) : null}
+          </aside>
         </div>
-      ))}
-
-      {shipping.name &&
-        shipping.address1 &&
-        shipping.city &&
-        shipping.state &&
-        shipping.country &&
-        shipping.zip && (
-          <ShippingOptions
-            cartItems={cart}
-            shippingInfo={shipping}
-            onShippingSelected={setShippingRate}
-          />
-        )}
-
-      <hr />
-      <p>
-        <strong>Sous-total :</strong> {total.toFixed(2)} $
-      </p>
-      {shippingRate && (
-        <p>
-          <strong>Livraison ({shippingRate.name}) :</strong>{' '}
-          {parseFloat(shippingRate.rate).toFixed(2)} $
-        </p>
-      )}
-      <p>
-        <strong>Total a payer :</strong>{' '}
-        {(total + (shippingRate ? parseFloat(shippingRate.rate) : 0)).toFixed(
-          2
-        )}{' '}
-        $
-      </p>
-
-      <button onClick={clearCart}>Vider le panier</button>
-
-      <button
-        onClick={handleCheckout}
-        disabled={loading || !shippingRate}
-        style={{
-          marginLeft: '1rem',
-          padding: '10px 20px',
-          backgroundColor: '#28a745',
-          color: '#fff',
-          border: 'none',
-          borderRadius: '8px',
-          cursor: 'pointer',
-          fontWeight: 'bold',
-          fontSize: '16px'
-        }}
-      >
-        Payer maintenant
-      </button>
-
-      {/* TEMP: guest checkout — same flow as Payer maintenant, no login */}
-      <button
-        type="button"
-        onClick={handleCheckout}
-        disabled={loading || !shippingRate}
-        style={{
-          marginLeft: '1rem',
-          marginTop: '0.75rem',
-          padding: '10px 20px',
-          backgroundColor: 'transparent',
-          color: '#28a745',
-          border: '2px solid #28a745',
-          borderRadius: '8px',
-          cursor: 'pointer',
-          fontWeight: 'bold',
-          fontSize: '16px'
-        }}
-      >
-        Continuer comme invité
-      </button>
-
-      {loading && (
-        <div style={{ marginTop: '1rem', color: '#007bff' }}>
-          Redirection vers Stripe...
-        </div>
-      )}
-    </div>
+      </div>
+    </main>
   );
 };
 

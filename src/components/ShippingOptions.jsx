@@ -1,11 +1,23 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import axios from 'axios';
+
+const currencyFormatter = new Intl.NumberFormat('fr-CA', {
+  style: 'currency',
+  currency: 'CAD'
+});
+
+const formatCurrency = (value) =>
+  currencyFormatter.format(Number(value) || 0);
 
 const ShippingOptions = ({ cartItems, shippingInfo, onShippingSelected }) => {
   const [rates, setRates] = useState([]);
   const [selectedRate, setSelectedRate] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [hasFetched, setHasFetched] = useState(false);
 
   useEffect(() => {
+    let isCurrent = true;
+
     const fetchRates = async () => {
       if (
         !shippingInfo.name ||
@@ -15,20 +27,30 @@ const ShippingOptions = ({ cartItems, shippingInfo, onShippingSelected }) => {
         !shippingInfo.country ||
         !shippingInfo.zip
       ) {
+        setRates([]);
+        setSelectedRate(null);
+        setHasFetched(false);
+        setLoading(false);
+        onShippingSelected(null);
         return;
       }
 
+      setLoading(true);
+      setHasFetched(false);
+      setRates([]);
+      setSelectedRate(null);
+      onShippingSelected(null);
+
       try {
-        const response = await axios.post(
-          '/api/shipping/rates',
-          {
-            recipient: shippingInfo,
-            items: cartItems.map((item) => ({
-              printful_variant_id: item.printful_variant_id, // ← LONG ID
-              quantity: item.quantity
-            }))
-          }
-        );
+        const response = await axios.post('/api/shipping/rates', {
+          recipient: shippingInfo,
+          items: cartItems.map((item) => ({
+            printful_variant_id: item.printful_variant_id, // ← LONG ID
+            quantity: item.quantity
+          }))
+        });
+
+        if (!isCurrent) return;
 
         const rawRates = response?.data;
 
@@ -38,6 +60,9 @@ const ShippingOptions = ({ cartItems, shippingInfo, onShippingSelected }) => {
             response.data
           );
           setRates([]);
+          setSelectedRate(null);
+          setHasFetched(true);
+          onShippingSelected(null);
           return;
         }
 
@@ -48,18 +73,34 @@ const ShippingOptions = ({ cartItems, shippingInfo, onShippingSelected }) => {
         );
 
         setRates(validRates);
+        setHasFetched(true);
 
         if (validRates.length > 0) {
           setSelectedRate(validRates[0]);
           onShippingSelected(validRates[0]);
+        } else {
+          setSelectedRate(null);
+          onShippingSelected(null);
         }
       } catch (error) {
         console.error('Erreur lors de la récupération des tarifs :', error);
+        if (!isCurrent) return;
         setRates([]);
+        setSelectedRate(null);
+        setHasFetched(true);
+        onShippingSelected(null);
+      } finally {
+        if (isCurrent) {
+          setLoading(false);
+        }
       }
     };
 
     fetchRates();
+
+    return () => {
+      isCurrent = false;
+    };
   }, [cartItems, shippingInfo, onShippingSelected]);
 
   const handleSelect = (rate) => {
@@ -68,68 +109,91 @@ const ShippingOptions = ({ cartItems, shippingInfo, onShippingSelected }) => {
   };
 
   return (
-    <div style={{ marginTop: '1.5rem' }}>
-      <h3 style={{ marginBottom: '1rem' }}>Méthode de livraison</h3>
-      {rates.length === 0 ? (
-        <p>Aucune option disponible pour cette adresse.</p>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          {rates.map((rate, index) => {
-            const isSelected = selectedRate?.id === rate.id;
+    <section
+      className="shipping-options"
+      aria-labelledby="shipping-options-title"
+    >
+      <div className="shipping-options__header">
+        <h3 className="shipping-options__title" id="shipping-options-title">
+          Méthode de livraison
+        </h3>
+
+        <p className="shipping-options__copy">
+          Choisis l’option qui convient à ta commande.
+        </p>
+      </div>
+
+      {loading ? (
+        <p
+          className="shipping-options__status"
+          role="status"
+          aria-live="polite"
+        >
+          Recherche des options de livraison...
+        </p>
+      ) : null}
+
+      {!loading && hasFetched && rates.length === 0 ? (
+        <p
+          className="shipping-options__status shipping-options__status--empty"
+          role="status"
+        >
+          Aucune option de livraison n’est disponible pour cette adresse.
+        </p>
+      ) : null}
+
+      {!loading && rates.length > 0 ? (
+        <fieldset className="shipping-options__list">
+          <legend className="sr-only">Options de livraison disponibles</legend>
+
+          {rates.map((rate) => {
+            const isSelected = selectedRate === rate;
             const isFlat = rate.name.toLowerCase().includes('flat');
+            const rateKey =
+              rate.id ||
+              `${rate.name}-${rate.rate}-${rate.estimated_delivery || ''}`;
 
             return (
-              <div
-                key={index}
-                onClick={() => handleSelect(rate)}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  padding: '1rem',
-                  border: `2px solid ${isSelected ? '#28a745' : '#ccc'}`,
-                  borderRadius: '8px',
-                  cursor: 'pointer',
-                  backgroundColor: isSelected ? '#f4fff7' : '#fff',
-                  transition: 'all 0.2s ease'
-                }}
+              <label
+                className={`shipping-option ${
+                  isSelected ? 'is-selected' : ''
+                }`}
+                key={rateKey}
               >
-                <div>
-                  <strong>{rate.name}</strong>{' '}
-                  {isFlat && (
-                    <span
-                      style={{
-                        backgroundColor: '#28a745',
-                        color: '#fff',
-                        fontSize: '0.75rem',
-                        padding: '2px 6px',
-                        borderRadius: '12px',
-                        marginLeft: '0.5rem'
-                      }}
-                    >
-                      Recommandé
-                    </span>
-                  )}
-                  <div
-                    style={{
-                      fontSize: '0.9rem',
-                      color: '#555',
-                      marginTop: '4px'
-                    }}
-                  >
+                <input
+                  className="shipping-option__input"
+                  type="radio"
+                  name="shipping-rate"
+                  checked={isSelected}
+                  onChange={() => handleSelect(rate)}
+                />
+
+                <span className="shipping-option__content">
+                  <span className="shipping-option__name-row">
+                    <span className="shipping-option__name">{rate.name}</span>
+
+                    {isFlat ? (
+                      <span className="shipping-option__badge">
+                        Recommandé
+                      </span>
+                    ) : null}
+                  </span>
+
+                  <span className="shipping-option__estimate">
                     Livraison estimée :{' '}
                     {rate.estimated_delivery || 'non précisée'}
-                  </div>
-                </div>
-                <div style={{ fontWeight: 'bold', fontSize: '1rem' }}>
-                  {parseFloat(rate.rate).toFixed(2)} CAD
-                </div>
-              </div>
+                  </span>
+                </span>
+
+                <span className="shipping-option__price">
+                  {formatCurrency(rate.rate)}
+                </span>
+              </label>
             );
           })}
-        </div>
-      )}
-    </div>
+        </fieldset>
+      ) : null}
+    </section>
   );
 };
 
