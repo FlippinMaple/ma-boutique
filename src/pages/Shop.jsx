@@ -96,77 +96,134 @@ const Shop = () => {
   }, [products, highlightId]);
 
   return (
-    <div className="shop-container">
-      <h1>Ma boutique</h1>
-      <input
-        type="text"
-        placeholder="Rechercher un produit..."
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        className="shop-search"
-      />
+    <main className="shop-page" id="main-content">
+      <section className="shop-intro" aria-labelledby="shop-title">
+        <div className="shop-intro__inner">
+          <p className="shop-intro__eyebrow">FLIPPIN’ MAPLE</p>
+          <h1 id="shop-title" className="shop-intro__title">
+            Boutique
+          </h1>
+          <p className="shop-intro__copy">
+            Une sélection de vêtements et d’objets conçus pour avancer sans ligne imposée.
+          </p>
 
-      <div className="shop-grid">
-        {products.map((product) => {
-          const firstVariant = product.variants?.[0];
-          return (
-            <div
-              key={product.id}
-              id={`product-${product.id}`}
-              className="shop-card"
-            >
-              <div className="shop-image-wrapper">
-                <img
-                  src={firstVariant?.image || product.image}
-                  alt={product.name}
-                  className={`shop-image ${!isMobile ? 'zoomable' : ''}`}
-                  onMouseEnter={() => {
-                    if (!isMobile) {
-                      setPreviewImage(firstVariant?.image || product.image);
-                      setPreviewLoaded(false);
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (!isMobile) {
-                      const related = e.relatedTarget;
-                      if (
-                        related &&
-                        (related.classList?.contains('image-preview') ||
-                          related.classList?.contains('image-preview-overlay'))
-                      ) {
-                        return;
-                      }
-                      setPreviewImage(null);
-                      setPreviewLoaded(false);
-                    }
-                  }}
-                  onClick={() => {
-                    if (isMobile) {
-                      setPreviewImage(firstVariant?.image || product.image);
-                      setPreviewLoaded(true);
-                    }
-                  }}
-                />
-              </div>
-              <h3 className="shop-title">{product.name}</h3>
+          <label className="shop-search">
+            <span className="shop-search__label">Rechercher</span>
+            <input
+              type="search"
+              placeholder="Nom ou description du produit"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="shop-search__input"
+            />
+          </label>
+        </div>
+      </section>
 
-              <p style={{ margin: '4px 0', fontWeight: 'bold' }}>
-                {firstVariant?.price
-                  ? `${Number(firstVariant.price).toFixed(2)} $`
-                  : 'Prix non dispo'}
-              </p>
+      <section className="shop-catalogue" aria-labelledby="shop-catalogue-title">
+        <div className="shop-catalogue__inner">
+          <div className="shop-catalogue__header">
+            <h2 id="shop-catalogue-title" className="shop-catalogue__title">
+              Produits
+            </h2>
+            <p className="shop-catalogue__count">
+              {products.length} {products.length === 1 ? 'produit' : 'produits'}
+            </p>
+          </div>
 
-              <Link
-                to={`/product/${product.id}`}
-                onClick={(e) => e.stopPropagation()}
-                className="shop-btn btn-details"
-              >
-                🔍 Détails
-              </Link>
+          {products.length === 0 ? (
+            <p className="shop-empty">
+              Aucun produit ne correspond à ta recherche.
+            </p>
+          ) : (
+            <div className="shop-grid">
+              {products.map((product) => {
+                const firstVariant = product.variants?.[0];
+                const productImage = firstVariant?.image || product.image;
+                const rawPrice = firstVariant?.price;
+                const priceNumber = Number(rawPrice);
+                const hasPrice =
+                  rawPrice != null &&
+                  rawPrice !== '' &&
+                  Number.isFinite(priceNumber);
+
+                return (
+                  <article
+                    key={product.id}
+                    id={`product-${product.id}`}
+                    className="shop-card"
+                  >
+                    <div className="shop-image-wrapper">
+                      {productImage ? (
+                        <img
+                          src={productImage}
+                          alt={product.name}
+                          loading="lazy"
+                          decoding="async"
+                          className={`shop-image ${!isMobile ? 'zoomable' : ''}`}
+                          onMouseEnter={() => {
+                            if (!isMobile) {
+                              setPreviewImage(productImage);
+                              setPreviewLoaded(false);
+                            }
+                          }}
+                          onMouseLeave={(e) => {
+                            if (!isMobile) {
+                              const related = e.relatedTarget;
+                              if (
+                                related &&
+                                (related.classList?.contains('image-preview') ||
+                                  related.classList?.contains(
+                                    'image-preview-overlay'
+                                  ))
+                              ) {
+                                return;
+                              }
+                              setPreviewImage(null);
+                              setPreviewLoaded(false);
+                            }
+                          }}
+                          onClick={() => {
+                            if (isMobile) {
+                              setPreviewImage(productImage);
+                              setPreviewLoaded(true);
+                            }
+                          }}
+                        />
+                      ) : (
+                        <div
+                          className="shop-image-fallback"
+                          aria-hidden="true"
+                        />
+                      )}
+                    </div>
+                    <div className="shop-card__body">
+                      <h3 className="shop-title">{product.name}</h3>
+
+                      {hasPrice ? (
+                        <p className="shop-price">
+                          {new Intl.NumberFormat('fr-CA', {
+                            style: 'currency',
+                            currency: 'CAD',
+                          }).format(priceNumber)}
+                        </p>
+                      ) : null}
+
+                      <Link
+                        to={`/product/${product.id}`}
+                        onClick={(e) => e.stopPropagation()}
+                        className="shop-details-link"
+                      >
+                        Voir le produit
+                      </Link>
+                    </div>
+                  </article>
+                );
+              })}
             </div>
-          );
-        })}
-      </div>
+          )}
+        </div>
+      </section>
 
       {previewImage && !isMobile && (
         <div
@@ -180,7 +237,7 @@ const Shop = () => {
         >
           <img
             src={previewImage}
-            alt="Zoom"
+            alt=""
             className="image-preview"
             onLoad={() => setPreviewLoaded(true)}
           />
@@ -190,15 +247,17 @@ const Shop = () => {
       {previewImage && isMobile && (
         <div className="image-preview-overlay image-preview-blur">
           <button
+            type="button"
             className="close-button"
+            aria-label="Fermer l’aperçu"
             onClick={() => setPreviewImage(null)}
           >
             ✕
           </button>
-          <img src={previewImage} alt="Zoom" className="image-preview" />
+          <img src={previewImage} alt="" className="image-preview" />
         </div>
       )}
-    </div>
+    </main>
   );
 };
 
