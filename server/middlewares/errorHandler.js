@@ -21,7 +21,7 @@ export function notFound(req, res) {
 }
 
 /** Handler d’erreurs Express (signature à 4 args OBLIGATOIRE) */
-export function errorHandler(err, req, res) {
+export function errorHandler(err, req, res, _next) {
   const status = err?.statusCode || err?.status || 500;
   const body = {
     error: err?.message || 'Erreur interne',
