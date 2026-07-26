@@ -112,7 +112,7 @@ app.get('/readiness', async (req, res) => {
     else if (typeof db.query === 'function') await db.query('SELECT 1');
     return res.json({ ok: true });
   } catch (e) {
-    res.status(503).json({ ok: false, error: e?.message ?? true });
+    res.status(503).json({ ok: false, error: 'service_unavailable' });
   }
 });
 
