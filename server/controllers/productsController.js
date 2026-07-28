@@ -66,7 +66,7 @@ export const getProductDetails = async (req, res) => {
     const db = req.app.locals.db;
 
     const [[product]] = await db.execute(
-      'SELECT id, name, description, image FROM products WHERE id = ?',
+      'SELECT id, name, description, image FROM products WHERE id = ? AND is_visible = 1',
       [productId]
     );
     if (!product) {
