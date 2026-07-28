@@ -6,6 +6,11 @@ export const getVisibleProducts = async (req, res) => {
   try {
     const db = req.app.locals.db; // injecté par server/server.js
     const q = String(req.query.q || '').trim();
+
+    if (q.length > 100) {
+      return res.status(400).json({ error: 'Recherche trop longue.' });
+    }
+
     const searchSql = q
       ? `AND (p.name LIKE ? OR p.description LIKE ?)`
       : '';
