@@ -57,8 +57,15 @@ export const getVisibleProducts = async (req, res) => {
 
 // GET /api/products/:id
 export const getProductDetails = async (req, res) => {
-  const productId = Number(req.params.id);
-  if (Number.isNaN(productId)) {
+  const rawProductId = String(req.params.id || '').trim();
+
+  if (!/^\d+$/.test(rawProductId)) {
+    return res.status(400).json({ error: 'ID de produit invalide' });
+  }
+
+  const productId = Number(rawProductId);
+
+  if (!Number.isSafeInteger(productId) || productId <= 0) {
     return res.status(400).json({ error: 'ID de produit invalide' });
   }
 
