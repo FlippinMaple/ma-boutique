@@ -152,6 +152,29 @@ Ce document complète `docs/compliance/TECHNICAL_SECURITY_AUDIT.md`.
 - `GET /api/products/34` a retourné HTTP 200;
 - le produit visible et ses variantes ont été retournés correctement.
 
+### Limitation de la longueur des recherches de produits
+
+**Commit :** `cc0aea3` — `fix(products): limit search query length`
+
+**Fichier concerné :**
+
+- `server/controllers/productsController.js`
+
+**Modification :**
+
+- `getVisibleProducts` refuse maintenant les recherches dont la valeur `q` dépasse 100 caractères;
+- une recherche trop longue retourne HTTP 400 avec l’erreur `Recherche trop longue.`;
+- la normalisation existante avec `String(...).trim()` est conservée;
+- aucune modification au SQL, à la logique `LIKE` ou au frontend.
+
+**Validation en production :**
+
+- `GET /readiness` a retourné `ok: true` après le redéploiement;
+- une recherche `q` de 101 caractères a retourné HTTP 400;
+- la réponse JSON était exactement `{"error":"Recherche trop longue."}`;
+- une recherche `q` de 100 caractères a retourné HTTP 200;
+- la réponse était un tableau vide valide, confirmant que la limite accepte bien 100 caractères.
+
 ---
 
 ## État après ces correctifs
