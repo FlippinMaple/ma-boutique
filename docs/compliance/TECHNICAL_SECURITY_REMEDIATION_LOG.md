@@ -128,6 +128,30 @@ Ce document complète `docs/compliance/TECHNICAL_SECURITY_AUDIT.md`.
 - aucun produit réellement masqué n’a été utilisé pour un test direct;
 - le comportement HTTP 404 d’un produit avec `is_visible = 0` est confirmé par la condition SQL, mais reste à valider empiriquement lorsqu’un identifiant masqué contrôlé sera disponible.
 
+### Validation stricte des identifiants de produits
+
+**Commit :** `d06d4af` — `fix(products): validate product ids strictly`
+
+**Fichier concerné :**
+
+- `server/controllers/productsController.js`
+
+**Modification :**
+
+- `getProductDetails` convertit d’abord `req.params.id` en chaîne et applique `trim()`;
+- seuls les identifiants composés exclusivement de chiffres sont acceptés;
+- l’identifiant converti doit être un entier positif sécuritaire selon `Number.isSafeInteger`;
+- les valeurs comme les décimales, les nombres négatifs, zéro et les entiers non sécuritaires sont refusées avec HTTP 400;
+- aucune modification aux requêtes SQL, aux routes ou aux réponses des produits valides.
+
+**Validation en production :**
+
+- `GET /readiness` a retourné `ok: true` après le redéploiement;
+- `GET /api/products/abc` a retourné HTTP 400 avec l’erreur `ID de produit invalide`;
+- `GET /api/products/1.5` a retourné HTTP 400, confirmant le nouveau comportement strict;
+- `GET /api/products/34` a retourné HTTP 200;
+- le produit visible et ses variantes ont été retournés correctement.
+
 ---
 
 ## État après ces correctifs
