@@ -106,6 +106,28 @@ Ce document complète `docs/compliance/TECHNICAL_SECURITY_AUDIT.md`.
 - Git utilise maintenant le backend `schannel` du magasin de certificats Windows;
 - ne pas inscrire de chemins contenant des secrets ou de données d’authentification.
 
+### Masquage du détail des produits non visibles
+
+**Commit :** `12fd1e2` — `fix(products): hide non-visible product details`
+
+**Fichier concerné :**
+
+- `server/controllers/productsController.js`
+
+**Modification :**
+
+- `getProductDetails` exige maintenant `is_visible = 1`;
+- les routes publiques `/api/products/:id` et `/api/products/details/:id` ne doivent plus retourner un produit masqué;
+- aucune modification aux variantes, aux listes de produits ou aux routes.
+
+**Validation en production :**
+
+- `GET /readiness` a retourné `ok: true` après le redéploiement;
+- le détail d’un produit visible publié a retourné HTTP 200;
+- le produit et ses variantes ont été retournés correctement;
+- aucun produit réellement masqué n’a été utilisé pour un test direct;
+- le comportement HTTP 404 d’un produit avec `is_visible = 0` est confirmé par la condition SQL, mais reste à valider empiriquement lorsqu’un identifiant masqué contrôlé sera disponible.
+
 ---
 
 ## État après ces correctifs
