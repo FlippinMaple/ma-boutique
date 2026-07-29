@@ -114,6 +114,7 @@ const Shop = () => {
               placeholder="Nom ou description du produit"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
+              maxLength={100}
               className="shop-search__input"
             />
           </label>
