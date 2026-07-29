@@ -53,7 +53,9 @@ const Shop = () => {
         console.error('❌ Erreur axios :', err);
       }
     };
-    fetchProducts();
+    const timer = setTimeout(fetchProducts, 300);
+
+    return () => clearTimeout(timer);
   }, [search]);
 
   useEffect(() => {
