@@ -175,6 +175,27 @@ Ce document complète `docs/compliance/TECHNICAL_SECURITY_AUDIT.md`.
 - une recherche `q` de 100 caractères a retourné HTTP 200;
 - la réponse était un tableau vide valide, confirmant que la limite accepte bien 100 caractères.
 
+### Alignement du champ de recherche frontend
+
+**Commit :** `51747b8` — `fix(shop): limit search input length`
+
+**Fichier concerné :**
+
+- `src/pages/Shop.jsx`
+
+**Modification :**
+
+- le champ de recherche de la boutique possède maintenant `maxLength={100}`;
+- l’interface empêche un utilisateur normal de saisir une recherche dépassant la limite de 100 caractères imposée par l’API;
+- aucune modification au state, à l’appel API, au texte ou au style du champ.
+
+**Validation en production :**
+
+- `GET /readiness` a retourné `ok: true` après le redéploiement;
+- une chaîne test de 104 caractères a été collée dans le champ de recherche;
+- le champ a conservé exactement 100 caractères;
+- les quatre derniers caractères ont été bloqués, confirmant le fonctionnement de `maxLength={100}`.
+
 ---
 
 ## État après ces correctifs
