@@ -224,6 +224,35 @@ Ce document complète `docs/compliance/TECHNICAL_SECURITY_AUDIT.md`.
 - aucune variante réellement inactive connue n’a été utilisée pour un test direct;
 - l’exclusion des variantes avec `is_active = 0` est confirmée par les conditions SQL, mais reste à valider empiriquement lorsqu’un identifiant contrôlé sera disponible.
 
+### Exposition du prix minimal actif des produits
+
+**Commit :** `8ea86d9` — `feat(products): expose minimum active price`
+
+**Fichier concerné :**
+
+- `server/controllers/productsController.js`
+
+**Modification :**
+
+- `getVisibleProducts` calcule maintenant le prix minimal de chaque produit avec une sous-requête corrélée;
+- le calcul utilise `MIN(pv.price)` uniquement parmi les variantes dont `is_active = 1`;
+- les prix nuls sont exclus du calcul;
+- chaque produit retourné par `GET /api/products` contient maintenant le champ `min_price`;
+- un produit visible sans prix actif peut toujours être retourné avec `min_price: null`;
+- aucune modification n’a été apportée à `getProductDetails` ou à `getFeaturedProducts`;
+- aucune modification n’a été apportée au checkout, à Stripe, à Printful ou au regroupement des variantes.
+
+**Validation en production :**
+
+- `GET /readiness` a retourné `ok: true` après le redéploiement;
+- `GET /api/products` a retourné les 4 produits visibles avec leur champ `min_price`;
+- Youth t-shirt a retourné `min_price: 29.99`, identique au minimum calculé parmi ses 5 variantes retournées;
+- Mug with Color Inside a retourné `min_price: 14.50`, identique au minimum calculé parmi ses 2 variantes retournées;
+- Flippin' Maple Teddy Pancakes a retourné `min_price: 12.00`, identique au minimum calculé parmi ses 3 variantes retournées;
+- Dad memories a retourné `min_price: 54.99`, identique au minimum calculé parmi ses 6 variantes retournées;
+- la comparaison numérique automatisée a retourné `Matches: True` pour chacun des 4 produits;
+- aucun produit sans prix actif n’était disponible pour valider empiriquement le comportement `min_price: null`.
+
 ---
 
 ## État après ces correctifs
