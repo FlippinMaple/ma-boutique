@@ -6,9 +6,24 @@ export const getVisibleProducts = async (req, res) => {
   try {
     const db = req.app.locals.db; // injecté par server/server.js
     const q = String(req.query.q || '').trim();
+    const requestedSort = String(req.query.sort || '').trim();
+    const defaultSort = q ? 'relevance' : 'newest';
+    const sort = requestedSort || defaultSort;
+
+    const allowedSorts = new Set([
+      'relevance',
+      'price_asc',
+      'price_desc',
+      'newest',
+      'name_asc'
+    ]);
 
     if (q.length > 100) {
       return res.status(400).json({ error: 'Recherche trop longue.' });
+    }
+
+    if (!allowedSorts.has(sort)) {
+      return res.status(400).json({ error: 'Tri invalide.' });
     }
 
     const searchSql = q
