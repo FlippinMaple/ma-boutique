@@ -196,6 +196,34 @@ Ce document complète `docs/compliance/TECHNICAL_SECURITY_AUDIT.md`.
 - le champ a conservé exactement 100 caractères;
 - les quatre derniers caractères ont été bloqués, confirmant le fonctionnement de `maxLength={100}`.
 
+### Exclusion des variantes inactives des réponses publiques
+
+**Commit :** `74d36c8` — `fix(products): hide inactive variants publicly`
+
+**Fichier concerné :**
+
+- `server/controllers/productsController.js`
+
+**Modification :**
+
+- `getVisibleProducts` limite maintenant le LEFT JOIN aux variantes avec `is_active = 1`;
+- `getProductDetails` retourne uniquement les variantes avec `is_active = 1`;
+- `getFeaturedProducts` limite maintenant le LEFT JOIN aux variantes avec `is_active = 1`;
+- les filtres des listes sont placés dans les clauses ON afin de conserver les LEFT JOIN;
+- un produit visible sans variante active peut donc toujours être retourné avec un tableau de variantes vide;
+- aucune route, colonne sélectionnée, logique de recherche ou logique de regroupement JavaScript n’a été modifiée.
+
+**Validation en production :**
+
+- `GET /readiness` a retourné `ok: true` après le redéploiement;
+- `GET /api/products` a retourné HTTP 200 avec les 4 produits visibles;
+- les produits retournés conservaient respectivement 5, 2, 3 et 6 variantes actives;
+- `GET /api/products/34` a retourné HTTP 200 avec le produit Youth t-shirt et 5 variantes;
+- `GET /api/products/featured` a retourné HTTP 200 avec un tableau vide valide;
+- aucun produit n’est actuellement marqué comme vedette;
+- aucune variante réellement inactive connue n’a été utilisée pour un test direct;
+- l’exclusion des variantes avec `is_active = 0` est confirmée par les conditions SQL, mais reste à valider empiriquement lorsqu’un identifiant contrôlé sera disponible.
+
 ---
 
 ## État après ces correctifs
