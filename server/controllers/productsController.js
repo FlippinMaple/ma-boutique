@@ -26,6 +26,20 @@ export const getVisibleProducts = async (req, res) => {
       return res.status(400).json({ error: 'Tri invalide.' });
     }
 
+    const effectiveSort = sort === 'relevance' && !q ? 'newest' : sort;
+
+    const orderBySqlBySort = {
+      relevance: 'p.id DESC, v.id ASC',
+      newest: 'p.updated_at DESC, p.id DESC, v.id ASC',
+      name_asc: 'p.name ASC, p.id DESC, v.id ASC',
+      price_asc:
+        '(min_price IS NULL) ASC, min_price ASC, p.name ASC, p.id DESC, v.id ASC',
+      price_desc:
+        '(min_price IS NULL) ASC, min_price DESC, p.name ASC, p.id DESC, v.id ASC'
+    };
+
+    const orderBySql = orderBySqlBySort[effectiveSort];
+
     const searchSql = q
       ? `AND (p.name LIKE ? OR p.description LIKE ?)`
       : '';
@@ -49,7 +63,7 @@ export const getVisibleProducts = async (req, res) => {
         AND v.is_active = 1
        WHERE p.is_visible = 1
        ${searchSql}
-       ORDER BY p.id DESC`,
+       ORDER BY ${orderBySql}`,
       params
     );
 
