@@ -253,6 +253,35 @@ Ce document complète `docs/compliance/TECHNICAL_SECURITY_AUDIT.md`.
 - la comparaison numérique automatisée a retourné `Matches: True` pour chacun des 4 produits;
 - aucun produit sans prix actif n’était disponible pour valider empiriquement le comportement `min_price: null`.
 
+### Validation du paramètre de tri des produits
+
+**Commit :** `c704ff1` — `feat(products): validate sort parameter`
+
+**Fichier concerné :**
+
+- `server/controllers/productsController.js`
+
+**Modification :**
+
+- `getVisibleProducts` lit maintenant le paramètre de requête `sort`;
+- lorsque `sort` est absent, la valeur par défaut est `relevance` si `q` est non vide et `newest` si `q` est vide;
+- les valeurs autorisées sont limitées à `relevance`, `price_asc`, `price_desc`, `newest` et `name_asc`;
+- toute valeur inconnue retourne HTTP 400 avec l’erreur stable `Tri invalide.`;
+- aucune valeur fournie par l’utilisateur n’est injectée dans le SQL ou dans la clause `ORDER BY`;
+- la clause `ORDER BY p.id DESC` demeure inchangée à cette étape;
+- aucun comportement de tri réel ni score de pertinence n’a encore été ajouté;
+- aucune modification n’a été apportée à `getProductDetails`, à `getFeaturedProducts`, au checkout, à Stripe ou à Printful.
+
+**Validation en production :**
+
+- `GET /readiness` a retourné `ok: true` après le redéploiement;
+- `GET /api/products?sort=invalid` a retourné HTTP 400;
+- la réponse JSON était exactement `{"error":"Tri invalide."}`;
+- `GET /api/products?sort=newest` a retourné HTTP 200 avec les 4 produits visibles;
+- chacune des valeurs `relevance`, `price_asc`, `price_desc`, `newest` et `name_asc` a retourné HTTP 200;
+- chacune de ces cinq valeurs a retourné les 4 produits visibles;
+- l’ordre des produits n’a pas été validé puisque l’implémentation des tris est prévue dans une étape distincte.
+
 ---
 
 ## État après ces correctifs
