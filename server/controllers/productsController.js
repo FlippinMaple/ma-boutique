@@ -26,10 +26,48 @@ export const getVisibleProducts = async (req, res) => {
       return res.status(400).json({ error: 'Tri invalide.' });
     }
 
+    const MAX_SEARCH_TERMS = 8;
+
+    const relevanceWeights = {
+      exactName: 1000,
+      namePrefix: 600,
+      namePhrase: 400,
+      nameTerm: 40,
+      categoryPhrase: 200,
+      categoryTerm: 20,
+      brandPhrase: 160,
+      brandTerm: 16,
+      colorPhrase: 120,
+      colorTerm: 12,
+      sizePhrase: 100,
+      sizeTerm: 10,
+      descriptionPhrase: 60,
+      descriptionTerm: 6
+    };
+
+    const searchTerms = [];
+    const seenTerms = new Set();
+
+    for (const term of q.split(/\s+/).filter(Boolean)) {
+      const normalizedTerm = term.toLocaleLowerCase('fr-CA');
+
+      if (seenTerms.has(normalizedTerm)) {
+        continue;
+      }
+
+      seenTerms.add(normalizedTerm);
+      searchTerms.push(term);
+
+      if (searchTerms.length === MAX_SEARCH_TERMS) {
+        break;
+      }
+    }
+
     const effectiveSort = sort === 'relevance' && !q ? 'newest' : sort;
 
     const orderBySqlBySort = {
-      relevance: 'p.id DESC, v.id ASC',
+      relevance:
+        'relevance_score DESC, p.updated_at DESC, p.id DESC, v.id ASC',
       newest: 'p.updated_at DESC, p.id DESC, v.id ASC',
       name_asc: 'p.name ASC, p.id DESC, v.id ASC',
       price_asc:
@@ -40,12 +78,226 @@ export const getVisibleProducts = async (req, res) => {
 
     const orderBySql = orderBySqlBySort[effectiveSort];
 
+    const fullPhrasePattern = `%${q}%`;
+    const prefixPattern = `${q}%`;
+
+    const relevanceScoreParts = [];
+    const relevanceParams = [];
+
+    const addRelevanceScore = (sql, value) => {
+      relevanceScoreParts.push(sql);
+      relevanceParams.push(value);
+    };
+
+    if (q) {
+      addRelevanceScore(
+        `CASE
+           WHEN LOWER(TRIM(COALESCE(p.name, ''))) = LOWER(?)
+           THEN ${relevanceWeights.exactName}
+           ELSE 0
+         END`,
+        q
+      );
+
+      addRelevanceScore(
+        `CASE
+           WHEN LOWER(COALESCE(p.name, '')) LIKE LOWER(?)
+           THEN ${relevanceWeights.namePrefix}
+           ELSE 0
+         END`,
+        prefixPattern
+      );
+
+      addRelevanceScore(
+        `CASE
+           WHEN LOWER(COALESCE(p.name, '')) LIKE LOWER(?)
+           THEN ${relevanceWeights.namePhrase}
+           ELSE 0
+         END`,
+        fullPhrasePattern
+      );
+
+      addRelevanceScore(
+        `CASE
+           WHEN LOWER(COALESCE(p.category, '')) LIKE LOWER(?)
+           THEN ${relevanceWeights.categoryPhrase}
+           ELSE 0
+         END`,
+        fullPhrasePattern
+      );
+
+      addRelevanceScore(
+        `CASE
+           WHEN LOWER(COALESCE(p.brand, '')) LIKE LOWER(?)
+           THEN ${relevanceWeights.brandPhrase}
+           ELSE 0
+         END`,
+        fullPhrasePattern
+      );
+
+      addRelevanceScore(
+        `CASE
+           WHEN EXISTS (
+             SELECT 1
+             FROM product_variants rv
+             WHERE rv.product_id = p.id
+               AND rv.is_active = 1
+               AND LOWER(COALESCE(rv.color, '')) LIKE LOWER(?)
+           )
+           THEN ${relevanceWeights.colorPhrase}
+           ELSE 0
+         END`,
+        fullPhrasePattern
+      );
+
+      addRelevanceScore(
+        `CASE
+           WHEN EXISTS (
+             SELECT 1
+             FROM product_variants rv
+             WHERE rv.product_id = p.id
+               AND rv.is_active = 1
+               AND LOWER(COALESCE(rv.size, '')) LIKE LOWER(?)
+           )
+           THEN ${relevanceWeights.sizePhrase}
+           ELSE 0
+         END`,
+        fullPhrasePattern
+      );
+
+      addRelevanceScore(
+        `CASE
+           WHEN LOWER(COALESCE(p.description, '')) LIKE LOWER(?)
+           THEN ${relevanceWeights.descriptionPhrase}
+           ELSE 0
+         END`,
+        fullPhrasePattern
+      );
+
+      for (const term of searchTerms) {
+        const termPattern = `%${term}%`;
+
+        addRelevanceScore(
+          `CASE
+             WHEN LOWER(COALESCE(p.name, '')) LIKE LOWER(?)
+             THEN ${relevanceWeights.nameTerm}
+             ELSE 0
+           END`,
+          termPattern
+        );
+
+        addRelevanceScore(
+          `CASE
+             WHEN LOWER(COALESCE(p.category, '')) LIKE LOWER(?)
+             THEN ${relevanceWeights.categoryTerm}
+             ELSE 0
+           END`,
+          termPattern
+        );
+
+        addRelevanceScore(
+          `CASE
+             WHEN LOWER(COALESCE(p.brand, '')) LIKE LOWER(?)
+             THEN ${relevanceWeights.brandTerm}
+             ELSE 0
+           END`,
+          termPattern
+        );
+
+        addRelevanceScore(
+          `CASE
+             WHEN EXISTS (
+               SELECT 1
+               FROM product_variants rv
+               WHERE rv.product_id = p.id
+                 AND rv.is_active = 1
+                 AND LOWER(COALESCE(rv.color, '')) LIKE LOWER(?)
+             )
+             THEN ${relevanceWeights.colorTerm}
+             ELSE 0
+           END`,
+          termPattern
+        );
+
+        addRelevanceScore(
+          `CASE
+             WHEN EXISTS (
+               SELECT 1
+               FROM product_variants rv
+               WHERE rv.product_id = p.id
+                 AND rv.is_active = 1
+                 AND LOWER(COALESCE(rv.size, '')) LIKE LOWER(?)
+             )
+             THEN ${relevanceWeights.sizeTerm}
+             ELSE 0
+           END`,
+          termPattern
+        );
+
+        addRelevanceScore(
+          `CASE
+             WHEN LOWER(COALESCE(p.description, '')) LIKE LOWER(?)
+             THEN ${relevanceWeights.descriptionTerm}
+             ELSE 0
+           END`,
+          termPattern
+        );
+      }
+    }
+
+    const relevanceScoreSql = q
+      ? `(${relevanceScoreParts.join(' + ')})`
+      : '0';
+
+    const searchPatternSql = `(
+      LOWER(COALESCE(p.name, '')) LIKE LOWER(?)
+      OR LOWER(COALESCE(p.description, '')) LIKE LOWER(?)
+      OR LOWER(COALESCE(p.brand, '')) LIKE LOWER(?)
+      OR LOWER(COALESCE(p.category, '')) LIKE LOWER(?)
+      OR EXISTS (
+        SELECT 1
+        FROM product_variants sv
+        WHERE sv.product_id = p.id
+          AND sv.is_active = 1
+          AND (
+            LOWER(COALESCE(sv.color, '')) LIKE LOWER(?)
+            OR LOWER(COALESCE(sv.size, '')) LIKE LOWER(?)
+          )
+      )
+    )`;
+
+    const searchPatterns = q
+      ? [
+          fullPhrasePattern,
+          ...searchTerms
+            .filter(
+              term =>
+                term.toLocaleLowerCase('fr-CA') !==
+                q.toLocaleLowerCase('fr-CA')
+            )
+            .map(term => `%${term}%`)
+        ]
+      : [];
+
     const searchSql = q
-      ? `AND (p.name LIKE ? OR p.description LIKE ?)`
+      ? `AND (${searchPatterns
+          .map(() => searchPatternSql)
+          .join(' OR ')})`
       : '';
-    const params = q ? [`%${q}%`, `%${q}%`] : [];
+
+    const searchParams = searchPatterns.flatMap(pattern => [
+      pattern,
+      pattern,
+      pattern,
+      pattern,
+      pattern,
+      pattern
+    ]);
+
+    const params = [...relevanceParams, ...searchParams];
     const [rows] = await db.execute(
       `SELECT p.id, p.name, p.description, p.image,
+              ${relevanceScoreSql} AS relevance_score,
               (
                 SELECT MIN(pv.price)
                 FROM product_variants pv
