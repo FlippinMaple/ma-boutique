@@ -17,6 +17,13 @@ export const getVisibleProducts = async (req, res) => {
     const params = q ? [`%${q}%`, `%${q}%`] : [];
     const [rows] = await db.execute(
       `SELECT p.id, p.name, p.description, p.image,
+              (
+                SELECT MIN(pv.price)
+                FROM product_variants pv
+                WHERE pv.product_id = p.id
+                  AND pv.is_active = 1
+                  AND pv.price IS NOT NULL
+              ) AS min_price,
               v.id AS local_variant_id,
               v.variant_id,
               v.printful_variant_id,
@@ -39,6 +46,7 @@ export const getVisibleProducts = async (req, res) => {
           name: row.name,
           description: row.description,
           image: row.image,
+          min_price: row.min_price,
           variants: []
         };
       }
