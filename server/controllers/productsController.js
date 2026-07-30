@@ -67,20 +67,20 @@ export const getVisibleProducts = async (req, res) => {
       params
     );
 
-    const productsMap = {};
+    const productsMap = new Map();
     for (const row of rows) {
-      if (!productsMap[row.id]) {
-        productsMap[row.id] = {
+      if (!productsMap.has(row.id)) {
+        productsMap.set(row.id, {
           id: row.id,
           name: row.name,
           description: row.description,
           image: row.image,
           min_price: row.min_price,
           variants: []
-        };
+        });
       }
       if (row.local_variant_id) {
-        productsMap[row.id].variants.push({
+        productsMap.get(row.id).variants.push({
           id: row.local_variant_id,
           variant_id: row.variant_id,
           printful_variant_id: row.printful_variant_id,
@@ -92,7 +92,7 @@ export const getVisibleProducts = async (req, res) => {
       }
     }
 
-    res.json(Object.values(productsMap));
+    res.json([...productsMap.values()]);
   } catch (err) {
     await logError(`[GET /api/products] ${err?.message || err}`, 'products');
     res.status(500).json({ error: 'Erreur serveur.' });
