@@ -282,6 +282,47 @@ Ce document complète `docs/compliance/TECHNICAL_SECURITY_AUDIT.md`.
 - chacune de ces cinq valeurs a retourné les 4 produits visibles;
 - l’ordre des produits n’a pas été validé puisque l’implémentation des tris est prévue dans une étape distincte.
 
+### Implémentation des tris simples et préservation de l’ordre SQL
+
+**Commits :**
+
+- `05cd73b` — `feat(products): implement simple sorting`
+- `7cfd1d9` — `fix(products): preserve SQL sort order`
+
+**Fichier concerné :**
+
+- `server/controllers/productsController.js`
+
+**Modification :**
+
+- `getVisibleProducts` utilise maintenant un mapping interne constant pour associer chaque valeur autorisée de `sort` à une clause `ORDER BY`;
+- aucune valeur fournie par l’utilisateur n’est interpolée directement dans le SQL;
+- `newest` trie par `p.updated_at DESC`, puis `p.id DESC`;
+- `name_asc` trie par `p.name ASC`, puis `p.id DESC`;
+- `price_asc` place les produits ayant un prix avant ceux sans prix, puis trie `min_price` en ordre croissant;
+- `price_desc` place également les produits sans prix à la fin, puis trie `min_price` en ordre décroissant;
+- les égalités de prix utilisent ensuite `p.name ASC`, puis `p.id DESC`;
+- `v.id ASC` stabilise l’ordre des variantes à l’intérieur de chaque produit;
+- `relevance` sans recherche utilise le même tri que `newest`;
+- `relevance` avec une recherche conserve temporairement l’ordre `p.id DESC` jusqu’à l’étape dédiée au score de pertinence;
+- le regroupement de `getVisibleProducts` utilise maintenant un `Map` afin de préserver l’ordre d’insertion provenant de MySQL;
+- l’ancien regroupement avec un objet et `Object.values()` réordonnait les clés numériques par identifiant et annulait le tri SQL;
+- aucune modification n’a été apportée à `getProductDetails`, à `getFeaturedProducts`, au checkout, à Stripe ou à Printful.
+
+**Validation en production :**
+
+- `GET /readiness` a retourné `ok: true` après chacun des redéploiements concernés;
+- la première validation de `name_asc` a révélé que la réponse demeurait ordonnée par identifiant croissant à cause du regroupement JavaScript avec un objet;
+- après le correctif utilisant `Map`, `name_asc` a retourné, dans l’ordre : Dad memories, Flippin' Maple Teddy Pancakes, Mug with Color Inside et Youth t-shirt;
+- `price_asc` a retourné les prix minimaux dans l’ordre `12.00`, `14.50`, `29.99`, puis `54.99`;
+- `price_desc` a retourné les prix minimaux dans l’ordre `54.99`, `29.99`, `14.50`, puis `12.00`;
+- `newest` a retourné les identifiants `37`, `36`, `35`, puis `34`;
+- `relevance` sans recherche a retourné exactement le même ordre que `newest`;
+- l’absence du paramètre `sort` a retourné exactement le même ordre que `newest`;
+- `GET /api/products?sort=invalid` a continué de retourner HTTP 400 avec la réponse exacte `{"error":"Tri invalide."}`;
+- aucun produit sans prix actif n’était disponible pour valider empiriquement son placement en fin de liste;
+- les valeurs `updated_at` ne sont pas exposées dans la réponse publique, donc les dates exactes du tri `newest` n’ont pas été comparées directement.
+
 ---
 
 ## État après ces correctifs
