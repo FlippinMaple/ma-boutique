@@ -22,7 +22,9 @@ export const getVisibleProducts = async (req, res) => {
               v.printful_variant_id,
               v.price, v.size, v.color, v.image AS variant_image
        FROM products p
-       LEFT JOIN product_variants v ON v.product_id = p.id
+       LEFT JOIN product_variants v
+         ON v.product_id = p.id
+        AND v.is_active = 1
        WHERE p.is_visible = 1
        ${searchSql}
        ORDER BY p.id DESC`,
@@ -88,7 +90,8 @@ export const getProductDetails = async (req, res) => {
     const [variants] = await db.execute(
       `SELECT id, variant_id, printful_variant_id, color, size, price, image
        FROM product_variants
-       WHERE product_id = ?`,
+       WHERE product_id = ?
+         AND is_active = 1`,
       [productId]
     );
 
@@ -122,7 +125,9 @@ export const getFeaturedProducts = async (req, res) => {
          ORDER BY updated_at DESC, id DESC
          LIMIT 4
        ) p
-       LEFT JOIN product_variants v ON v.product_id = p.id
+       LEFT JOIN product_variants v
+         ON v.product_id = p.id
+        AND v.is_active = 1
        ORDER BY p.updated_at DESC, p.id DESC, v.id ASC`
     );
 
