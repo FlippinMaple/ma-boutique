@@ -323,6 +323,53 @@ Ce document complète `docs/compliance/TECHNICAL_SECURITY_AUDIT.md`.
 - aucun produit sans prix actif n’était disponible pour valider empiriquement son placement en fin de liste;
 - les valeurs `updated_at` ne sont pas exposées dans la réponse publique, donc les dates exactes du tri `newest` n’ont pas été comparées directement.
 
+### Recherche lexicale pondérée et score de pertinence
+
+**Commit :** `14eca63` — `feat(products): add relevance scoring`
+
+**Fichier concerné :**
+
+- `server/controllers/productsController.js`
+
+**Modification :**
+
+- `getVisibleProducts` utilise maintenant un score de pertinence lexical pondéré lorsqu’une recherche `q` non vide est triée par `relevance`;
+- les poids privilégient, dans cet ordre général, le nom exact, le préfixe du nom, l’expression complète dans le nom, les correspondances multiples dans le nom, la catégorie, la marque, la couleur d’une variante active, la taille d’une variante active et la description;
+- les correspondances sur plusieurs mots augmentent cumulativement le score;
+- les égalités de pertinence sont départagées par `p.updated_at DESC`, puis `p.id DESC`;
+- la recherche couvre maintenant `name`, `description`, `brand`, `category`, ainsi que `color` et `size` des variantes actives;
+- les recherches sur les variantes utilisent des sous-requêtes `EXISTS` avec `is_active = 1`, évitant de dupliquer les produits;
+- l’expression complète et les mots distincts sont traités séparément;
+- un maximum de 8 mots distincts est traité séparément afin de borner la croissance du SQL et du nombre de paramètres;
+- toutes les valeurs provenant de `q` demeurent transmises avec des paramètres préparés;
+- aucune donnée utilisateur n’est concaténée directement dans le SQL;
+- `relevance_score` est calculé dans la requête mais n’est pas exposé dans la réponse publique;
+- le regroupement avec `Map` est conservé afin de préserver l’ordre SQL;
+- lorsqu’un `q` non vide est fourni sans paramètre `sort`, le tri par défaut est `relevance`;
+- un tri explicite différent de `relevance` demeure applicable à une recherche;
+- les tris `price_asc`, `price_desc`, `newest` et `name_asc` n’ont pas été modifiés;
+- aucune modification n’a été apportée à `getProductDetails`, à `getFeaturedProducts`, au checkout, à Stripe, à Printful, à l’authentification ou à la base de données.
+
+**Validation en production :**
+
+- `GET /readiness` a retourné `ok: true` après le redéploiement;
+- une recherche exacte `Youth t-shirt` a retourné Youth t-shirt en première position;
+- `relevance_score` était absent de la réponse publique de cette recherche;
+- une recherche par préfixe `Youth` a retourné Youth t-shirt;
+- une recherche par expression complète `Maple Teddy` a retourné Flippin' Maple Teddy Pancakes;
+- une recherche avec les mots inversés `Teddy Maple` a également retourné Flippin' Maple Teddy Pancakes, confirmant le traitement des mots séparés;
+- une recherche sur la couleur active `Azalea` a retourné uniquement Dad memories;
+- une recherche sur la taille active `XS` a retourné uniquement Youth t-shirt;
+- une recherche `15 oz` a retourné deux produits uniques, Flippin' Maple Teddy Pancakes et Mug with Color Inside, sans duplication malgré les correspondances sur les variantes;
+- une recherche comportant huit termes sans correspondance suivis de `Youth` en neuvième position a retourné zéro produit, confirmant que seuls les huit premiers mots distincts sont traités séparément;
+- une recherche `Youth Maple Teddy` a classé Flippin' Maple Teddy Pancakes avant Youth t-shirt, confirmant que plusieurs mots correspondants augmentent le score;
+- avec `q=Youth Maple Teddy` sans paramètre `sort`, l’ordre retourné était identique à `sort=relevance`;
+- avec `q=15 oz&sort=price_desc`, Mug with Color Inside à `14.50` a été classé avant Flippin' Maple Teddy Pancakes à `12.00`, confirmant qu’un tri explicite demeure respecté pendant une recherche;
+- une recherche de 101 caractères a continué de retourner HTTP 400 avec la réponse exacte `{"error":"Recherche trop longue."}`;
+- les descriptions des quatre produits actuellement visibles sont identiques à leurs noms, donc le poids de la description n’a pas pu être isolé empiriquement;
+- aucune donnée contrôlée disponible dans les réponses publiques actuelles n’a permis de valider séparément les correspondances sur `brand` et `category`;
+- le comportement de `brand`, `category` et `description` est présent dans le SQL, mais ces trois dimensions devront être validées empiriquement lorsqu’un jeu de données contrôlé permettant de les isoler sera disponible.
+
 ---
 
 ## État après ces correctifs
