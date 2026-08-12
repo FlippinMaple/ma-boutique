@@ -6,7 +6,8 @@ import './styles/Shop.css';
 
 const Shop = () => {
   const [products, setProducts] = useState([]);
-  const [search, setSearch] = useState('');
+  const [searchInput, setSearchInput] = useState('');
+  const [submittedSearch, setSubmittedSearch] = useState('');
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
   const [previewImage, setPreviewImage] = useState(null);
   const [previewLoaded, setPreviewLoaded] = useState(false);
@@ -42,21 +43,25 @@ const Shop = () => {
     }
   }, [location.pathname, location.search, navigate]);
 
+  const handleSearchSubmit = (e) => {
+    e.preventDefault();
+    setSubmittedSearch(searchInput.trim());
+  };
+
   useEffect(() => {
     const fetchProducts = async () => {
       try {
         const res = await api.get('/products', {
-          params: search ? { q: search } : {}
+          params: submittedSearch ? { q: submittedSearch } : {}
         });
         setProducts(res.data);
       } catch (err) {
         console.error('❌ Erreur axios :', err);
       }
     };
-    const timer = setTimeout(fetchProducts, 300);
 
-    return () => clearTimeout(timer);
-  }, [search]);
+    fetchProducts();
+  }, [submittedSearch]);
 
   useEffect(() => {
     if (highlightId) {
@@ -109,17 +114,20 @@ const Shop = () => {
             Une sélection de vêtements et d’objets conçus pour avancer sans ligne imposée.
           </p>
 
-          <label className="shop-search">
-            <span className="shop-search__label">Rechercher</span>
+          <form className="shop-search" onSubmit={handleSearchSubmit}>
+            <label htmlFor="shop-search-input" className="shop-search__label">
+              Rechercher
+            </label>
             <input
+              id="shop-search-input"
               type="search"
               placeholder="Nom ou description du produit"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
               maxLength={100}
               className="shop-search__input"
             />
-          </label>
+          </form>
         </div>
       </section>
 
