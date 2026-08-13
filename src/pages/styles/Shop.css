@@ -276,7 +276,7 @@
     var(--color-cold-concrete) 18%,
     var(--color-maple-bone)
   );
-  border-radius: var(--radius-sm);
+  border-radius: 0.75rem;
 }
 
 .shop-image-link {
@@ -284,6 +284,7 @@
   width: 100%;
   height: 100%;
   cursor: pointer;
+  border-radius: inherit;
 }
 
 .shop-image {
@@ -291,7 +292,7 @@
   width: 100%;
   height: 100%;
   object-fit: cover;
-  border-radius: 0;
+  border-radius: inherit;
   transition: transform var(--duration-normal) var(--ease-natural);
 }
 
