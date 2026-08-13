@@ -55,12 +55,43 @@ const cookieOptsAccess = {
 const STRIPE_KEY = process.env.STRIPE_SECRET_KEY || process.env.STRIPE_SK || '';
 const stripe = STRIPE_KEY ? new Stripe(STRIPE_KEY) : null;
 
-function toCents(value) {
-  if (value == null) return 0;
-  const s = String(value).replace(',', '.').trim();
-  const n = Number(s);
-  if (!isFinite(n)) return 0;
-  return Math.round(n * 100);
+/**
+ * Entier positif strict (PK / quantité).
+ * Refuse 12abc, 1.5, 0, négatifs, NaN, Infinity et les booléens.
+ */
+function parsePositiveSafeInteger(value) {
+  if (typeof value === 'number') {
+    if (!Number.isInteger(value) || value <= 0 || !Number.isSafeInteger(value)) {
+      return null;
+    }
+    return value;
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!/^[1-9]\d*$/.test(trimmed)) return null;
+    const n = Number(trimmed);
+    if (!Number.isSafeInteger(n) || n <= 0) return null;
+    return n;
+  }
+  return null;
+}
+
+function officialPriceToCents(price) {
+  if (price == null || price === '') return null;
+  const n =
+    typeof price === 'number'
+      ? price
+      : Number(String(price).replace(',', '.').trim());
+  if (!Number.isFinite(n) || n <= 0) return null;
+  const cents = Math.round(n * 100);
+  if (!Number.isSafeInteger(cents) || cents <= 0) return null;
+  return cents;
+}
+
+function canAddCents(left, right) {
+  if (!Number.isSafeInteger(left) || !Number.isSafeInteger(right)) return false;
+  if (right > Number.MAX_SAFE_INTEGER - left) return false;
+  return Number.isSafeInteger(left + right);
 }
 
 function pickCart(raw) {
@@ -141,75 +172,167 @@ export const createCheckoutSession = async (req, res) => {
         .json({ error: 'Panier vide.', code: 'EMPTY_CART' });
     }
 
-    // 2) Construire les line_items Stripe + valider les prix
-    const errors = [];
-    const line_items = cart.map((it, idx) => {
-      const qty = Math.max(1, Number(it.quantity ?? it.qty ?? 1) || 1);
+    const pool = await getPool();
 
-      const priceId = it.priceId || it.stripePriceId || it.price_id;
-      if (priceId) {
-        return { price: String(priceId), quantity: qty };
+    // 2) Normaliser / valider chaque ligne AVANT toute écriture (PK + quantité).
+    //    Prix, Stripe Price ID et autres montants client sont ignorés.
+    const parsedLines = [];
+    const seenVariantPks = new Set();
+
+    for (const it of cart) {
+      if (!it || typeof it !== 'object' || Array.isArray(it)) {
+        return res.status(400).json({
+          error: 'Référence de variante invalide.',
+          code: 'INVALID_VARIANT_REF'
+        });
       }
 
-      const name =
-        it.name || it.title || it.productName || `Article ${idx + 1}`;
-      const unit_raw =
-        it.unit_price ??
-        it.unitPrice ??
-        it.price ??
-        it.amount ??
-        it.subtotal_per_unit ??
-        0;
-      const unit_amount = toCents(unit_raw);
-
-      if (!unit_amount || unit_amount < 0) {
-        errors.push({ idx, name, reason: 'PRICE_INVALID', raw: unit_raw });
-        return {
-          quantity: qty,
-          price_data: {
-            currency: (process.env.CURRENCY || 'cad').toLowerCase(),
-            unit_amount: 1,
-            product_data: { name }
-          }
-        };
+      const dbVariantId = parsePositiveSafeInteger(
+        it.db_variant_id ?? it.id
+      );
+      if (dbVariantId == null) {
+        return res.status(400).json({
+          error: 'Référence de variante invalide.',
+          code: 'INVALID_VARIANT_REF'
+        });
       }
 
-      const imgs = filterHttpImages([
-        it.image,
-        ...(Array.isArray(it.images) ? it.images : [])
-      ]);
+      const quantity = parsePositiveSafeInteger(it.quantity ?? it.qty);
+      if (quantity == null) {
+        return res.status(400).json({
+          error: 'Quantité invalide.',
+          code: 'INVALID_QUANTITY'
+        });
+      }
 
+      if (seenVariantPks.has(dbVariantId)) {
+        return res.status(400).json({
+          error: 'Variante dupliquée dans le panier.',
+          code: 'DUPLICATE_VARIANT'
+        });
+      }
+      seenVariantPks.add(dbVariantId);
+
+      parsedLines.push({ dbVariantId, quantity });
+    }
+
+    const requestedIds = parsedLines.map((line) => line.dbVariantId);
+    const placeholders = requestedIds.map(() => '?').join(',');
+    const [variantRows] = await pool.query(
+      `
+      SELECT
+        pv.id,
+        pv.product_id,
+        pv.variant_id,
+        pv.printful_variant_id,
+        pv.price,
+        pv.is_active,
+        pv.sku,
+        pv.color,
+        pv.size,
+        pv.image,
+        p.name AS product_name,
+        p.is_visible
+      FROM product_variants pv
+      INNER JOIN products p ON p.id = pv.product_id
+      WHERE pv.id IN (${placeholders})
+      `,
+      requestedIds
+    );
+
+    const variantById = new Map();
+    for (const row of variantRows) {
+      variantById.set(Number(row.id), row);
+    }
+
+    const normalizedLines = [];
+    for (const parsed of parsedLines) {
+      const row = variantById.get(parsed.dbVariantId);
+      if (!row) {
+        return res.status(400).json({
+          error: 'Variante indisponible.',
+          code: 'VARIANT_UNAVAILABLE'
+        });
+      }
+
+      if (Number(row.is_active) !== 1 || Number(row.is_visible) !== 1) {
+        return res.status(400).json({
+          error: 'Variante indisponible.',
+          code: 'VARIANT_UNAVAILABLE'
+        });
+      }
+
+      const unitPriceCents = officialPriceToCents(row.price);
+      if (unitPriceCents == null) {
+        return res.status(400).json({
+          error: 'Prix officiel invalide.',
+          code: 'INVALID_OFFICIAL_PRICE'
+        });
+      }
+
+      if (unitPriceCents > Number.MAX_SAFE_INTEGER / parsed.quantity) {
+        return res.status(400).json({
+          error: 'Montant hors limites.',
+          code: 'AMOUNT_OVERFLOW'
+        });
+      }
+
+      const lineCents = unitPriceCents * parsed.quantity;
+      if (!Number.isSafeInteger(lineCents)) {
+        return res.status(400).json({
+          error: 'Montant hors limites.',
+          code: 'AMOUNT_OVERFLOW'
+        });
+      }
+
+      normalizedLines.push({
+        dbVariantId: Number(row.id),
+        bizVariantId: row.variant_id ?? null,
+        printfulVariantId: row.printful_variant_id ?? null,
+        officialPrice: Number((unitPriceCents / 100).toFixed(2)),
+        unitPriceCents,
+        quantity: parsed.quantity,
+        lineCents,
+        name: row.product_name || 'Article',
+        sku: row.sku ?? null,
+        color: row.color ?? null,
+        size: row.size ?? null,
+        image: row.image ?? null
+      });
+    }
+
+    const currency = (process.env.CURRENCY || 'CAD').toUpperCase();
+    const stripeCurrency = (process.env.CURRENCY || 'cad').toLowerCase();
+
+    const line_items = normalizedLines.map((line) => {
+      const imgs = filterHttpImages([line.image]);
       return {
-        quantity: qty,
+        quantity: line.quantity,
         price_data: {
-          currency: (process.env.CURRENCY || 'cad').toLowerCase(),
-          unit_amount,
+          currency: stripeCurrency,
+          unit_amount: line.unitPriceCents,
           product_data: {
-            name,
+            name: line.name,
             ...(imgs.length ? { images: imgs } : {})
           }
         }
       };
     });
 
-    if (errors.length) {
-      return res.status(400).json({
-        error: 'Certains articles ont un prix invalide.',
-        code: 'BAD_LINE_ITEMS',
-        details: errors
-      });
+    let cartSubtotalCents = 0;
+    for (const line of normalizedLines) {
+      if (!canAddCents(cartSubtotalCents, line.lineCents)) {
+        return res.status(400).json({
+          error: 'Montant hors limites.',
+          code: 'AMOUNT_OVERFLOW'
+        });
+      }
+      cartSubtotalCents += line.lineCents;
     }
 
-    // 3) Montants + snapshot adresse/email
-    const currency = (process.env.CURRENCY || 'CAD').toUpperCase();
-
-    const cartSubtotalCents = line_items.reduce((sum, li) => {
-      if (li.price_data?.unit_amount && li.quantity) {
-        return sum + Number(li.price_data.unit_amount) * Number(li.quantity);
-      }
-      return sum;
-    }, 0);
-
+    // P1 étape suivante : raw.shipping_rate.rate reste une donnée client
+    // et doit être revalidé côté serveur. Ne pas traiter ce tarif comme
+    // source de vérité dans cette étape.
     const shippingRateRaw = raw.shipping_rate?.rate ?? 0;
     const shippingCents = (() => {
       const s = String(shippingRateRaw).replace(',', '.');
@@ -217,6 +340,12 @@ export const createCheckoutSession = async (req, res) => {
       return Number.isFinite(n) ? Math.round(n * 100) : 0;
     })();
 
+    if (!canAddCents(cartSubtotalCents, shippingCents)) {
+      return res.status(400).json({
+        error: 'Montant hors limites.',
+        code: 'AMOUNT_OVERFLOW'
+      });
+    }
     const totalCents = cartSubtotalCents + shippingCents;
 
     const shippingNormalized = {
@@ -231,8 +360,7 @@ export const createCheckoutSession = async (req, res) => {
     const emailSnapshot = (raw.customer_email || '').toLowerCase();
     const customerId = userId || null;
 
-    // 4) Créer la commande 'pending' (snapshots immuables)
-    const pool = await getPool();
+    // 4) Créer la commande 'pending' (snapshots immuables) — après validation
     let orderId = null;
 
     try {
@@ -294,96 +422,15 @@ export const createCheckoutSession = async (req, res) => {
       }
     }
 
-    // 4b) Insérer les lignes order_items avec résolution de la vraie PK DB
-    const requestedVariantRefs = [];
-    for (const it of cart) {
-      const frontVariant =
-        it.db_variant_id || it.variant_id || it.variantId || null;
-      if (frontVariant != null) {
-        requestedVariantRefs.push(Number(frontVariant));
-      }
-    }
-
-    const variantMap = new Map();
-    if (requestedVariantRefs.length > 0) {
-      const uniqueRefs = [...new Set(requestedVariantRefs)];
-      const placeholders = uniqueRefs.map(() => '?').join(',');
-
-      const [variantRows] = await pool.query(
-        `
-        SELECT
-          id                  AS db_id,
-          variant_id          AS biz_id,
-          printful_variant_id AS pf_id
-        FROM product_variants
-        WHERE id IN (${placeholders})
-           OR variant_id IN (${placeholders})
-      `,
-        [...uniqueRefs, ...uniqueRefs]
-      );
-
-      for (const row of variantRows) {
-        if (row.db_id != null) {
-          variantMap.set(Number(row.db_id), {
-            dbId: row.db_id,
-            pfId: row.pf_id
-          });
-        }
-        if (row.biz_id != null) {
-          variantMap.set(Number(row.biz_id), {
-            dbId: row.db_id,
-            pfId: row.pf_id
-          });
-        }
-      }
-    }
-
-    for (const it of cart) {
-      const qty = Math.max(1, Number(it.quantity ?? it.qty ?? 1) || 1);
-
-      const unitPriceCents = toCents(
-        it.unit_price ??
-          it.unitPrice ??
-          it.price ??
-          it.amount ??
-          it.subtotal_per_unit ??
-          0
-      );
-
-      const rawVariantRef =
-        it.db_variant_id || it.variant_id || it.variantId || null;
-
-      const mapEntry =
-        rawVariantRef != null ? variantMap.get(Number(rawVariantRef)) : null;
-
-      const dbVariantId = mapEntry?.dbId || null;
-
-      const effectivePrintfulId =
-        it.printful_variant_id ||
-        it.printfulVariantId ||
-        mapEntry?.pfId ||
-        null;
-
-      if (!dbVariantId) {
-        return res.status(400).json({
-          error:
-            'Variante introuvable en base pour un article du panier. Transaction stoppée.',
-          code: 'VARIANT_NOT_FOUND_FOR_ORDER_ITEM_FK',
-          item: it
-        });
-      }
-
-      // Storefront metadata snapshot
+    // 4b) Insérer les lignes order_items depuis les variantes normalisées
+    for (const line of normalizedLines) {
       const metaPayload = {
-        name: it.name ?? it.title ?? it.productName ?? null,
-        sku: it.sku ?? null,
-        color: it.color ?? it.colour ?? null,
-        size: it.size ?? null,
-        image: it.image ?? null,
-        images: Array.isArray(it.images) ? it.images.slice(0, 8) : undefined,
-        options: it.options ?? undefined, // ex. { print_side:"front", … }
-        notes: it.notes ?? undefined,
-        source: 'checkoutController' // trace d’origine
+        name: line.name,
+        sku: line.sku,
+        color: line.color,
+        size: line.size,
+        image: line.image,
+        source: 'checkoutController'
       };
 
       await pool.query(
@@ -400,11 +447,11 @@ export const createCheckoutSession = async (req, res) => {
          VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
         [
           orderId,
-          dbVariantId,
-          effectivePrintfulId,
-          qty,
-          (unitPriceCents / 100).toFixed(2),
-          unitPriceCents,
+          line.dbVariantId,
+          line.printfulVariantId,
+          line.quantity,
+          (line.unitPriceCents / 100).toFixed(2),
+          line.unitPriceCents,
           JSON.stringify(metaPayload)
         ]
       );
@@ -483,21 +530,15 @@ export const createCheckoutSession = async (req, res) => {
     }
 
     // 6) Création de la session Stripe
-    const metadataCartItems = cart.map((it) => ({
-      id: it.variant_id || it.variantId || null,
-      printful_variant_id:
-        it.printful_variant_id || it.printfulVariantId || null,
-      quantity: it.quantity ?? it.qty ?? 1,
-      price: Number(
-        it.unit_price ??
-          it.unitPrice ??
-          it.price ??
-          it.amount ??
-          it.subtotal_per_unit ??
-          0
-      ),
-      sku: it.sku || null,
-      name: it.name || it.title || it.productName || null
+    const metadataCartItems = normalizedLines.map((line) => ({
+      id: line.dbVariantId,
+      variant_id: line.bizVariantId,
+      printful_variant_id: line.printfulVariantId,
+      quantity: line.quantity,
+      unit_price_cents: line.unitPriceCents,
+      price: line.officialPrice,
+      sku: line.sku,
+      name: line.name
     }));
 
     const metadataShipping = {
