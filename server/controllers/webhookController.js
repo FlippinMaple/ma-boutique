@@ -25,49 +25,101 @@ INVARIANTS CRITIQUES WEBHOOK STRIPE – NE PAS CASSER
 4. Jamais de status 'paid' sans au moins un order_item confirme.
 */
 
-/** Dollars (ou string) → cents, aligne sur checkoutController.toCents */
-function toCentsFromMeta(value) {
-  if (value == null || value === '') return NaN;
-  const n = Number(String(value).replace(',', '.').trim());
-  if (!Number.isFinite(n) || n < 0) return NaN;
-  return Math.round(n * 100);
+/**
+ * Entier positif strict. Refuse 12abc, 1.5, 0, négatifs, NaN, Infinity, booléens.
+ */
+function parsePositiveSafeInteger(value) {
+  if (typeof value === 'bigint') {
+    if (value <= 0n || value > BigInt(Number.MAX_SAFE_INTEGER)) return null;
+    return Number(value);
+  }
+  if (typeof value === 'number') {
+    if (!Number.isInteger(value) || value <= 0 || !Number.isSafeInteger(value)) {
+      return null;
+    }
+    return value;
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!/^[1-9]\d*$/.test(trimmed)) return null;
+    const n = Number(trimmed);
+    if (!Number.isSafeInteger(n) || n <= 0) return null;
+    return n;
+  }
+  return null;
 }
 
-/** Normalise un item metadata.cart_items (shape checkout + legacy) */
+/** Entier sûr >= 0 (ex. orders.subtotal_cents). */
+function parseNonNegativeSafeInteger(value) {
+  if (typeof value === 'bigint') {
+    if (value < 0n || value > BigInt(Number.MAX_SAFE_INTEGER)) return null;
+    return Number(value);
+  }
+  if (typeof value === 'number') {
+    if (!Number.isInteger(value) || value < 0 || !Number.isSafeInteger(value)) {
+      return null;
+    }
+    return value;
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!/^\d+$/.test(trimmed)) return null;
+    const n = Number(trimmed);
+    if (!Number.isSafeInteger(n) || n < 0) return null;
+    return n;
+  }
+  return null;
+}
+
+function canAddCents(left, right) {
+  if (!Number.isSafeInteger(left) || !Number.isSafeInteger(right)) return false;
+  if (right > Number.MAX_SAFE_INTEGER - left) return false;
+  return Number.isSafeInteger(left + right);
+}
+
+/**
+ * Snapshot checkout (nouveau format serveur uniquement).
+ * Aucun fallback vers price / unit_price / unitPrice / qty / identifiants ambiguës.
+ */
 function normalizeMetaCartItem(it) {
-  const qty = Number(it?.quantity ?? it?.qty ?? 0);
-  const frontRaw = it?.id ?? it?.variant_id ?? it?.variantId ?? null;
-  const pfRaw = it?.printful_variant_id ?? it?.printfulVariantId ?? null;
-  const frontVariantId = Number(frontRaw);
-  const pfVariantId = Number(pfRaw);
-
-  let unitPriceCents = NaN;
-  if (it?.unit_price_cents != null && it.unit_price_cents !== '') {
-    const c = Number(it.unit_price_cents);
-    if (Number.isFinite(c) && c >= 0) unitPriceCents = Math.round(c);
-  }
-  if (!Number.isFinite(unitPriceCents)) {
-    unitPriceCents = toCentsFromMeta(
-      it?.price ?? it?.unit_price ?? it?.unitPrice
-    );
+  if (!it || typeof it !== 'object' || Array.isArray(it)) {
+    throw new Error('INVALID_META_CART_ITEM');
   }
 
-  const hasFront = Number.isFinite(frontVariantId) && frontVariantId !== 0;
-  const hasPf = Number.isFinite(pfVariantId) && pfVariantId !== 0;
+  const dbVariantId = parsePositiveSafeInteger(it.id);
+  const bizVariantId = parsePositiveSafeInteger(it.variant_id);
+  const quantity = parsePositiveSafeInteger(it.quantity);
+  const unitPriceCents = parsePositiveSafeInteger(it.unit_price_cents);
+
+  if (
+    dbVariantId == null ||
+    bizVariantId == null ||
+    quantity == null ||
+    unitPriceCents == null
+  ) {
+    throw new Error('INVALID_META_CART_ITEM');
+  }
+
+  let printfulVariantId = null;
+  const rawPrintfulId = it.printful_variant_id;
+  const printfulProvided =
+    rawPrintfulId != null &&
+    !(typeof rawPrintfulId === 'string' && rawPrintfulId.trim() === '');
+  if (printfulProvided) {
+    printfulVariantId = parsePositiveSafeInteger(rawPrintfulId);
+    if (printfulVariantId == null) {
+      throw new Error('INVALID_META_CART_ITEM');
+    }
+  }
 
   return {
-    qty,
-    frontVariantId: hasFront ? frontVariantId : 0,
-    pfVariantId: hasPf ? pfVariantId : 0,
+    dbVariantId,
+    bizVariantId,
+    printfulVariantId,
+    quantity,
     unitPriceCents,
-    name: it?.name ?? null,
-    sku: it?.sku ?? null,
-    valid:
-      Number.isFinite(qty) &&
-      qty > 0 &&
-      (hasFront || hasPf) &&
-      Number.isFinite(unitPriceCents) &&
-      unitPriceCents >= 0
+    name: it.name ?? null,
+    sku: it.sku ?? null
   };
 }
 
@@ -80,47 +132,132 @@ async function orderHasItems(db, orderId) {
 }
 
 async function insertOrderItemsFromMetadata(db, orderId, cartItems, traceId) {
-  const validItems = (cartItems || [])
-    .map(normalizeMetaCartItem)
-    .filter((it) => it.valid);
-
-  if (validItems.length === 0) return false;
-
-  await db.query('START TRANSACTION');
+  let normalizedItems;
   try {
-    for (const item of validItems) {
-      const [pvRows] = await db.query(
-        `
-        SELECT id, printful_variant_id
-          FROM product_variants
-         WHERE (variant_id = ? AND ? <> 0)
-            OR (id = ? AND ? <> 0)
-            OR (printful_variant_id = ? AND ? <> 0)
-         LIMIT 1
-        `,
-        [
-          item.frontVariantId,
-          item.frontVariantId,
-          item.frontVariantId,
-          item.frontVariantId,
-          item.pfVariantId,
-          item.pfVariantId
-        ]
-      );
+    if (!Array.isArray(cartItems) || cartItems.length === 0) {
+      throw new Error('EMPTY_OR_INVALID_CART_ITEMS');
+    }
 
-      if (!pvRows.length) {
-        throw new Error(
-          `Variant introuvable (front=${item.frontVariantId || null}, printful=${
-            item.pfVariantId || null
-          })`
-        );
+    normalizedItems = cartItems.map((it) => normalizeMetaCartItem(it));
+
+    const seenPks = new Set();
+    for (const item of normalizedItems) {
+      if (seenPks.has(item.dbVariantId)) {
+        throw new Error('DUPLICATE_VARIANT_PK');
+      }
+      seenPks.add(item.dbVariantId);
+    }
+  } catch (e) {
+    await logError(
+      `[${traceId}] Fallback insert order_items failed: ${e?.message || e}`,
+      'webhook'
+    );
+    return false;
+  }
+
+  let conn = null;
+  try {
+    conn = await db.getConnection();
+    await conn.beginTransaction();
+
+    const [orderRows] = await conn.query(
+      `SELECT subtotal_cents FROM orders WHERE id = ? FOR UPDATE`,
+      [orderId]
+    );
+    if (!orderRows.length) {
+      throw new Error('ORDER_NOT_FOUND_FOR_FALLBACK');
+    }
+
+    const orderSubtotalCents = parseNonNegativeSafeInteger(
+      orderRows[0].subtotal_cents
+    );
+    if (orderSubtotalCents == null) {
+      throw new Error('INVALID_ORDER_SUBTOTAL');
+    }
+
+    const [existingItems] = await conn.query(
+      `SELECT id FROM order_items WHERE order_id = ? LIMIT 1`,
+      [orderId]
+    );
+    if (existingItems.length > 0) {
+      throw new Error('ORDER_ITEMS_ALREADY_EXIST');
+    }
+
+    const requestedIds = normalizedItems.map((item) => item.dbVariantId);
+    const placeholders = requestedIds.map(() => '?').join(',');
+    const [variantRows] = await conn.query(
+      `
+      SELECT id, variant_id, printful_variant_id
+        FROM product_variants
+       WHERE id IN (${placeholders})
+      `,
+      requestedIds
+    );
+
+    const variantById = new Map();
+    for (const row of variantRows) {
+      const pk = parsePositiveSafeInteger(row.id);
+      if (pk == null) {
+        throw new Error('INVALID_DB_VARIANT_PK');
+      }
+      variantById.set(pk, row);
+    }
+
+    let reconstructedSubtotal = 0;
+    const preparedItems = [];
+
+    for (const item of normalizedItems) {
+      const row = variantById.get(item.dbVariantId);
+      if (!row) {
+        throw new Error('VARIANT_NOT_FOUND');
       }
 
-      const dbVariantId = pvRows[0].id;
-      const pfVariantId = pvRows[0].printful_variant_id;
-      const priceAtPurchase = (item.unitPriceCents / 100).toFixed(2);
+      const rowPk = parsePositiveSafeInteger(row.id);
+      if (rowPk == null || rowPk !== item.dbVariantId) {
+        throw new Error('VARIANT_PK_MISMATCH');
+      }
 
-      await db.execute(
+      const rowBizId = parsePositiveSafeInteger(row.variant_id);
+      if (rowBizId == null || rowBizId !== item.bizVariantId) {
+        throw new Error('VARIANT_BIZ_ID_MISMATCH');
+      }
+
+      if (item.printfulVariantId != null) {
+        const rowPfId = parsePositiveSafeInteger(row.printful_variant_id);
+        if (rowPfId == null || rowPfId !== item.printfulVariantId) {
+          throw new Error('VARIANT_PRINTFUL_ID_MISMATCH');
+        }
+      }
+
+      if (item.unitPriceCents > Number.MAX_SAFE_INTEGER / item.quantity) {
+        throw new Error('AMOUNT_OVERFLOW');
+      }
+      const lineCents = item.unitPriceCents * item.quantity;
+      if (!Number.isSafeInteger(lineCents)) {
+        throw new Error('AMOUNT_OVERFLOW');
+      }
+      if (!canAddCents(reconstructedSubtotal, lineCents)) {
+        throw new Error('AMOUNT_OVERFLOW');
+      }
+      reconstructedSubtotal += lineCents;
+
+      preparedItems.push({
+        dbVariantId: rowPk,
+        printfulVariantId: row.printful_variant_id ?? null,
+        quantity: item.quantity,
+        unitPriceCents: item.unitPriceCents,
+        priceAtPurchase: (item.unitPriceCents / 100).toFixed(2),
+        name: item.name,
+        sku: item.sku
+      });
+    }
+
+    if (reconstructedSubtotal !== orderSubtotalCents) {
+      throw new Error('SUBTOTAL_MISMATCH');
+    }
+
+    for (const line of preparedItems) {
+      await conn.execute(
         `
         INSERT INTO order_items
                (order_id,
@@ -136,28 +273,40 @@ async function insertOrderItemsFromMetadata(db, orderId, cartItems, traceId) {
         `,
         [
           orderId,
-          dbVariantId,
-          pfVariantId,
-          item.qty,
-          priceAtPurchase,
-          item.unitPriceCents,
+          line.dbVariantId,
+          line.printfulVariantId,
+          line.quantity,
+          line.priceAtPurchase,
+          line.unitPriceCents,
           JSON.stringify({
-            name: item.name,
-            sku: item.sku,
-            note: 'inserted from stripe webhook (fallback mode)'
+            name: line.name,
+            sku: line.sku,
+            note: 'inserted from stripe webhook (fallback mode)',
+            source: 'webhookController.fallback'
           })
         ]
       );
     }
-    await db.query('COMMIT');
+
+    await conn.commit();
     return true;
   } catch (e) {
-    await db.query('ROLLBACK');
+    if (conn) {
+      try {
+        await conn.rollback();
+      } catch {
+        /* keep original error */
+      }
+    }
     await logError(
       `[${traceId}] Fallback insert order_items failed: ${e?.message || e}`,
       'webhook'
     );
     return false;
+  } finally {
+    if (conn) {
+      conn.release();
+    }
   }
 }
 
@@ -844,9 +993,9 @@ async function handleStripeWebhook(req, res) {
         const pfSource = cart_items.map((it) => {
           const n = normalizeMetaCartItem(it);
           return {
-            variant_id: n.frontVariantId || undefined,
-            printful_variant_id: n.pfVariantId || undefined,
-            quantity: n.qty,
+            variant_id: n.bizVariantId || undefined,
+            printful_variant_id: n.printfulVariantId || undefined,
+            quantity: n.quantity,
             unit_price_cents: n.unitPriceCents
           };
         });
