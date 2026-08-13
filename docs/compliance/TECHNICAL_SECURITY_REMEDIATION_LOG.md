@@ -410,6 +410,42 @@ Ce document complète `docs/compliance/TECHNICAL_SECURITY_AUDIT.md`.
 - après une recherche active, vider complètement le champ a réaffiché automatiquement les quatre produits sans devoir appuyer sur Entrée;
 - le commit `a2e4410` n’a modifié que l’indentation du gestionnaire `onChange` et n’a introduit aucun changement fonctionnel.
 
+### Bouton de recherche avec loupe
+
+**Commits :**
+
+- `be07a8b` — `feat(shop): add search submit button`
+- `be7d146` — `fix(register): scope submit button styles`
+
+**Fichiers concernés :**
+
+- `src/pages/Shop.jsx`
+- `src/pages/styles/Shop.css`
+- `src/pages/styles/Register.css`
+
+**Modification :**
+
+- le formulaire de recherche de la boutique possède maintenant un véritable bouton `type="submit"` permettant de déclencher la recherche au clic;
+- le bouton utilise l’icône `Search` de `lucide-react`, déjà présente dans les dépendances du projet;
+- le bouton possède `aria-label="Rechercher"` et l’icône est marquée `aria-hidden="true"`;
+- l’input et le bouton sont regroupés dans `.shop-search__control`;
+- la loupe est intégrée à droite du champ de recherche et le padding droit de l’input réserve l’espace nécessaire;
+- le bouton utilise des états `hover` et `focus-visible`;
+- sa transition est désactivée lorsque `prefers-reduced-motion: reduce` est actif;
+- aucun changement n’a été apporté à la logique `searchInput` / `submittedSearch`, au tri, aux états loading/error ou aux prix;
+- lors du premier déploiement, le bouton de recherche héritait incorrectement de styles globaux définis dans `Register.css`, ce qui le transformait en gros bouton bleu pleine largeur;
+- la cause était constituée des sélecteurs globaux `button[type='submit']`, `button[type='submit']:hover` et `button[disabled]` présents dans `Register.css`;
+- ces trois sélecteurs ont été restreints à `.register-container`, éliminant la fuite de styles vers les autres pages sans modifier l’apparence ni le comportement du formulaire d’inscription;
+- aucun override supplémentaire n’a été ajouté dans `Shop.css` pour masquer le problème : la fuite CSS a été corrigée à sa source.
+
+**Validation en production :**
+
+- après le correctif de portée CSS, la loupe apparaît comme une petite action intégrée à droite du champ de recherche;
+- le bouton bleu pleine largeur observé lors du premier déploiement a disparu;
+- le bouton de recherche cohabite correctement avec le bouton d’effacement natif de l’input `type="search"`;
+- avec `youth` saisi dans le champ, un clic sur la loupe a déclenché la recherche et affiché un seul produit;
+- le comportement de soumission par Entrée validé à l’étape précédente demeure disponible.
+
 ---
 
 ## État après ces correctifs
