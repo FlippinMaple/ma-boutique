@@ -9,6 +9,7 @@ const Shop = () => {
   const [products, setProducts] = useState([]);
   const [searchInput, setSearchInput] = useState('');
   const [submittedSearch, setSubmittedSearch] = useState('');
+  const [sort, setSort] = useState('newest');
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
   const [previewImage, setPreviewImage] = useState(null);
   const [previewLoaded, setPreviewLoaded] = useState(false);
@@ -46,14 +47,23 @@ const Shop = () => {
 
   const handleSearchSubmit = (e) => {
     e.preventDefault();
-    setSubmittedSearch(searchInput.trim());
+    const nextSearch = searchInput.trim();
+    setSubmittedSearch(nextSearch);
+    if (nextSearch) {
+      setSort('relevance');
+    } else {
+      setSort('newest');
+    }
   };
 
   useEffect(() => {
     const fetchProducts = async () => {
       try {
         const res = await api.get('/products', {
-          params: submittedSearch ? { q: submittedSearch } : {}
+          params: {
+            ...(submittedSearch ? { q: submittedSearch } : {}),
+            sort
+          }
         });
         setProducts(res.data);
       } catch (err) {
@@ -62,7 +72,7 @@ const Shop = () => {
     };
 
     fetchProducts();
-  }, [submittedSearch]);
+  }, [submittedSearch, sort]);
 
   useEffect(() => {
     if (highlightId) {
@@ -131,6 +141,7 @@ const Shop = () => {
 
                   if (value === '') {
                     setSubmittedSearch('');
+                    setSort('newest');
                   }
                 }}
                 maxLength={100}
@@ -154,9 +165,25 @@ const Shop = () => {
             <h2 id="shop-catalogue-title" className="shop-catalogue__title">
               Produits
             </h2>
-            <p className="shop-catalogue__count">
-              {products.length} {products.length === 1 ? 'produit' : 'produits'}
-            </p>
+            <div className="shop-catalogue__controls">
+              <p className="shop-catalogue__count">
+                {products.length} {products.length === 1 ? 'produit' : 'produits'}
+              </p>
+              <label className="shop-sort">
+                <span className="shop-sort__label">Trier par</span>
+                <select
+                  className="shop-sort__select"
+                  value={sort}
+                  onChange={(e) => setSort(e.target.value)}
+                >
+                  <option value="relevance">Pertinence</option>
+                  <option value="price_asc">Prix : du plus bas au plus élevé</option>
+                  <option value="price_desc">Prix : du plus élevé au plus bas</option>
+                  <option value="newest">Plus récents</option>
+                  <option value="name_asc">Nom : A à Z</option>
+                </select>
+              </label>
+            </div>
           </div>
 
           {products.length === 0 ? (

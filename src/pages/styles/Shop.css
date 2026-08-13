@@ -159,6 +159,45 @@
   margin-bottom: clamp(var(--space-5), 4vw, var(--space-7));
 }
 
+.shop-catalogue__controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: flex-end;
+  gap: var(--space-3) var(--space-4);
+  margin-left: auto;
+}
+
+.shop-sort {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.shop-sort__label {
+  font-family: var(--font-display);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
+}
+
+.shop-sort__select {
+  min-height: 2.75rem;
+  padding: 0.65rem 2.5rem 0.65rem 0.85rem;
+  font: inherit;
+  color: var(--color-ink-black);
+  background-color: transparent;
+  border: 1px solid color-mix(in srgb, var(--color-ink-black) 22%, transparent);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.shop-sort__select:focus-visible {
+  outline: 2px solid var(--color-deep-forest);
+  outline-offset: 2px;
+}
+
 .shop-catalogue__title {
   margin: 0;
   font-family: var(--font-display);
