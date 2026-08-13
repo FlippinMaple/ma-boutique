@@ -78,7 +78,7 @@
   text-decoration: underline;
 }
 
-button[type='submit'] {
+.register-container button[type='submit'] {
   width: 100%;
   padding: 12px;
   font-size: 1rem;
@@ -94,11 +94,11 @@ button[type='submit'] {
   justify-content: center;
 }
 
-button[type='submit']:hover {
+.register-container button[type='submit']:hover {
   background-color: #084ec0;
 }
 
-button[disabled] {
+.register-container button[disabled] {
   opacity: 0.6;
   cursor: not-allowed;
 }
