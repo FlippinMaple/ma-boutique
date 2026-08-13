@@ -446,6 +446,86 @@ Ce document complète `docs/compliance/TECHNICAL_SECURITY_AUDIT.md`.
 - avec `youth` saisi dans le champ, un clic sur la loupe a déclenché la recherche et affiché un seul produit;
 - le comportement de soumission par Entrée validé à l’étape précédente demeure disponible.
 
+### Contrôle de tri du catalogue côté interface
+
+**Commit :**
+
+- `aad9086` — `feat(shop): add product sort control`
+
+**Fichiers concernés :**
+
+- `src/pages/Shop.jsx`
+- `src/pages/styles/Shop.css`
+
+**Modification :**
+
+- ajout d’un état frontend `sort`, initialisé à `newest`;
+- l’appel `GET /products` transmet maintenant toujours explicitement le paramètre `sort`;
+- le contrôle de tri est un `<select>` accessible associé au label `Trier par`;
+- les choix visibles sont :
+  - `Pertinence`;
+  - `Prix : du plus bas au plus élevé`;
+  - `Prix : du plus élevé au plus bas`;
+  - `Plus récents`;
+  - `Nom : A à Z`;
+- une nouvelle recherche non vide soumise replace automatiquement le tri à `relevance`;
+- une recherche vide ou l’effacement complet du champ replace automatiquement le tri à `newest`;
+- changer le `<select>` modifie immédiatement `sort` et relance le chargement des produits;
+- la recherche reste explicite : aucune requête n’est déclenchée à chaque frappe;
+- aucun changement n’a été apporté au backend dans ce commit;
+- aucun changement n’a été apporté au checkout, à Stripe, à Printful, à l’authentification ou à la base de données.
+
+**Validation en production :**
+
+- sans recherche active, le contrôle affiche `Plus récents`;
+- après soumission d’une recherche non vide, le contrôle passe automatiquement à `Pertinence`;
+- après effacement complet de la recherche, le contrôle revient à `Plus récents`;
+- le changement vers `Prix : du plus bas au plus élevé` réordonne immédiatement le catalogue;
+- les comportements de recherche au clic sur la loupe et avec la touche Entrée demeurent fonctionnels.
+
+### Simplification et finition visuelle des cartes du catalogue
+
+**Commits :**
+
+- `2730428` — `fix(shop): replace hover image preview with click modal`
+- `4431aa1` — `feat(shop): add two-state image zoom viewer`
+- `7aa37b6` — `fix(shop): stabilize image zoom cursor`
+- `ec88059` — `refactor(shop): link catalogue images to product pages`
+- `55ee755` — `style(shop): soften product image corners`
+- `d875c65` — `style(shop): align product card metadata`
+- `e4e5c01` — `style(shop): tighten product title spacing`
+- `72b8997` — `style(shop): clamp desktop product titles to one line`
+
+**Fichiers concernés :**
+
+- `src/pages/Shop.jsx`
+- `src/pages/styles/Shop.css`
+
+**Modification :**
+
+- l’ancien aperçu d’image plein écran déclenché au survol a d’abord été remplacé par un modal au clic afin de corriger un comportement où l’aperçu était difficile à fermer;
+- un second niveau de zoom au clic a ensuite été essayé et corrigé;
+- après validation UX, cette mécanique de viewer/zoom a finalement été entièrement retirée du catalogue;
+- `ec88059` constitue l’état fonctionnel final de cette décision : cliquer sur l’image d’une carte ouvre directement la fiche `/product/:id`;
+- les states, listeners, blocage du scroll, overlay, bouton de fermeture et CSS liés au viewer ont été supprimés;
+- le lien texte `Voir le produit` demeure disponible;
+- les cadres d’images utilisent maintenant un rayon de `0.75rem`, sans ombre ni bordure décorative;
+- les titres et métadonnées des cartes ont été ajustés pour garder les prix et les liens alignés;
+- sur les petits écrans, les titres conservent un maximum de deux lignes;
+- à partir de `56rem`, les titres sont limités à une seule ligne avec ellipsis si nécessaire;
+- aucun changement n’a été apporté aux dimensions de la grille, au ratio 4/5 des images, au backend, au checkout, à Stripe, à Printful ou à la base de données.
+
+**Validation en production :**
+
+- le catalogue déployé ne présente plus le viewer/zoom précédent; l’image de chaque produit est maintenant implémentée comme un lien vers `/product/:id`; le clic vers la bonne fiche produit reste à confirmer empiriquement en production;
+- aucun viewer ou zoom du catalogue ne s’ouvre désormais;
+- les coins arrondis à `0.75rem` ont été validés visuellement comme suffisamment doux sans transformer les cartes en composants fortement arrondis;
+- les quatre prix du catalogue actuel sont alignés horizontalement;
+- les quatre liens `Voir le produit` sont également alignés;
+- sur desktop, les quatre titres actuels tiennent sur une seule ligne avec la disposition observée;
+- l’espace artificiel qui existait entre les titres courts et les prix a été retiré tout en conservant l’alignement des métadonnées;
+- le rendu final de la grille a été validé visuellement en production.
+
 ---
 
 ## État après ces correctifs
