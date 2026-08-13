@@ -414,6 +414,11 @@
   background-color: var(--color-maple-bone);
   border: 1px solid color-mix(in srgb, var(--color-cold-concrete) 45%, transparent);
   border-radius: var(--radius-sm);
+  cursor: zoom-in;
+}
+
+.image-preview-panel.is-zoomed {
+  cursor: zoom-out;
 }
 
 .image-preview {
@@ -424,7 +429,7 @@
   max-height: 72vh;
   object-fit: contain;
   box-shadow: none;
-  cursor: zoom-in;
+  cursor: inherit;
   transition:
     max-width var(--duration-normal) var(--ease-natural),
     max-height var(--duration-normal) var(--ease-natural);
@@ -433,7 +438,6 @@
 .image-preview.is-zoomed {
   max-width: min(90vw, 78rem);
   max-height: 88vh;
-  cursor: zoom-out;
 }
 
 .close-button {
