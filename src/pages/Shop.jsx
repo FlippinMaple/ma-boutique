@@ -2,6 +2,7 @@ import { useRef, useEffect, useState } from 'react';
 import api from '../utils/api';
 import { useLocation, Link, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast'; // ✅ AJOUT
+import { Search } from 'lucide-react';
 import './styles/Shop.css';
 
 const Shop = () => {
@@ -118,22 +119,31 @@ const Shop = () => {
             <label htmlFor="shop-search-input" className="shop-search__label">
               Rechercher
             </label>
-            <input
-              id="shop-search-input"
-              type="search"
-              placeholder="Nom ou description du produit"
-              value={searchInput}
-              onChange={(e) => {
-                const value = e.target.value;
-                setSearchInput(value);
+            <div className="shop-search__control">
+              <input
+                id="shop-search-input"
+                type="search"
+                placeholder="Nom ou description du produit"
+                value={searchInput}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setSearchInput(value);
 
-                if (value === '') {
-                  setSubmittedSearch('');
-                }
-              }}
-              maxLength={100}
-              className="shop-search__input"
-            />
+                  if (value === '') {
+                    setSubmittedSearch('');
+                  }
+                }}
+                maxLength={100}
+                className="shop-search__input"
+              />
+              <button
+                type="submit"
+                className="shop-search__submit"
+                aria-label="Rechercher"
+              >
+                <Search size={20} aria-hidden="true" />
+              </button>
+            </div>
           </form>
         </div>
       </section>

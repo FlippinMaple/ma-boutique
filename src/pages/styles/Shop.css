@@ -72,10 +72,15 @@
   color: var(--color-text-secondary);
 }
 
+.shop-search__control {
+  position: relative;
+  width: 100%;
+}
+
 .shop-search__input {
   width: 100%;
   min-height: 3rem;
-  padding: var(--space-3) var(--space-4);
+  padding: var(--space-3) 3.75rem var(--space-3) var(--space-4);
   font: inherit;
   color: var(--color-ink-black);
   background-color: transparent;
@@ -99,6 +104,37 @@
     var(--color-maple-bone) 92%,
     var(--color-deep-forest)
   );
+}
+
+.shop-search__submit {
+  position: absolute;
+  top: 50%;
+  right: 0.35rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.35rem;
+  height: 2.35rem;
+  padding: 0;
+  color: var(--color-ink-black);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transform: translateY(-50%);
+  transition:
+    background-color var(--duration-fast) var(--ease-natural),
+    color var(--duration-fast) var(--ease-natural);
+}
+
+.shop-search__submit:hover {
+  color: var(--color-maple-bone);
+  background-color: var(--color-deep-forest);
+}
+
+.shop-search__submit:focus-visible {
+  outline: 2px solid var(--color-deep-forest);
+  outline-offset: 2px;
 }
 
 /* Catalogue */
@@ -362,6 +398,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .shop-search__input,
+  .shop-search__submit,
   .shop-image,
   .shop-title,
   .shop-details-link {
