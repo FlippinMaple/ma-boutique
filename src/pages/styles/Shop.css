@@ -384,6 +384,7 @@
   padding: var(--gutter);
   overflow: hidden;
   outline: none;
+  cursor: zoom-out;
   background-color: color-mix(in srgb, var(--color-ink-black) 88%, transparent);
   transition:
     opacity var(--duration-normal) var(--ease-natural),
@@ -412,6 +413,7 @@
     color-mix(in srgb, var(--color-cold-concrete) 45%, transparent);
   border-radius: var(--radius-sm);
   box-shadow: none;
+  cursor: default;
 }
 
 .close-button {

@@ -12,7 +12,6 @@ const Shop = () => {
   const [sort, setSort] = useState('newest');
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
   const [previewImage, setPreviewImage] = useState(null);
-  const [previewLoaded, setPreviewLoaded] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
   const flashShownRef = useRef(false); // 🔒 bloque un second tir en dev
@@ -85,25 +84,23 @@ const Shop = () => {
   }, [products, highlightId]);
 
   useEffect(() => {
-    if (previewImage && isMobile) {
+    if (previewImage) {
       document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = '';
-    }
-  }, [previewImage, isMobile]);
 
-  const handleOverlayLeave = (e) => {
-    const related = e.relatedTarget;
-    if (
-      related &&
-      (related.classList?.contains('shop-card') ||
-        related.classList?.contains('shop-image'))
-    ) {
-      return;
+      const handleKeyDown = (e) => {
+        if (e.key === 'Escape') {
+          setPreviewImage(null);
+        }
+      };
+
+      window.addEventListener('keydown', handleKeyDown);
+
+      return () => {
+        document.body.style.overflow = '';
+        window.removeEventListener('keydown', handleKeyDown);
+      };
     }
-    setPreviewImage(null);
-    setPreviewLoaded(false);
-  };
+  }, [previewImage]);
 
   useEffect(() => {
     if (highlightId && !products.some((p) => p.id === Number(highlightId))) {
@@ -216,34 +213,7 @@ const Shop = () => {
                           loading="lazy"
                           decoding="async"
                           className={`shop-image ${!isMobile ? 'zoomable' : ''}`}
-                          onMouseEnter={() => {
-                            if (!isMobile) {
-                              setPreviewImage(productImage);
-                              setPreviewLoaded(false);
-                            }
-                          }}
-                          onMouseLeave={(e) => {
-                            if (!isMobile) {
-                              const related = e.relatedTarget;
-                              if (
-                                related &&
-                                (related.classList?.contains('image-preview') ||
-                                  related.classList?.contains(
-                                    'image-preview-overlay'
-                                  ))
-                              ) {
-                                return;
-                              }
-                              setPreviewImage(null);
-                              setPreviewLoaded(false);
-                            }
-                          }}
-                          onClick={() => {
-                            if (isMobile) {
-                              setPreviewImage(productImage);
-                              setPreviewLoaded(true);
-                            }
-                          }}
+                          onClick={() => setPreviewImage(productImage)}
                         />
                       ) : (
                         <div
@@ -280,27 +250,18 @@ const Shop = () => {
         </div>
       </section>
 
-      {previewImage && !isMobile && (
+      {previewImage && (
         <div
-          className="image-preview-overlay"
-          onMouseLeave={handleOverlayLeave}
-          onMouseEnter={() => setPreviewLoaded(true)}
-          style={{
-            opacity: previewLoaded ? 1 : 0,
-            visibility: previewLoaded ? 'visible' : 'hidden'
+          className={`image-preview-overlay ${isMobile ? 'image-preview-blur' : ''}`}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Aperçu du produit"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setPreviewImage(null);
+            }
           }}
         >
-          <img
-            src={previewImage}
-            alt=""
-            className="image-preview"
-            onLoad={() => setPreviewLoaded(true)}
-          />
-        </div>
-      )}
-
-      {previewImage && isMobile && (
-        <div className="image-preview-overlay image-preview-blur">
           <button
             type="button"
             className="close-button"
@@ -309,7 +270,11 @@ const Shop = () => {
           >
             ✕
           </button>
-          <img src={previewImage} alt="" className="image-preview" />
+          <img
+            src={previewImage}
+            alt=""
+            className="image-preview"
+          />
         </div>
       )}
     </main>
