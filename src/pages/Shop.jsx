@@ -10,20 +10,11 @@ const Shop = () => {
   const [searchInput, setSearchInput] = useState('');
   const [submittedSearch, setSubmittedSearch] = useState('');
   const [sort, setSort] = useState('newest');
-  const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
-  const [previewImage, setPreviewImage] = useState(null);
-  const [previewZoomed, setPreviewZoomed] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
   const flashShownRef = useRef(false); // 🔒 bloque un second tir en dev
 
   const highlightId = new URLSearchParams(location.search).get('highlight');
-
-  useEffect(() => {
-    const handleResize = () => setIsMobile(window.innerWidth <= 768);
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
 
   // ✅ Affiche le toast "Merci" si présent, puis nettoie l'URL
   useEffect(() => {
@@ -83,26 +74,6 @@ const Shop = () => {
       }
     }
   }, [products, highlightId]);
-
-  useEffect(() => {
-    if (previewImage) {
-      document.body.style.overflow = 'hidden';
-
-      const handleKeyDown = (e) => {
-        if (e.key === 'Escape') {
-          setPreviewImage(null);
-          setPreviewZoomed(false);
-        }
-      };
-
-      window.addEventListener('keydown', handleKeyDown);
-
-      return () => {
-        document.body.style.overflow = '';
-        window.removeEventListener('keydown', handleKeyDown);
-      };
-    }
-  }, [previewImage]);
 
   useEffect(() => {
     if (highlightId && !products.some((p) => p.id === Number(highlightId))) {
@@ -209,17 +180,19 @@ const Shop = () => {
                   >
                     <div className="shop-image-wrapper">
                       {productImage ? (
-                        <img
-                          src={productImage}
-                          alt={product.name}
-                          loading="lazy"
-                          decoding="async"
-                          className={`shop-image ${!isMobile ? 'zoomable' : ''}`}
-                          onClick={() => {
-                            setPreviewImage(productImage);
-                            setPreviewZoomed(false);
-                          }}
-                        />
+                        <Link
+                          to={`/product/${product.id}`}
+                          className="shop-image-link"
+                          aria-label={`Voir ${product.name}`}
+                        >
+                          <img
+                            src={productImage}
+                            alt={product.name}
+                            loading="lazy"
+                            decoding="async"
+                            className="shop-image"
+                          />
+                        </Link>
                       ) : (
                         <div
                           className="shop-image-fallback"
@@ -254,41 +227,6 @@ const Shop = () => {
           )}
         </div>
       </section>
-
-      {previewImage && (
-        <div
-          className={`image-preview-overlay ${isMobile ? 'image-preview-blur' : ''}`}
-          role="dialog"
-          aria-modal="true"
-          aria-label="Aperçu du produit"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) {
-              setPreviewImage(null);
-              setPreviewZoomed(false);
-            }
-          }}
-        >
-          <div className={`image-preview-panel ${previewZoomed ? 'is-zoomed' : ''}`}>
-            <button
-              type="button"
-              className="close-button"
-              aria-label="Fermer l’aperçu"
-              onClick={() => {
-                setPreviewImage(null);
-                setPreviewZoomed(false);
-              }}
-            >
-              ✕
-            </button>
-            <img
-              src={previewImage}
-              alt=""
-              className={`image-preview ${previewZoomed ? 'is-zoomed' : ''}`}
-              onClick={() => setPreviewZoomed((current) => !current)}
-            />
-          </div>
-        </div>
-      )}
     </main>
   );
 };
