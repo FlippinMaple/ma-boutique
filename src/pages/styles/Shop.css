@@ -335,6 +335,17 @@
   transition: color var(--duration-fast) var(--ease-natural);
 }
 
+@media (min-width: 56rem) {
+  .shop-title {
+    display: block;
+    min-height: 1.2em;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    -webkit-line-clamp: unset;
+    -webkit-box-orient: initial;
+  }
+}
+
 .shop-price {
   margin: 0;
   font-family: var(--font-body);
