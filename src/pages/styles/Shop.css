@@ -214,6 +214,7 @@
   color: var(--color-text-secondary);
 }
 
+.shop-status,
 .shop-empty {
   margin: 0;
   padding-block: clamp(var(--space-6), 6vw, var(--space-8));
@@ -222,6 +223,10 @@
   font-family: var(--font-body);
   font-size: 1rem;
   color: var(--color-text-secondary);
+}
+
+.shop-status--error {
+  color: var(--color-oxide-red);
 }
 
 /* Grille */

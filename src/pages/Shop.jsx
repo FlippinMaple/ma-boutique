@@ -10,6 +10,9 @@ const Shop = () => {
   const [searchInput, setSearchInput] = useState('');
   const [submittedSearch, setSubmittedSearch] = useState('');
   const [sort, setSort] = useState('newest');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
   const flashShownRef = useRef(false); // 🔒 bloque un second tir en dev
@@ -48,7 +51,12 @@ const Shop = () => {
   };
 
   useEffect(() => {
+    let cancelled = false;
+
     const fetchProducts = async () => {
+      setLoading(true);
+      setError('');
+
       try {
         const res = await api.get('/products', {
           params: {
@@ -56,13 +64,28 @@ const Shop = () => {
             sort
           }
         });
-        setProducts(res.data);
+
+        if (!cancelled) {
+          setProducts(res.data);
+        }
       } catch (err) {
-        console.error('❌ Erreur axios :', err);
+        if (!cancelled) {
+          console.error('❌ Erreur axios :', err);
+          setError('Impossible de charger les produits pour le moment.');
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+          setHasLoadedOnce(true);
+        }
       }
     };
 
     fetchProducts();
+
+    return () => {
+      cancelled = true;
+    };
   }, [submittedSearch, sort]);
 
   useEffect(() => {
@@ -76,12 +99,12 @@ const Shop = () => {
   }, [products, highlightId]);
 
   useEffect(() => {
-    if (highlightId && !products.some((p) => p.id === Number(highlightId))) {
+    if (!loading && highlightId && !products.some((p) => p.id === Number(highlightId))) {
       const url = new URL(window.location.href);
       url.searchParams.delete('highlight');
       window.history.replaceState({}, '', url);
     }
-  }, [products, highlightId]);
+  }, [products, highlightId, loading]);
 
   return (
     <main className="shop-page" id="main-content">
@@ -129,7 +152,7 @@ const Shop = () => {
         </div>
       </section>
 
-      <section className="shop-catalogue" aria-labelledby="shop-catalogue-title">
+      <section className="shop-catalogue" aria-labelledby="shop-catalogue-title" aria-busy={loading}>
         <div className="shop-catalogue__inner">
           <div className="shop-catalogue__header">
             <h2 id="shop-catalogue-title" className="shop-catalogue__title">
@@ -137,7 +160,9 @@ const Shop = () => {
             </h2>
             <div className="shop-catalogue__controls">
               <p className="shop-catalogue__count">
-                {products.length} {products.length === 1 ? 'produit' : 'produits'}
+                {loading
+                  ? 'Chargement…'
+                  : `${products.length} ${products.length === 1 ? 'produit' : 'produits'}`}
               </p>
               <label className="shop-sort">
                 <span className="shop-sort__label">Trier par</span>
@@ -156,7 +181,17 @@ const Shop = () => {
             </div>
           </div>
 
-          {products.length === 0 ? (
+          {loading ? (
+            <p className="shop-status" role="status" aria-live="polite">
+              {hasLoadedOnce
+                ? 'Mise à jour des produits…'
+                : 'Chargement des produits…'}
+            </p>
+          ) : error ? (
+            <p className="shop-status shop-status--error" role="alert">
+              {error}
+            </p>
+          ) : products.length === 0 ? (
             <p className="shop-empty">
               Aucun produit ne correspond à ta recherche.
             </p>
