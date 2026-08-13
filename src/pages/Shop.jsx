@@ -202,7 +202,7 @@ const Shop = () => {
               {products.map((product) => {
                 const firstVariant = product.variants?.[0];
                 const productImage = firstVariant?.image || product.image;
-                const rawPrice = firstVariant?.price;
+                const rawPrice = product.min_price;
                 const priceNumber = Number(rawPrice);
                 const hasPrice =
                   rawPrice != null &&
