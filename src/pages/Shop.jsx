@@ -12,6 +12,7 @@ const Shop = () => {
   const [sort, setSort] = useState('newest');
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
   const [previewImage, setPreviewImage] = useState(null);
+  const [previewZoomed, setPreviewZoomed] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
   const flashShownRef = useRef(false); // 🔒 bloque un second tir en dev
@@ -90,6 +91,7 @@ const Shop = () => {
       const handleKeyDown = (e) => {
         if (e.key === 'Escape') {
           setPreviewImage(null);
+          setPreviewZoomed(false);
         }
       };
 
@@ -213,7 +215,10 @@ const Shop = () => {
                           loading="lazy"
                           decoding="async"
                           className={`shop-image ${!isMobile ? 'zoomable' : ''}`}
-                          onClick={() => setPreviewImage(productImage)}
+                          onClick={() => {
+                            setPreviewImage(productImage);
+                            setPreviewZoomed(false);
+                          }}
                         />
                       ) : (
                         <div
@@ -259,22 +264,29 @@ const Shop = () => {
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               setPreviewImage(null);
+              setPreviewZoomed(false);
             }
           }}
         >
-          <button
-            type="button"
-            className="close-button"
-            aria-label="Fermer l’aperçu"
-            onClick={() => setPreviewImage(null)}
-          >
-            ✕
-          </button>
-          <img
-            src={previewImage}
-            alt=""
-            className="image-preview"
-          />
+          <div className={`image-preview-panel ${previewZoomed ? 'is-zoomed' : ''}`}>
+            <button
+              type="button"
+              className="close-button"
+              aria-label="Fermer l’aperçu"
+              onClick={() => {
+                setPreviewImage(null);
+                setPreviewZoomed(false);
+              }}
+            >
+              ✕
+            </button>
+            <img
+              src={previewImage}
+              alt=""
+              className={`image-preview ${previewZoomed ? 'is-zoomed' : ''}`}
+              onClick={() => setPreviewZoomed((current) => !current)}
+            />
+          </div>
         </div>
       )}
     </main>

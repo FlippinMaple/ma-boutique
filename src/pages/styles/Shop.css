@@ -401,19 +401,39 @@
   background-color: color-mix(in srgb, var(--color-ink-black) 92%, transparent);
 }
 
+.image-preview-panel {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: fit-content;
+  max-width: calc(100vw - (2 * var(--gutter)));
+  max-height: calc(100vh - (2 * var(--gutter)));
+  padding: var(--space-2);
+  overflow: hidden;
+  background-color: var(--color-maple-bone);
+  border: 1px solid color-mix(in srgb, var(--color-cold-concrete) 45%, transparent);
+  border-radius: var(--radius-sm);
+}
+
 .image-preview {
   display: block;
   width: auto;
   height: auto;
-  max-width: min(90vw, 72rem);
-  max-height: 86vh;
+  max-width: min(68vw, 52rem);
+  max-height: 72vh;
   object-fit: contain;
-  background-color: var(--color-maple-bone);
-  border: 1px solid
-    color-mix(in srgb, var(--color-cold-concrete) 45%, transparent);
-  border-radius: var(--radius-sm);
   box-shadow: none;
-  cursor: default;
+  cursor: zoom-in;
+  transition:
+    max-width var(--duration-normal) var(--ease-natural),
+    max-height var(--duration-normal) var(--ease-natural);
+}
+
+.image-preview.is-zoomed {
+  max-width: min(90vw, 78rem);
+  max-height: 88vh;
+  cursor: zoom-out;
 }
 
 .close-button {
@@ -442,7 +462,9 @@
   .shop-search__submit,
   .shop-image,
   .shop-title,
-  .shop-details-link {
+  .shop-details-link,
+  .image-preview,
+  .image-preview-panel {
     transition: none;
   }
 
