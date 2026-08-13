@@ -526,6 +526,53 @@ Ce document complète `docs/compliance/TECHNICAL_SECURITY_AUDIT.md`.
 - l’espace artificiel qui existait entre les titres courts et les prix a été retiré tout en conservant l’alignement des métadonnées;
 - le rendu final de la grille a été validé visuellement en production.
 
+### États explicites de chargement et d’erreur du catalogue
+
+**Commits :**
+
+- `eda637f` — `feat(shop): add catalogue loading and error states`
+- `078d5f9` — `fix(shop): hide stale product count on error`
+
+**Fichiers concernés :**
+
+- `src/pages/Shop.jsx`
+- `src/pages/styles/Shop.css`
+
+**Modification :**
+
+- ajout des états frontend `loading`, `error` et `hasLoadedOnce`;
+- le chargement initial du catalogue est maintenant distinct d’une mise à jour déclenchée par une recherche ou un changement de tri;
+- chaque requête `/products` remet `loading` à `true` et efface l’erreur précédente avant son exécution;
+- une protection locale `cancelled` empêche une ancienne requête de modifier l’interface après un changement rapide de recherche, de tri ou un démontage du composant;
+- les produits précédemment chargés ne sont pas volontairement vidés au début d’une nouvelle requête, mais la grille est temporairement masquée par l’état de chargement;
+- la section catalogue expose maintenant `aria-busy={loading}`;
+- pendant le premier chargement, l’interface peut afficher `Chargement des produits…`;
+- pendant une mise à jour après un premier chargement réussi, l’interface affiche `Mise à jour des produits…`;
+- le compteur du catalogue affiche `Chargement…` pendant une requête;
+- après une réponse réussie, le compteur affiche normalement le nombre de produits;
+- si une requête réseau ou serveur échoue, le catalogue affiche `Impossible de charger les produits pour le moment.`;
+- après une erreur, le compteur affiche maintenant `Indisponible` plutôt que de conserver visuellement un ancien nombre de produits;
+- l’état d’erreur utilise `role="alert"`;
+- l’état de chargement utilise `role="status"` et `aria-live="polite"`;
+- le message `Aucun produit ne correspond à ta recherche.` n’est rendu qu’après la fin d’une requête réussie retournant zéro produit;
+- ce message ne peut donc plus apparaître temporairement pendant un chargement;
+- la logique de nettoyage du paramètre `highlight` attend maintenant que le chargement soit terminé avant de conclure qu’un produit est absent;
+- aucun spinner ni animation supplémentaire n’a été ajouté;
+- aucun changement n’a été apporté au backend, à la recherche, au score de pertinence, au tri, au checkout, à Stripe, à Printful, à l’authentification ou à la base de données.
+
+**Validation en production :**
+
+- une recherche volontairement inexistante a retourné `0 produits` et affiché `Aucun produit ne correspond à ta recherche.`;
+- le tri était correctement passé à `Pertinence` pour cette recherche;
+- avec le throttling réseau `3G`, un changement de tri a affiché `Chargement…` dans le compteur et `Mise à jour des produits…` à la place de la grille pendant que la requête `/products` était encore en attente;
+- la requête de tri a ensuite retourné HTTP 200 et le catalogue a repris son affichage normal;
+- l’état de chargement initial n’a pas été capturé visuellement de manière fiable, car le chargement du document et de l’application sous throttling masquait la courte fenêtre correspondante;
+- avec DevTools placé en mode `Offline`, un changement de tri a provoqué l’échec de la requête `/products`;
+- l’interface a alors affiché `Impossible de charger les produits pour le moment.`;
+- après le correctif `078d5f9` et chargement de la nouvelle version frontend, le compteur a affiché `Indisponible` pendant cet état d’erreur;
+- l’ancien nombre de produits n’est donc plus présenté comme s’il provenait d’une requête ayant réussi;
+- les états aucun résultat, mise à jour en cours et erreur réseau ont été validés empiriquement en production.
+
 ---
 
 ## État après ces correctifs
