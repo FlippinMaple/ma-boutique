@@ -370,6 +370,46 @@ Ce document complète `docs/compliance/TECHNICAL_SECURITY_AUDIT.md`.
 - aucune donnée contrôlée disponible dans les réponses publiques actuelles n’a permis de valider séparément les correspondances sur `brand` et `category`;
 - le comportement de `brand`, `category` et `description` est présent dans le SQL, mais ces trois dimensions devront être validées empiriquement lorsqu’un jeu de données contrôlé permettant de les isoler sera disponible.
 
+### Recherche explicite du catalogue côté interface
+
+**Commits :**
+
+- `79876d4` — `feat(shop): submit product search explicitly`
+- `b2ff863` — `fix(shop): restore catalogue when search is cleared`
+- `a2e4410` — `style(shop): fix search handler indentation`
+
+**Fichier concerné :**
+
+- `src/pages/Shop.jsx`
+
+**Modification :**
+
+- l’ancien état unique `search` a été remplacé par deux états distincts : `searchInput` pour la valeur actuellement saisie et `submittedSearch` pour la recherche effectivement soumise;
+- le debounce de 300 ms associé à la recherche a été entièrement supprimé;
+- la saisie dans le champ ne déclenche plus de requête API à chaque frappe;
+- le champ de recherche est maintenant intégré dans un élément `<form>` sémantique;
+- la soumission du formulaire par la touche Entrée appelle `handleSearchSubmit`;
+- lors de la soumission, la valeur saisie est normalisée avec `trim()` avant d’être copiée dans `submittedSearch`;
+- le chargement des produits dépend maintenant de `submittedSearch`;
+- lorsqu’une recherche non vide est soumise, `/products` est appelé avec le paramètre `q`;
+- lorsqu’aucune recherche n’est soumise, `/products` est appelé sans paramètre `q`;
+- lorsque le champ de recherche devient complètement vide, `submittedSearch` est immédiatement remis à une chaîne vide afin de réafficher automatiquement le catalogue sans exiger une nouvelle soumission;
+- l’effacement automatique du champ ne réintroduit aucun debounce et ne déclenche pas de recherche intermédiaire pendant la saisie;
+- `maxLength={100}` demeure appliqué côté interface;
+- le label du champ est maintenant explicitement associé à l’input avec `htmlFor` et `id`;
+- aucun bouton de recherche ni icône de loupe n’a encore été ajouté dans cette étape;
+- aucun contrôle de tri n’a encore été ajouté;
+- aucun état explicite de chargement ou d’erreur n’a encore été ajouté;
+- aucun changement n’a été apporté au CSS, aux cartes produits, au prix affiché, à la preview, au highlight, aux toasts, à la navigation, au checkout, à Stripe, à Printful, à l’authentification ou à la base de données.
+
+**Validation en production :**
+
+- `GET /readiness` a retourné `ok: true` après les déploiements;
+- avec quatre produits affichés initialement, la saisie de `Youth` sans soumettre le formulaire a laissé les quatre produits affichés, confirmant qu’aucune recherche n’est déclenchée pendant la saisie;
+- après avoir appuyé sur Entrée avec `Youth`, un seul produit a été affiché, confirmant que la recherche est déclenchée uniquement lors de la soumission explicite;
+- après une recherche active, vider complètement le champ a réaffiché automatiquement les quatre produits sans devoir appuyer sur Entrée;
+- le commit `a2e4410` n’a modifié que l’indentation du gestionnaire `onChange` et n’a introduit aucun changement fonctionnel.
+
 ---
 
 ## État après ces correctifs
