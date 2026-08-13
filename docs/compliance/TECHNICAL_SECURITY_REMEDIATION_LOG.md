@@ -573,6 +573,74 @@ Ce document complète `docs/compliance/TECHNICAL_SECURITY_AUDIT.md`.
 - l’ancien nombre de produits n’est donc plus présenté comme s’il provenait d’une requête ayant réussi;
 - les états aucun résultat, mise à jour en cours et erreur réseau ont été validés empiriquement en production.
 
+### Validation finale de la recherche, du tri et du prix du catalogue
+
+**Commit :**
+
+- `419e860` — `fix(shop): display minimum active product price`
+
+**Fichier concerné :**
+
+- `src/pages/Shop.jsx`
+
+**Modification :**
+
+- le prix principal affiché dans chaque carte du catalogue utilise maintenant `product.min_price`;
+- l’ancien affichage basé sur `firstVariant?.price` a été retiré;
+- l’image de la carte continue d’utiliser la première variante disponible ou l’image produit;
+- la logique de formatage monétaire CAD demeure inchangée;
+- le prix affiché est maintenant le même prix minimal actif que celui utilisé par les tris `price_asc` et `price_desc`;
+- ce changement aligne le frontend avec la définition officielle de `min_price` dans `PRODUCT_SEARCH_AND_SORT_SPEC.md`;
+- aucun changement n’a été apporté au backend, aux variantes, à la recherche, au score de pertinence, aux états loading/error, au checkout, à Stripe, à Printful, à l’authentification ou à la base de données.
+
+**Validation finale en production :**
+
+Une batterie de validation directe de `GET /api/products` a donné les résultats suivants :
+
+- recherche de 100 caractères : HTTP 200;
+- recherche de 101 caractères : HTTP 400;
+- `sort=invalid` : HTTP 400;
+- `sort=name_asc` :
+  - Dad memories;
+  - Flippin' Maple Teddy Pancakes;
+  - Mug with Color Inside;
+  - Youth t-shirt;
+- `sort=price_asc` :
+  - 12.00;
+  - 14.50;
+  - 29.99;
+  - 54.99;
+- `sort=price_desc` :
+  - 54.99;
+  - 29.99;
+  - 14.50;
+  - 12.00;
+- recherche `Youth Maple Teddy` avec `sort=relevance` :
+  - Flippin' Maple Teddy Pancakes;
+  - Youth t-shirt;
+- recherche `Azalea` :
+  - Dad memories;
+- recherche `XS` :
+  - Youth t-shirt;
+- une recherche contenant huit termes sans correspondance suivis de `Youth` comme neuvième terme a retourné zéro produit, confirmant que seuls les huit premiers termes distincts sont traités séparément.
+
+Après le déploiement du commit `419e860`, le catalogue a également été validé visuellement en production :
+
+- Dad memories affiche `54,99 $`;
+- Flippin' Maple Teddy Pancakes affiche `12,00 $`;
+- Mug with Color Inside affiche `14,50 $`;
+- Youth t-shirt affiche `29,99 $`;
+- ces valeurs correspondent aux `min_price` retournés par l’API et utilisés pour le classement par prix.
+
+**État du chantier :**
+
+- les étapes 1 à 10 de `PRODUCT_SEARCH_AND_SORT_SPEC.md` sont maintenant implémentées;
+- les validations de production prévues à l’étape 10 sont complétées pour les données actuellement disponibles;
+- la documentation des changements validés satisfait l’étape 11;
+- la première version officielle de la recherche et du tri du catalogue public est donc considérée comme terminée;
+- les limites déjà documentées de cette v1 demeurent applicables, notamment l’absence de correction automatique des fautes, synonymes, traductions et recherche sémantique avancée;
+- les dimensions `brand`, `category` et `description` dont l’isolation n’était pas possible avec les données publiques actuelles demeurent à valider empiriquement lorsqu’un jeu de données contrôlé approprié sera disponible.
+
 ---
 
 ## État après ces correctifs
