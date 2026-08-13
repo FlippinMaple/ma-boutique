@@ -193,7 +193,11 @@ const Checkout = () => {
       toast.error('Tous les champs de livraison doivent être remplis.');
       return false;
     }
-    if (!shippingRate) {
+    if (
+      !shippingRate ||
+      shippingRate.id == null ||
+      String(shippingRate.id).trim() === ''
+    ) {
       toast.error('Veuillez sélectionner un mode de livraison.');
       return false;
     }
@@ -230,9 +234,7 @@ const Checkout = () => {
           ...shipping,
           name: capitalizeSmart(shipping.name)
         },
-        shipping_rate: shippingRate
-          ? { name: shippingRate.name, rate: shippingRate.rate }
-          : null
+        shipping_rate: { id: shippingRate.id }
       };
 
       // api.baseURL already includes /api

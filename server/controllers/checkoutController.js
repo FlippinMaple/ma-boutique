@@ -1,4 +1,5 @@
 import Stripe from 'stripe';
+import axios from 'axios';
 import { getPool } from '../db.js';
 import jwt from 'jsonwebtoken';
 
@@ -92,6 +93,50 @@ function canAddCents(left, right) {
   if (!Number.isSafeInteger(left) || !Number.isSafeInteger(right)) return false;
   if (right > Number.MAX_SAFE_INTEGER - left) return false;
   return Number.isSafeInteger(left + right);
+}
+
+const MAX_SHIPPING_RATE_ID_LENGTH = 128;
+
+function parseShippingRateId(rawShippingRate) {
+  if (
+    !rawShippingRate ||
+    typeof rawShippingRate !== 'object' ||
+    Array.isArray(rawShippingRate)
+  ) {
+    return null;
+  }
+  const value = rawShippingRate.id;
+  if (typeof value !== 'string' && typeof value !== 'number') return null;
+  const trimmed = String(value).trim();
+  if (!trimmed || trimmed.length > MAX_SHIPPING_RATE_ID_LENGTH) return null;
+  return trimmed;
+}
+
+function normalizeShippingField(value) {
+  if (value == null) return '';
+  return String(value).trim();
+}
+
+/** Montant Printful (dollars) → cents. Refuse 12abc, négatif, NaN, Infinity. */
+function printfulRateToCents(value) {
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value) || value < 0) return null;
+    if (value > Number.MAX_SAFE_INTEGER / 100) return null;
+    const cents = Math.round(value * 100);
+    if (!Number.isSafeInteger(cents) || cents < 0) return null;
+    return cents;
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!/^\d+(\.\d+)?$/.test(trimmed)) return null;
+    const n = Number(trimmed);
+    if (!Number.isFinite(n) || n < 0) return null;
+    if (n > Number.MAX_SAFE_INTEGER / 100) return null;
+    const cents = Math.round(n * 100);
+    if (!Number.isSafeInteger(cents) || cents < 0) return null;
+    return cents;
+  }
+  return null;
 }
 
 function pickCart(raw) {
@@ -330,15 +375,127 @@ export const createCheckoutSession = async (req, res) => {
       cartSubtotalCents += line.lineCents;
     }
 
-    // P1 étape suivante : raw.shipping_rate.rate reste une donnée client
-    // et doit être revalidé côté serveur. Ne pas traiter ce tarif comme
-    // source de vérité dans cette étape.
-    const shippingRateRaw = raw.shipping_rate?.rate ?? 0;
-    const shippingCents = (() => {
-      const s = String(shippingRateRaw).replace(',', '.');
-      const n = Number(s);
-      return Number.isFinite(n) ? Math.round(n * 100) : 0;
-    })();
+    const emailSnapshot = (raw.customer_email || '').toLowerCase();
+    const customerId = userId || null;
+
+    const shippingNormalized = {
+      name: normalizeShippingField(raw?.shipping?.name),
+      address1: normalizeShippingField(raw?.shipping?.address1),
+      city: normalizeShippingField(raw?.shipping?.city),
+      state: normalizeShippingField(raw?.shipping?.state),
+      country: normalizeShippingField(raw?.shipping?.country),
+      zip: normalizeShippingField(raw?.shipping?.zip)
+    };
+
+    if (
+      !shippingNormalized.name ||
+      !shippingNormalized.address1 ||
+      !shippingNormalized.city ||
+      !shippingNormalized.state ||
+      !shippingNormalized.country ||
+      !shippingNormalized.zip
+    ) {
+      return res.status(400).json({
+        error: 'Adresse de livraison incomplète.',
+        code: 'INVALID_SHIPPING_ADDRESS'
+      });
+    }
+
+    const selectedShippingRateId = parseShippingRateId(raw.shipping_rate);
+    if (!selectedShippingRateId) {
+      return res.status(400).json({
+        error: 'Tarif de livraison invalide.',
+        code: 'INVALID_SHIPPING_RATE'
+      });
+    }
+
+    const printfulItems = [];
+    for (const line of normalizedLines) {
+      const bizVariantId = parsePositiveSafeInteger(line.bizVariantId);
+      if (bizVariantId == null) {
+        return res.status(400).json({
+          error: 'Variante Printful invalide.',
+          code: 'INVALID_PRINTFUL_VARIANT'
+        });
+      }
+      printfulItems.push({
+        variant_id: bizVariantId,
+        quantity: line.quantity
+      });
+    }
+
+    if (!process.env.PRINTFUL_API_KEY || !process.env.PRINTFUL_STORE_ID) {
+      return res.status(500).json({
+        error: 'Configuration de livraison indisponible.',
+        code: 'SHIPPING_CONFIG_MISSING'
+      });
+    }
+
+    let printfulRates;
+    try {
+      const printfulResp = await axios.post(
+        'https://api.printful.com/shipping/rates',
+        {
+          recipient: {
+            name: shippingNormalized.name,
+            address1: shippingNormalized.address1,
+            city: shippingNormalized.city,
+            state_code: shippingNormalized.state,
+            country_code: shippingNormalized.country,
+            zip: shippingNormalized.zip,
+            email: emailSnapshot || ''
+          },
+          items: printfulItems
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${process.env.PRINTFUL_API_KEY}`,
+            'X-PF-Store-Id': process.env.PRINTFUL_STORE_ID
+          }
+        }
+      );
+      printfulRates = printfulResp.data?.result;
+    } catch (e) {
+      console.warn('[checkout] Printful shipping rates failed:', e?.message);
+      return res.status(502).json({
+        error: 'Impossible de valider le tarif de livraison.',
+        code: 'SHIPPING_RATE_LOOKUP_FAILED'
+      });
+    }
+
+    if (!Array.isArray(printfulRates)) {
+      return res.status(502).json({
+        error: 'Impossible de valider le tarif de livraison.',
+        code: 'SHIPPING_RATE_LOOKUP_FAILED'
+      });
+    }
+
+    const matchedRate = printfulRates.find(
+      (rate) => rate && String(rate.id) === selectedShippingRateId
+    );
+    if (!matchedRate) {
+      return res.status(400).json({
+        error: 'Le tarif de livraison sélectionné n’est plus disponible.',
+        code: 'SHIPPING_RATE_UNAVAILABLE'
+      });
+    }
+
+    const shippingName =
+      typeof matchedRate.name === 'string' ? matchedRate.name.trim() : '';
+    if (!shippingName) {
+      return res.status(502).json({
+        error: 'Impossible de valider le tarif de livraison.',
+        code: 'SHIPPING_RATE_LOOKUP_FAILED'
+      });
+    }
+
+    const shippingCents = printfulRateToCents(matchedRate.rate);
+    if (shippingCents == null) {
+      return res.status(502).json({
+        error: 'Impossible de valider le tarif de livraison.',
+        code: 'SHIPPING_RATE_LOOKUP_FAILED'
+      });
+    }
 
     if (!canAddCents(cartSubtotalCents, shippingCents)) {
       return res.status(400).json({
@@ -347,18 +504,6 @@ export const createCheckoutSession = async (req, res) => {
       });
     }
     const totalCents = cartSubtotalCents + shippingCents;
-
-    const shippingNormalized = {
-      name: raw?.shipping?.name || '',
-      address1: raw?.shipping?.address1 || '',
-      city: raw?.shipping?.city || '',
-      state: raw?.shipping?.state || '',
-      country: raw?.shipping?.country || '',
-      zip: raw?.shipping?.zip || ''
-    };
-
-    const emailSnapshot = (raw.customer_email || '').toLowerCase();
-    const customerId = userId || null;
 
     // 4) Créer la commande 'pending' (snapshots immuables) — après validation
     let orderId = null;
@@ -566,7 +711,7 @@ export const createCheckoutSession = async (req, res) => {
               {
                 shipping_rate_data: {
                   type: 'fixed_amount',
-                  display_name: raw.shipping_rate?.name || 'Livraison',
+                  display_name: shippingName,
                   fixed_amount: {
                     amount: shippingCents,
                     currency: currency.toLowerCase()
@@ -579,7 +724,11 @@ export const createCheckoutSession = async (req, res) => {
         source: 'flippin-maple',
         order_id: String(orderId),
         cart_id: cartId ? String(cartId) : '',
-        shipping_rate: JSON.stringify(raw.shipping_rate || {}),
+        shipping_rate: JSON.stringify({
+          id: selectedShippingRateId,
+          name: shippingName,
+          shipping_cents: shippingCents
+        }),
         shipping: JSON.stringify(metadataShipping),
         cart_items: JSON.stringify(metadataCartItems)
       }
