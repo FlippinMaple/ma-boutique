@@ -124,13 +124,13 @@ const Shop = () => {
               placeholder="Nom ou description du produit"
               value={searchInput}
               onChange={(e) => {
-              const value = e.target.value;
-              setSearchInput(value);
+                const value = e.target.value;
+                setSearchInput(value);
 
-              if (value === '') {
-                setSubmittedSearch('');
-              }
-            }}
+                if (value === '') {
+                  setSubmittedSearch('');
+                }
+              }}
               maxLength={100}
               className="shop-search__input"
             />
