@@ -162,7 +162,9 @@ const Shop = () => {
               <p className="shop-catalogue__count">
                 {loading
                   ? 'Chargement…'
-                  : `${products.length} ${products.length === 1 ? 'produit' : 'produits'}`}
+                  : error
+                    ? 'Indisponible'
+                    : `${products.length} ${products.length === 1 ? 'produit' : 'produits'}`}
               </p>
               <label className="shop-sort">
                 <span className="shop-sort__label">Trier par</span>
