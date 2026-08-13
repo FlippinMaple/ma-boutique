@@ -174,10 +174,18 @@ Ces décisions sont considérées **prises**, jusqu’à révocation formelle da
 | Domaine | Autorité de référence |
 |---|---|
 | Vision, positionnement, phases, règles fondamentales | Ce document (`00_PROJECT_MASTER.md`) |
-| Identité visuelle, voix, territoire créatif | Futurs docs `docs/brand/` |
+| Vision et positionnement détaillés | `docs/brand/VISION_AND_POSITIONING.md` |
+| Voix de marque | `docs/brand/VOICE.md` |
+| Identité visuelle | `docs/brand/VISUAL_IDENTITY.md` |
 | Modèle de données (schéma métier) | `docs/engineering/DATA_MODEL.md` |
 | Contraintes d’hébergement / écarts local–prod | `docs/engineering/HOSTING_CONSTRAINTS.md` |
-| Architecture logicielle, invariants techniques | Futurs docs `docs/engineering/` (ex. ARCHITECTURE, INVARIANTS) |
+| Invariants checkout et paiement | `docs/engineering/CHECKOUT_INVARIANTS.md` |
+| Recherche et tri du catalogue public | `docs/engineering/PRODUCT_SEARCH_AND_SORT_SPEC.md` |
+| Confidentialité, témoins, chatbot | `docs/compliance/PRIVACY_COOKIES_CHATBOT_PLAN.md` |
+| Constats de sécurité (audit figé) | `docs/compliance/TECHNICAL_SECURITY_AUDIT.md` |
+| Correctifs de sécurité validés | `docs/compliance/TECHNICAL_SECURITY_REMEDIATION_LOG.md` |
+| Page d’accueil | `docs/web/HOMEPAGE_SPEC.md` et documents `docs/web/` associés |
+| Architecture logicielle générale | Futur `docs/engineering/ARCHITECTURE.md` |
 | Exploitation, incidents, runbooks | Futurs docs `docs/ops/` |
 | Dette et priorités d’exécution | Futur backlog documenté ; TODO encore dans l’inventaire |
 
@@ -237,32 +245,68 @@ Production / supply chain plus autonomes, distribution élargie, organisation ca
 
 ## 11. Carte des documents
 
-### 11.1 Documents officiels actifs
+Cette carte indique où vit l’autorité. Elle ne duplique pas le contenu des documents spécialisés.
 
-| Document | Répond à | Rôle |
+### 11.1 Documents actifs, par domaine
+
+#### Constitution et entrée du dépôt
+
+| Document | Statut déclaré | Rôle |
 |---|---|---|
-| `docs/00_PROJECT_MASTER.md` | Pourquoi | Constitution (ce document) |
-| `README.md` (racine) | Comment démarrer | Entrée du dépôt et index documentaire |
-| `docs/engineering/DATA_MODEL.md` | Quoi en données | **Source officielle du schéma métier** |
-| `docs/engineering/HOSTING_CONSTRAINTS.md` | Quelles limites infra | **Source officielle des contraintes Hostinger / prod** |
+| `docs/00_PROJECT_MASTER.md` | officiel | Constitution : pourquoi, vision, gouvernance, décisions structurantes |
+| `README.md` (racine) | — | Entrée du dépôt et index documentaire |
+
+#### Marque
+
+| Document | Statut déclaré | Rôle |
+|---|---|---|
+| `docs/brand/VISION_AND_POSITIONING.md` | officiel | Source détaillée de vision, positionnement, ADN, public et critères stratégiques |
+| `docs/brand/VOICE.md` | Draft — Brand Voice v1 | Personnalité verbale, ton, vocabulaire et règles de rédaction de travail |
+| `docs/brand/VISUAL_IDENTITY.md` | Draft — Design Foundation v1 | Direction visuelle et fondations de design de travail |
+
+#### Engineering
+
+| Document | Statut déclaré | Rôle |
+|---|---|---|
+| `docs/engineering/DATA_MODEL.md` | source officielle (sections migrées) | Schéma métier : tables, colonnes, clés, relations, contraintes |
+| `docs/engineering/HOSTING_CONSTRAINTS.md` | actif | Contraintes Hostinger / MySQL prod et émulation des règles en code |
+| `docs/engineering/CHECKOUT_INVARIANTS.md` | référence fonctionnelle | Invariants du pipeline checkout / paiement (snapshots, webhook, panier) |
+| `docs/engineering/PRODUCT_SEARCH_AND_SORT_SPEC.md` | spécification de référence | Recherche, tri, `min_price` et invariants du catalogue public |
+
+#### Compliance
+
+| Document | Statut déclaré | Rôle |
+|---|---|---|
+| `docs/compliance/PRIVACY_COOKIES_CHATBOT_PLAN.md` | document interne de travail | Source interne pour confidentialité, témoins, consentements et futur chatbot ; pas un avis juridique |
+| `docs/compliance/TECHNICAL_SECURITY_AUDIT.md` | audit exploratoire figé | Constats initiaux de sécurité et d’intégrité transactionnelle ; ne reçoit pas les correctifs courants |
+| `docs/compliance/TECHNICAL_SECURITY_REMEDIATION_LOG.md` | corrections en cours | Journal des correctifs, commits, déploiements et validations de production |
+
+#### Web / page d’accueil
+
+| Document | Statut déclaré | Rôle |
+|---|---|---|
+| `docs/web/HOMEPAGE_SPEC.md` | Draft — Homepage Specification v1 | Structure, contenu, règles visuelles, responsive et accessibilité de la page d’accueil |
+| `docs/web/HOMEPAGE_WIREFRAME.md` | Draft — Homepage Wireframe v1 | Structure basse fidélité bureau et mobile |
+| `docs/web/HOMEPAGE_VISUAL_DESIGN.md` | Draft — Homepage Visual Design v1 | Direction visuelle haute fidélité prévue, avant maquette finale |
+| `docs/web/HOMEPAGE_COPY.md` | Draft — Homepage Copy v1 | Textes de travail FR/EN ; aucun texte n’est approuvé définitivement |
+| `docs/web/HOMEPAGE_ASSETS.md` | Draft — Homepage Assets v1 | Plan d’actifs visuels nécessaires ; aucun actif n’est approuvé définitivement |
 
 ### 11.2 Documents prévus (pas encore créés)
 
 | Document prévu | Répond à | Contenu attendu |
 |---|---|---|
-| `docs/brand/VISION_AND_POSITIONING.md` | Quoi / Pourquoi créatif | Territoire, promesse, territoires exclus |
-| `docs/brand/VOICE.md` | Comment on parle | Ton, registres, interdits |
-| `docs/brand/VISUAL_IDENTITY.md` | Comment on paraît | Logo, type, couleur, règles d’usage |
 | `docs/product/CATALOG_RULES.md` | Quoi vendre | Curation, collections, critères d’entrée/sortie |
 | `docs/engineering/ARCHITECTURE.md` | Comment c’est bâti | Front, API, jobs, webhooks, flux |
-| `docs/engineering/INVARIANTS.md` | Quoi ne jamais casser | Checkout, paiement, snapshots, IDs fulfillment |
-| `docs/engineering/SECURITY.md` | Comment on protège | Auth, sessions, consentements |
+| `docs/engineering/INVARIANTS.md` | Quoi ne jamais casser transversalement | Invariants techniques généraux hors du périmètre spécialisé checkout / paiement |
+| `docs/engineering/SECURITY.md` | Comment on protège | Auth, sessions et règles de protection vivantes (distinctes de l’audit figé) |
 | `docs/ops/RUNBOOKS.md` | Quand ça casse | Stripe, commandes pending, sync production |
 | `docs/backlog/TECH_DEBT.md` | Quoi ensuite | Dette priorisée avec statuts |
 
+`docs/engineering/CHECKOUT_INVARIANTS.md` détient désormais l’autorité sur les invariants checkout / paiement. Le futur `docs/engineering/INVARIANTS.md`, s’il est créé, sera réservé aux invariants techniques transversaux non déjà possédés par un document spécialisé. Il ne devra pas dupliquer `CHECKOUT_INVARIANTS.md`, `PRODUCT_SEARCH_AND_SORT_SPEC.md`, `DATA_MODEL.md` ou d’autres sources spécialisées.
+
 ### 11.3 Héritages (non officiels)
 
-- `docs/INVENTAIRE_Flippin_Maple.md` — TODO, dette, invariants et flux encore à migrer ; le descriptif structurel des tables pointe vers `DATA_MODEL.md`. **Non** Constitution, **non** source du schéma.
+- `docs/INVENTAIRE_Flippin_Maple.md` — TODO, dette et flux encore à migrer ; le descriptif structurel des tables pointe vers `DATA_MODEL.md`. **Non** Constitution, **non** source du schéma.
 - `NOTES.md` — note de session ; **non** gouvernance.
 
 ---
@@ -277,6 +321,7 @@ Format : date · ID · décision · raison.
 | 2026-07-16 | D01–D12 | Adoption des décisions structurantes §8 | Fixer le cap marque premium et le rôle du POD |
 | 2026-07-16 | C02 | Architecture documentaire : un maître + docs spécialisés futurs | Éviter monolithe et dispersion |
 | 2026-07-16 | C03 | `DATA_MODEL.md` et `HOSTING_CONSTRAINTS.md` reconnus sources officielles ; README et §11 synchronisés | Post-migration Profil BDD ; éviter index et carte documentaire obsolètes |
+| 2026-08-13 | C04 | Carte documentaire centrale resynchronisée avec les documents spécialisés réellement présents | Les index de `00_PROJECT_MASTER.md` et du README ne reflétaient plus `docs/brand/`, `docs/engineering/`, `docs/compliance/` et `docs/web/` |
 | 2025-10-21 | H01 | (Héritage) Auth JWT / cookies httpOnly — alignement front/back | Noté historiquement dans `NOTES.md` ; détail technique hors Constitution |
 
 ---
