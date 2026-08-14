@@ -520,11 +520,14 @@ export const createCheckoutSession = async (req, res) => {
     }
     const totalCents = cartSubtotalCents + shippingCents;
 
-    // 4) Créer la commande 'pending' (snapshots immuables) — après validation
+    // 4) Commande pending + items + history — transaction dédiée (après validation)
     let orderId = null;
-
+    let conn = null;
     try {
-      const [ins] = await pool.query(
+      conn = await pool.getConnection();
+      await conn.beginTransaction();
+
+      const [ins] = await conn.query(
         `INSERT INTO orders
          (customer_email, customer_id, status,
           subtotal_cents, shipping_cents, total_cents,
@@ -548,19 +551,76 @@ export const createCheckoutSession = async (req, res) => {
         ]
       );
       orderId = ins.insertId;
-    } catch (e) {
-      console.warn('[checkout] orders insert skipped:', e?.message);
-    }
+      if (!orderId) {
+        throw new Error('ORDER_INIT_FAILED');
+      }
 
-    if (!orderId) {
+      for (const line of normalizedLines) {
+        const metaPayload = {
+          name: line.name,
+          sku: line.sku,
+          color: line.color,
+          size: line.size,
+          image: line.image,
+          source: 'checkoutController'
+        };
+
+        await conn.query(
+          `INSERT INTO order_items
+           (order_id,
+            variant_id,
+            printful_variant_id,
+            quantity,
+            price_at_purchase,
+            unit_price_cents,
+            meta,
+            created_at,
+            updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+          [
+            orderId,
+            line.dbVariantId,
+            line.printfulVariantId,
+            line.quantity,
+            (line.unitPriceCents / 100).toFixed(2),
+            line.unitPriceCents,
+            JSON.stringify(metaPayload)
+          ]
+        );
+      }
+
+      await conn.query(
+        `INSERT INTO order_status_history
+         (order_id, old_status, new_status, changed_at)
+         VALUES (?, ?, ?, NOW())`,
+        [orderId, 'init', 'pending']
+      );
+
+      await conn.commit();
+    } catch (e) {
+      if (conn) {
+        try {
+          await conn.rollback();
+        } catch (rollbackError) {
+          console.warn(
+            '[checkout] order init rollback failed:',
+            rollbackError?.message
+          );
+        }
+      }
+      console.warn('[checkout] order init transaction failed:', e?.message);
       return res.status(500).json({
         error:
           "Impossible de créer l'ordre 'pending' avec snapshots avant Stripe.",
         code: 'ORDER_INIT_FAILED'
       });
+    } finally {
+      if (conn) {
+        conn.release();
+      }
     }
 
-    // 4a) (Optionnel) Associer des IDs d'adresse si fournis
+    // 4a) (Optionnel) Associer des IDs d'adresse si fournis — hors transaction
     const shippingAddressId =
       raw.shipping_address_id ?? raw.shippingAddressId ?? null;
     const billingAddressId =
@@ -581,49 +641,6 @@ export const createCheckoutSession = async (req, res) => {
         console.warn('[checkout] orders address IDs skipped:', e?.message);
       }
     }
-
-    // 4b) Insérer les lignes order_items depuis les variantes normalisées
-    for (const line of normalizedLines) {
-      const metaPayload = {
-        name: line.name,
-        sku: line.sku,
-        color: line.color,
-        size: line.size,
-        image: line.image,
-        source: 'checkoutController'
-      };
-
-      await pool.query(
-        `INSERT INTO order_items
-         (order_id,
-          variant_id,
-          printful_variant_id,
-          quantity,
-          price_at_purchase,
-          unit_price_cents,
-          meta,
-          created_at,
-          updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
-        [
-          orderId,
-          line.dbVariantId,
-          line.printfulVariantId,
-          line.quantity,
-          (line.unitPriceCents / 100).toFixed(2),
-          line.unitPriceCents,
-          JSON.stringify(metaPayload)
-        ]
-      );
-    }
-
-    // 4c) Historique initial (init → pending)
-    await pool.query(
-      `INSERT INTO order_status_history
-       (order_id, old_status, new_status, changed_at)
-       VALUES (?, ?, ?, NOW())`,
-      [orderId, 'init', 'pending']
-    );
 
     // 5) Stripe customer enrichi
     let stripeCustomerId = null;
