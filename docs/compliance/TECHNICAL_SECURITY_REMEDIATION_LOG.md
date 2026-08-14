@@ -643,7 +643,7 @@ Après le déploiement du commit `419e860`, le catalogue a également été vali
 
 ---
 
-## État après ces correctifs
+## État après ces correctifs (série du 28 juillet 2026)
 
 - site public fonctionnel;
 - base accessible;
@@ -653,7 +653,114 @@ Après le déploiement du commit `419e860`, le catalogue a également été vali
 - limiteurs shipping et inventory actifs;
 - route publique Printful désactivée;
 - aucun changement au checkout, au calcul des prix ou au webhook Stripe dans cette série;
-- les risques critiques restants demeurent ceux du rapport d’audit.
+- à cette date, les risques critiques restants, y compris le contrôle navigateur des prix et totaux, demeuraient ceux du rapport d’audit.
+
+---
+
+## 13 août 2026 — Correctif P1 : prix, totaux et livraison autoritaires au checkout
+
+**Constat initial (audit figé) :** le navigateur pouvait influencer les prix articles, le total et les frais de livraison transmis au checkout et à Stripe.
+
+Le correctif a été livré en trois étapes, puis validé en production. Le rapport `TECHNICAL_SECURITY_AUDIT.md` n’a pas été modifié : il reste le constat historique.
+
+### Étape A — Prix articles autoritaires côté serveur
+
+**Commit :** `1f5b72b` — `fix(checkout): use authoritative variant prices`
+
+**Fichier :** `server/controllers/checkoutController.js`
+
+**Comportement :**
+
+- `it.db_variant_id ?? it.id` est traité uniquement comme PK interne `product_variants.id`;
+- la quantité est un entier positif sûr;
+- les variantes dupliquées sont rejetées;
+- lookup groupé par `product_variants.id`;
+- la variante doit être active et le produit visible;
+- le prix vendu vient de `product_variants.price`;
+- le prix envoyé par le navigateur n’a aucune autorité;
+- Stripe `price_data.unit_amount`, `orders` / `order_items` et metadata `cart_items` utilisent les lignes serveur;
+- la résolution ambiguë par `variant_id` business ou `printful_variant_id` a été retirée du checkout.
+
+**Validation production :**
+
+Checkout contrôlé avec un prix client falsifié `0.01` pour une variante dont le prix DB officiel était `29.99`. Session Stripe créée, non payée.
+
+- Stripe : `amount_subtotal = 2999`, `amount_total = 2999`;
+- commande de test 97, status `pending` : `subtotal_cents = 2999`, `total_cents = 2999`;
+- `order_item` : `price_at_purchase = 29.99`, `unit_price_cents = 2999`.
+
+Le prix client falsifié n’a contaminé ni Stripe ni la commande.
+
+### Étape B — Fallback webhook `order_items` durci
+
+**Commit :** `82efc25` — `fix(checkout): harden webhook item fallback`
+
+**Fichier :** `server/controllers/webhookController.js`
+
+**Comportement :**
+
+- le fallback n’accepte que le format metadata serveur (`id` PK, `variant_id` business, `quantity`, `unit_price_cents` obligatoires);
+- `printful_variant_id` est optionnel, mais strict s’il est fourni;
+- aucun fallback vers `price` / `unit_price` / `unitPrice` / `qty` ni identifiants ambigus;
+- validation all-or-nothing (aucune ligne invalide n’est ignorée silencieusement);
+- lookup groupé par PK DB, concordance PK / identifiant business / Printful;
+- le subtotal reconstruit doit égaler exactement `orders.subtotal_cents`;
+- overflow protégé;
+- insertion uniquement après validation complète, et seulement si la commande n’a encore aucun `order_item`;
+- transaction sur une connexion dédiée (`getConnection` / `beginTransaction` / commit ou rollback / `release`).
+
+**Validation :** revue de code et déploiement. `/readiness` production a retourné `ok: true`. Aucun paiement n’a été provoqué pour forcer le fallback; aucun `order_item` n’a été supprimé à cette fin.
+
+### Étape C — Livraison autoritaire côté serveur
+
+**Commit :** `aba0fa2` — `fix(checkout): validate shipping rates server-side`
+
+**Fichiers :**
+
+- `server/controllers/checkoutController.js`
+- `src/pages/Checkout.jsx`
+
+**Comportement :**
+
+- le frontend n’envoie que `{ id: shippingRate.id }`;
+- `rate` et `name` navigateur n’ont plus d’autorité;
+- adresse, identifiants Printful issus de `normalizedLines`, rate id et réponse Printful sont validés avant tout `INSERT INTO orders`;
+- le checkout appelle `POST https://api.printful.com/shipping/rates` et exige un match exact de l’id;
+- aucun fallback par nom, prix, position ou premier tarif;
+- `shippingCents` vient de `matchedRate.rate`; `shippingName` vient de `matchedRate.name`;
+- `orders.shipping_cents` / `shipping_cost` / `total_cents` / `total` et Stripe `shipping_rate_data` utilisent ces valeurs serveur;
+- metadata `shipping_rate` = `{ id, name, shipping_cents }`.
+
+**Validation production :**
+
+La route `/api/shipping/rates` a retourné, pour la variante de test, le tarif `STANDARD` à `10.95 CAD`. Un checkout contrôlé a ensuite envoyé un prix article `0.01`, un shipping `0.01` et un nom `LIVRAISON FALSIFIEE`, avec l’id `STANDARD` valide. Session Stripe créée, non payée.
+
+Commande de test 98, status `pending` :
+
+- `subtotal_cents = 2999`;
+- `shipping_cents = 1095`;
+- `total_cents = 4094`;
+- `shipping_cost = 10.95`;
+- `total = 40.94`;
+- item : `price_at_purchase = 29.99`, `unit_price_cents = 2999`.
+
+Le faux prix article et le faux shipping ont été ignorés. Le serveur a repris `29.99` (DB) et `10.95` (Printful). Total autoritaire : `40.94`.
+
+### Limites de validation
+
+- les commandes 97 et 98 sont des commandes de test `pending`; aucun paiement n’a été complété;
+- l’étape B n’a pas été exercée par un paiement réel sans `order_items`;
+- les sessions Stripe de test n’ont pas été encaissées.
+
+### Statut final P1
+
+Le constat « prix et total contrôlés par le navigateur » est corrigé :
+
+- prix articles autoritaires DB;
+- livraison autoritaire via revalidation Printful serveur;
+- Stripe et snapshots monétaires construits à partir de valeurs serveur.
+
+Les autres constats du rapport d’audit figé restent hors de ce chantier.
 
 ---
 

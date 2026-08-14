@@ -95,6 +95,15 @@ Panier verrouillé
 | **Si violé** | Commande sans preuve des articles au moment du checkout ; dépendance accrue au mode dégradé webhook. |
 | **Fichiers** | `server/controllers/checkoutController.js` |
 
+### Prix, adresse et livraison validés avant la commande pending
+
+| | |
+|---|---|
+| **Description** | Avant tout `INSERT INTO orders`, le checkout valide le panier, résout les variantes DB, calcule le sous-total, normalise l’adresse, valide le `shipping_rate.id`, interroge Printful et convertit le tarif matché. Un échec de ces étapes ne crée pas de commande `pending`. |
+| **Justification** | Ordre de `createCheckoutSession` : lookup variantes et Printful `shipping/rates` avant l’insert `orders`. |
+| **Si violé** | Commandes `pending` orphelines, ou totaux figés à partir de données encore non autoritaires. |
+| **Fichiers** | `server/controllers/checkoutController.js` |
+
 ### Le panier n’est pas verrouillé au checkout
 
 | | |
@@ -130,9 +139,18 @@ Panier verrouillé
 
 | | |
 |---|---|
-| **Description** | La session porte en `metadata` : `cart_items`, `shipping`, `shipping_rate`, `cart_id`, `source = 'flippin-maple'`. |
-| **Justification** | Objet `metadata` passé à `sessions.create`. |
-| **Si violé** | Mode dégradé items / Printful / abandon sans contexte session. |
+| **Description** | La session porte en `metadata` : `cart_items` (lignes serveur normalisées), `shipping` (adresse saisie normalisée), `shipping_rate` (représentation serveur `{ id, name, shipping_cents }`), `cart_id`, `source = 'flippin-maple'`. |
+| **Justification** | Objet `metadata` passé à `sessions.create` après calculs autoritaires. |
+| **Si violé** | Mode dégradé items / Printful / abandon sans contexte session, ou fallback webhook alimenté par des prix navigateur. |
+| **Fichiers** | `server/controllers/checkoutController.js` |
+
+### Montants Stripe issus des valeurs serveur
+
+| | |
+|---|---|
+| **Description** | Les `line_items` Stripe utilisent `price_data.unit_amount` égal au prix DB en cents. L’option de livraison Stripe, si présente, utilise `shippingCents` (Printful revalidé) et `display_name` égal à `matchedRate.name`. |
+| **Justification** | Construction `line_items` depuis `normalizedLines` ; `shipping_options` seulement si `shippingCents > 0`. |
+| **Si violé** | Session Stripe facturant un prix ou un shipping fourni par le navigateur. |
 | **Fichiers** | `server/controllers/checkoutController.js` |
 
 ### Clé secrète Stripe requise pour créer une session
@@ -238,7 +256,7 @@ Panier verrouillé
 | | |
 |---|---|
 | **Description** | Le webhook n’insère des `order_items` que si aucun item n’existe déjà pour `order_id`. |
-| **Justification** | Contrôle `SELECT … LIMIT 1` puis `shouldInsertItems`. |
+| **Justification** | `orderHasItems` puis `insertOrderItemsFromMetadata` seulement si aucun item n’existe ; contrôle additionnel dans la transaction. |
 | **Si violé** | Doublons d’articles ou écrasement du snapshot contractuel. |
 | **Fichiers** | `server/controllers/webhookController.js` |
 
@@ -290,8 +308,8 @@ Panier verrouillé
 
 | | |
 |---|---|
-| **Description** | À la création de commande : `email_snapshot`, `shipping_name_snapshot`, `shipping_address_snapshot` (JSON) sont écrits depuis le body checkout. |
-| **Justification** | `INSERT INTO orders` dans `createCheckoutSession`. |
+| **Description** | À la création de commande : `email_snapshot`, `shipping_name_snapshot` et `shipping_address_snapshot` (JSON) sont écrits depuis l’adresse et le contact saisis par le client, après normalisation. Ces champs ne sont pas des sources de prix. |
+| **Justification** | `INSERT INTO orders` dans `createCheckoutSession` après validation d’adresse. |
 | **Si violé** | Perte de la preuve de livraison / contact au moment de la vente. |
 | **Fichiers** | `server/controllers/checkoutController.js` |
 
@@ -308,9 +326,9 @@ Panier verrouillé
 
 | | |
 |---|---|
-| **Description** | Chaque item stocke `price_at_purchase` et `unit_price_cents` au moment de l’insert (checkout ou fallback webhook). |
+| **Description** | Chaque item stocke `price_at_purchase` et `unit_price_cents` au moment de l’insert. Au checkout, ces montants proviennent du prix officiel DB de la variante, pas du navigateur. Le fallback webhook, s’il s’exécute, réutilise `unit_price_cents` des metadata serveur déjà figées, jamais le prix catalogue courant. |
 | **Justification** | Inserts `order_items` dans les deux contrôleurs. |
-| **Si violé** | Montant vendu non reconstituable. |
+| **Si violé** | Montant vendu non reconstituable, ou prix d’achat réécrit après changement de catalogue. |
 | **Fichiers** | `server/controllers/checkoutController.js`, `server/controllers/webhookController.js` |
 
 ### Meta vitrine sur les items checkout
@@ -326,22 +344,49 @@ Panier verrouillé
 
 ## Montants
 
-### Prix invalides refusés avant commande complète
+### Le navigateur ne détermine jamais le prix vendu
 
 | | |
 |---|---|
-| **Description** | Si un article sans `priceId` a un `unit_amount` invalide (`<= 0` après conversion cents), le checkout répond `BAD_LINE_ITEMS` et n’atteint pas la création de session (la validation des prix précède l’insert order dans le flux actuel après construction des line_items). |
-| **Justification** | Tableau `errors` + return 400 `BAD_LINE_ITEMS`. |
+| **Description** | Le prix de chaque ligne provient de `product_variants.price` après lookup de la PK interne. Tout `price` / `unit_amount` / Price ID soumis par le navigateur est ignoré. |
+| **Justification** | `officialPriceToCents(row.price)` dans `createCheckoutSession` ; construction des `line_items` depuis `normalizedLines`. |
+| **Si violé** | Le client peut s’auto-facturer un montant inférieur au catalogue. |
+| **Fichiers** | `server/controllers/checkoutController.js` |
+
+### Quantités strictes avant calcul monétaire
+
+| | |
+|---|---|
+| **Description** | Chaque quantité doit être un entier positif sûr (`Number.isSafeInteger`, `> 0`) avant tout calcul de ligne ou de sous-total. |
+| **Justification** | `parsePositiveSafeInteger` sur le panier ; rejet `INVALID_QUANTITY`. |
+| **Si violé** | Totaux faux, overflow, ou lignes à quantité nulle / non entière. |
+| **Fichiers** | `server/controllers/checkoutController.js` |
+
+### Prix officiels invalides refusés avant commande
+
+| | |
+|---|---|
+| **Description** | Si le prix DB d’une variante retenue ne se convertit pas en cents strictement positifs, le checkout répond `INVALID_OFFICIAL_PRICE` et n’insère pas de commande. |
+| **Justification** | `officialPriceToCents` avant l’insert `orders`. |
 | **Si violé** | Session Stripe ou commande avec prix absurdes. |
 | **Fichiers** | `server/controllers/checkoutController.js` |
+
+### Livraison serveur-authoritative
+
+| | |
+|---|---|
+| **Description** | Le navigateur fournit uniquement `shipping_rate.id`. Le checkout recharge `POST https://api.printful.com/shipping/rates` avec l’adresse normalisée et les `bizVariantId` / quantités des `normalizedLines`, puis exige `String(rate.id) === selectedShippingRateId`. Aucun fallback par nom, prix, position ou premier tarif. |
+| **Justification** | Bloc Printful de `createCheckoutSession` ; codes `INVALID_SHIPPING_RATE`, `SHIPPING_RATE_LOOKUP_FAILED`, `SHIPPING_RATE_UNAVAILABLE`. |
+| **Si violé** | Frais de livraison choisis ou falsifiés par le client. |
+| **Fichiers** | `server/controllers/checkoutController.js`, `src/pages/Checkout.jsx` |
 
 ### Totaux commande en cents au checkout
 
 | | |
 |---|---|
-| **Description** | `subtotal_cents`, `shipping_cents`, `total_cents` sont calculés côté serveur (somme des `price_data.unit_amount * quantity` + shipping converti) et stockés sur `orders`. |
+| **Description** | `subtotal_cents` = somme des prix DB × quantités. `shipping_cents` = tarif Printful revalidé (`matchedRate.rate` converti strictement). `total_cents` = subtotal + shipping, avec protections d’overflow (`canAddCents`). Ces trois champs, ainsi que `shipping_cost` et `total`, sont stockés sur `orders` à partir de ces valeurs serveur. |
 | **Justification** | Calculs puis `INSERT INTO orders`. |
-| **Si violé** | Totaux internes non alignés avec les line_items envoyés à Stripe. |
+| **Si violé** | Totaux internes non alignés avec Stripe, ou montants encore issus du body navigateur. |
 | **Fichiers** | `server/controllers/checkoutController.js` |
 
 ### Devise depuis l’environnement
@@ -401,17 +446,17 @@ Panier verrouillé
 
 | | |
 |---|---|
-| **Description** | Avant insert item, le checkout résout la référence front (`db_variant_id` / `variant_id`) vers la clé primaire `product_variants.id`. Si non résolu → 400 `VARIANT_NOT_FOUND_FOR_ORDER_ITEM_FK`. |
-| **Justification** | Requête map + garde `if (!dbVariantId)`. |
-| **Si violé** | Échec FK MySQL ou mauvaise variante fulfillment. |
+| **Description** | Le checkout traite `db_variant_id ?? id` uniquement comme PK interne `product_variants.id`. Lookup groupé `WHERE pv.id IN (...)`. Identifiants business / Printful non utilisés comme substituts de la PK. Variante absente, inactive ou produit non visible → 400 `VARIANT_UNAVAILABLE`. |
+| **Justification** | `parsedLines` + `variantById` dans `createCheckoutSession`. |
+| **Si violé** | Échec FK MySQL, mauvaise variante fulfillment, ou association ambiguë d’identifiants. |
 | **Fichiers** | `server/controllers/checkoutController.js` |
 
 ### Trois identifiants variante non interchangeables
 
 | | |
 |---|---|
-| **Description** | Le code distingue `product_variants.id` (FK order_items), `variant_id` métier/front, et `printful_variant_id` (exécution Printful). |
-| **Justification** | SELECT map `db_id` / `biz_id` / `pf_id` ; insert utilise `dbVariantId` + `effectivePrintfulId`. |
+| **Description** | Le code distingue `product_variants.id` (PK / FK `order_items.variant_id`), `variant_id` métier (identifiant court Printful / catalogue), et `printful_variant_id` (exécution Printful). Aucun de ces identifiants ne doit être interprété comme un autre. |
+| **Justification** | `normalizedLines` expose `dbVariantId`, `bizVariantId`, `printfulVariantId` ; insert items utilise la PK ; requête Printful shipping utilise `bizVariantId`. |
 | **Si violé** | Mauvaise référence Printful ou FK cassée. |
 | **Fichiers** | `server/controllers/checkoutController.js`, `server/controllers/webhookController.js` |
 
@@ -450,9 +495,9 @@ Panier verrouillé
 
 | | |
 |---|---|
-| **Description** | Si la commande existe mais n’a aucun `order_items`, le webhook peut les insérer depuis `metadata.cart_items` (après résolution variante DB). Il ne recrée pas une commande absente. |
-| **Justification** | Blocs « Fallback d’insertion des order_items » et règle « Pas de création de commande magique si introuvable ». |
-| **Si violé** | Soit perte d’items après paiement, soit duplication / commande inventée. |
+| **Description** | Si la commande existe mais n’a aucun `order_items`, le webhook peut les insérer depuis `metadata.cart_items`. Le fallback est all-or-nothing : format serveur uniquement (`id` PK, `variant_id` business, `quantity`, `unit_price_cents`) ; lookup groupé par PK ; concordance des identifiants ; subtotal reconstruit strictement égal à `orders.subtotal_cents`. Une ligne invalide fait échouer tout le fallback. Les items existants ne sont jamais réécrits. Le webhook ne recrée pas une commande absente. |
+| **Justification** | `insertOrderItemsFromMetadata` + règle « Pas de création de commande magique si introuvable ». |
+| **Si violé** | Panier partiel, mauvais identifiant, ou commande inventée hors checkout. |
 | **Fichiers** | `server/controllers/webhookController.js` |
 
 ### Échec de résolution commande : event conservé, pas de paid
@@ -473,13 +518,13 @@ Panier verrouillé
 | **Si violé** | (Observation) Un échec annexe peut laisser des écarts (panier non locké, Printful non créé) alors que la commande est `paid`. |
 | **Fichiers** | `server/controllers/checkoutController.js`, `server/controllers/webhookController.js` |
 
-### Variante introuvable au checkout après insert order
+### Échec Stripe après insert : commande pending possible
 
 | | |
 |---|---|
-| **Description** | Si une variante panier ne se résout pas, le checkout répond 400 alors qu’une ligne `orders` `pending` a déjà pu être créée. |
-| **Justification** | Ordre du code : insert order → résolution variants → return 400 possible. |
-| **Si violé** | (Observation) Commandes `pending` orphelines sans session Stripe / sans items complets. |
+| **Description** | La résolution des variantes, la validation d’adresse et la revalidation Printful du tarif ont lieu avant l’insert `orders`. Un échec sur ces étapes ne crée pas de commande. En revanche, si Stripe échoue après l’insert `pending` / `order_items`, une commande `pending` sans session aboutie peut subsister. |
+| **Justification** | Ordre actuel : validations panier / shipping → insert `orders` → `sessions.create`. |
+| **Si violé** | (Observation) Commandes `pending` orphelines après un échec Stripe post-insert. |
 | **Fichiers** | `server/controllers/checkoutController.js` |
 
 ### Idempotence soft si insert ignore échoue
