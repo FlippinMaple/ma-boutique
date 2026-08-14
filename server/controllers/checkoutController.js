@@ -96,6 +96,8 @@ function canAddCents(left, right) {
 }
 
 const MAX_SHIPPING_RATE_ID_LENGTH = 128;
+const MAX_CART_LINES = 20;
+const MAX_QUANTITY_PER_LINE = 20;
 
 function parseShippingRateId(rawShippingRate) {
   if (
@@ -217,6 +219,13 @@ export const createCheckoutSession = async (req, res) => {
         .json({ error: 'Panier vide.', code: 'EMPTY_CART' });
     }
 
+    if (cart.length > MAX_CART_LINES) {
+      return res.status(400).json({
+        error: 'Le panier contient trop d’articles.',
+        code: 'CART_TOO_LARGE'
+      });
+    }
+
     const pool = await getPool();
 
     // 2) Normaliser / valider chaque ligne AVANT toute écriture (PK + quantité).
@@ -247,6 +256,12 @@ export const createCheckoutSession = async (req, res) => {
         return res.status(400).json({
           error: 'Quantité invalide.',
           code: 'INVALID_QUANTITY'
+        });
+      }
+      if (quantity > MAX_QUANTITY_PER_LINE) {
+        return res.status(400).json({
+          error: 'Quantité maximale dépassée pour un article.',
+          code: 'QUANTITY_LIMIT_EXCEEDED'
         });
       }
 
