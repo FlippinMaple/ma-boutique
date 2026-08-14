@@ -16,6 +16,8 @@ const currencyFormatter = new Intl.NumberFormat('fr-CA', {
 const formatCurrency = (value) =>
   currencyFormatter.format(Number(value) || 0);
 
+const CHECKOUT_EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 const Checkout = () => {
   const {
     cart,
@@ -177,8 +179,16 @@ const Checkout = () => {
   const orderTotal = total + shippingTotal;
 
   const validateCheckout = useCallback(() => {
+    const emailClean = String(userEmail || '').trim();
     if (
-      !userEmail ||
+      !emailClean ||
+      emailClean.length > 100 ||
+      !CHECKOUT_EMAIL_PATTERN.test(emailClean)
+    ) {
+      toast.error('Adresse courriel invalide.');
+      return false;
+    }
+    if (
       !shipping.name ||
       !shipping.address1 ||
       !shipping.city ||
@@ -310,6 +320,7 @@ const Checkout = () => {
                     value={userEmail}
                     onChange={(e) => setUserEmail(e.target.value)}
                     placeholder="exemple@courriel.com"
+                    maxLength={100}
                     required
                   />
                 </div>
@@ -349,6 +360,7 @@ const Checkout = () => {
                       setShipping({ ...shipping, name: e.target.value })
                     }
                     placeholder="Prénom et nom"
+                    maxLength={100}
                     required
                   />
                 </div>
@@ -371,6 +383,7 @@ const Checkout = () => {
                       setShipping({ ...shipping, address1: e.target.value })
                     }
                     placeholder="Numéro et rue"
+                    maxLength={200}
                     required
                   />
                 </div>
@@ -392,6 +405,7 @@ const Checkout = () => {
                     onChange={(e) =>
                       setShipping({ ...shipping, city: e.target.value })
                     }
+                    maxLength={100}
                     required
                   />
                 </div>
@@ -473,6 +487,7 @@ const Checkout = () => {
                     onChange={(e) =>
                       setShipping({ ...shipping, zip: e.target.value })
                     }
+                    maxLength={10}
                     required
                   />
                 </div>

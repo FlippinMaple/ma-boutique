@@ -98,6 +98,13 @@ function canAddCents(left, right) {
 const MAX_SHIPPING_RATE_ID_LENGTH = 128;
 const MAX_CART_LINES = 20;
 const MAX_QUANTITY_PER_LINE = 20;
+const MAX_EMAIL_LENGTH = 100;
+const MAX_SHIPPING_NAME_LENGTH = 100;
+const MAX_SHIPPING_ADDRESS1_LENGTH = 200;
+const MAX_SHIPPING_CITY_LENGTH = 100;
+const MAX_SHIPPING_STATE_LENGTH = 2;
+const MAX_SHIPPING_COUNTRY_LENGTH = 2;
+const MAX_SHIPPING_ZIP_LENGTH = 10;
 
 function parseShippingRateId(rawShippingRate) {
   if (
@@ -389,15 +396,28 @@ export const createCheckoutSession = async (req, res) => {
       cartSubtotalCents += line.lineCents;
     }
 
-    const emailSnapshot = (raw.customer_email || '').toLowerCase();
+    const emailSnapshot = String(raw.customer_email ?? '')
+      .trim()
+      .toLowerCase();
+    if (
+      !emailSnapshot ||
+      emailSnapshot.length > MAX_EMAIL_LENGTH ||
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailSnapshot)
+    ) {
+      return res.status(400).json({
+        error: 'Adresse courriel invalide.',
+        code: 'INVALID_EMAIL'
+      });
+    }
+
     const customerId = userId || null;
 
     const shippingNormalized = {
       name: normalizeShippingField(raw?.shipping?.name),
       address1: normalizeShippingField(raw?.shipping?.address1),
       city: normalizeShippingField(raw?.shipping?.city),
-      state: normalizeShippingField(raw?.shipping?.state),
-      country: normalizeShippingField(raw?.shipping?.country),
+      state: normalizeShippingField(raw?.shipping?.state).toUpperCase(),
+      country: normalizeShippingField(raw?.shipping?.country).toUpperCase(),
       zip: normalizeShippingField(raw?.shipping?.zip)
     };
 
@@ -412,6 +432,37 @@ export const createCheckoutSession = async (req, res) => {
       return res.status(400).json({
         error: 'Adresse de livraison incomplète.',
         code: 'INVALID_SHIPPING_ADDRESS'
+      });
+    }
+
+    if (
+      shippingNormalized.name.length > MAX_SHIPPING_NAME_LENGTH ||
+      shippingNormalized.address1.length > MAX_SHIPPING_ADDRESS1_LENGTH ||
+      shippingNormalized.city.length > MAX_SHIPPING_CITY_LENGTH ||
+      shippingNormalized.state.length > MAX_SHIPPING_STATE_LENGTH ||
+      shippingNormalized.country.length > MAX_SHIPPING_COUNTRY_LENGTH ||
+      shippingNormalized.zip.length > MAX_SHIPPING_ZIP_LENGTH
+    ) {
+      return res.status(400).json({
+        error: 'Un champ de l’adresse de livraison est trop long.',
+        code: 'SHIPPING_FIELD_TOO_LONG'
+      });
+    }
+
+    if (
+      shippingNormalized.country !== 'CA' &&
+      shippingNormalized.country !== 'US'
+    ) {
+      return res.status(400).json({
+        error: 'Pays de livraison non pris en charge.',
+        code: 'INVALID_SHIPPING_COUNTRY'
+      });
+    }
+
+    if (shippingNormalized.state.length !== MAX_SHIPPING_STATE_LENGTH) {
+      return res.status(400).json({
+        error: 'Province ou État invalide.',
+        code: 'INVALID_SHIPPING_STATE'
       });
     }
 
