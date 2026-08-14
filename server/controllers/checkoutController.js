@@ -211,7 +211,6 @@ export const createCheckoutSession = async (req, res) => {
     const FRONTEND_URL = sanitizeBaseUrl(req);
     const raw = req.body || {};
     const cart = pickCart(raw);
-    const cartId = raw.cartId || raw.cart_id || null;
 
     if (!Array.isArray(cart) || cart.length === 0) {
       return res
@@ -620,28 +619,6 @@ export const createCheckoutSession = async (req, res) => {
       }
     }
 
-    // 4a) (Optionnel) Associer des IDs d'adresse si fournis — hors transaction
-    const shippingAddressId =
-      raw.shipping_address_id ?? raw.shippingAddressId ?? null;
-    const billingAddressId =
-      raw.billing_address_id ?? raw.billingAddressId ?? null;
-
-    if (shippingAddressId != null || billingAddressId != null) {
-      try {
-        await pool.query(
-          `
-          UPDATE orders
-             SET shipping_address_id = ?,
-                 billing_address_id  = ?
-           WHERE id = ?
-          `,
-          [shippingAddressId ?? null, billingAddressId ?? null, orderId]
-        );
-      } catch (e) {
-        console.warn('[checkout] orders address IDs skipped:', e?.message);
-      }
-    }
-
     // 5) Stripe customer enrichi
     let stripeCustomerId = null;
     try {
@@ -755,7 +732,6 @@ export const createCheckoutSession = async (req, res) => {
       metadata: {
         source: 'flippin-maple',
         order_id: String(orderId),
-        cart_id: cartId ? String(cartId) : '',
         shipping_rate: JSON.stringify({
           id: selectedShippingRateId,
           name: shippingName,
@@ -774,56 +750,6 @@ export const createCheckoutSession = async (req, res) => {
       [session.id, String(orderId), orderId]
     );
 
-    // 8) Journaliser le panier "abandon potentiel"
-    try {
-      if (cartId) {
-        await pool.query(
-          `INSERT INTO abandoned_carts
-           (cart_id,
-            user_id,
-            anonymous_token,
-            customer_email,
-            cart_snapshot,
-            source,
-            abandoned_at,
-            cart_contents,
-            last_activity,
-            is_recovered,
-            recovered_at,
-            last_email_sent_at,
-            checkout_session_id,
-            campaign_id,
-            created_at,
-            updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, NOW(), ?, NOW(), 0, NULL, NULL, ?, NULL, NOW(), NOW())`,
-          [
-            cartId,
-            customerId || null,
-            null,
-            emailSnapshot || null,
-            JSON.stringify({
-              shipping: shippingNormalized,
-              totals: {
-                subtotal_cents: cartSubtotalCents,
-                shipping_cents: shippingCents,
-                total_cents: totalCents,
-                currency
-              }
-            }),
-            'checkout_init',
-            JSON.stringify(cart || []),
-            session.id
-          ]
-        );
-      }
-    } catch (e) {
-      console.warn(
-        '[checkout] abandoned_carts insert skipped:',
-        e?.message || e
-      );
-    }
-
-    // Panier laissé 'open' ici. Le webhook le verrouille après paiement.
     return res.status(200).json({ id: session.id, url: session.url });
   } catch (err) {
     console.error('[checkout] create session error:', {

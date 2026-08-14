@@ -37,10 +37,6 @@ const Checkout = () => {
     zip: ''
   });
 
-  // Estimate cartId from first cart line if no global cartId
-  const cartId =
-    cart?.[0]?.cart_id || cart?.[0]?.cartId || cart?.[0]?.cart_id_db || null;
-
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const [shippingRate, setShippingRate] = useState(null);
@@ -228,7 +224,6 @@ const Checkout = () => {
 
       const payload = {
         cartItems: preparedItems,
-        cartId: cartId || null,
         customer_email: formatEmail(userEmail),
         shipping: {
           ...shipping,
@@ -263,7 +258,6 @@ const Checkout = () => {
     }
   }, [
     cart,
-    cartId,
     setInCheckoutFlag,
     shipping,
     shippingRate,
