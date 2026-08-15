@@ -1,6 +1,6 @@
 # Journal des correctifs techniques et de sécurité
 
-**Statut :** journal actif — chantiers P3 (checkout public) et P4 (webhook Stripe / idempotence) : **FERMÉS / COMPLETS**
+**Statut :** journal actif — chantiers P3 (checkout public), P4 (webhook Stripe / idempotence) et P5 (fallback `order_items`) : **FERMÉS / COMPLETS**
 
 Ce document complète `docs/compliance/TECHNICAL_SECURITY_AUDIT.md`.
 
@@ -918,6 +918,48 @@ Conclusion : le duplicate métier a été rejoué sans nouvelle transition ; auc
 ### Statut final P4
 
 Le chantier P4 est **FERMÉ / COMPLET**. Hors scope volontaire : Printful (P19), rétention/PII `payload` (P13), correction du runner `npm run migrate`.
+
+---
+
+## 15 août 2026 — Chantier P5 : reconstruction fallback des order_items (FERMÉ)
+
+Objectif : cesser de reconstruire automatiquement les `order_items` après paiement. Le constat d’audit initial (quantités / identifiants / prix metadata / transaction fallback / reconstruction depuis `session.metadata.cart_items`) reste figé dans `TECHNICAL_SECURITY_AUDIT.md`.
+
+**Préalable déjà en place.** P1-B (`82efc25` — `fix(checkout): harden webhook item fallback`) avait durci le helper : format metadata serveur uniquement, entiers positifs sûrs, PK / `variant_id` / Printful ID corroborés, all-or-nothing, subtotal exact vs `orders.subtotal_cents`, overflow protégé, connexion dédiée et vraie transaction. P3-B / P3-E1 ont ensuite créé atomiquement `orders` + `checkout_idempotency` + tous les `order_items` + history `init` → `pending` **avant** Stripe. Une order existante sans items est désormais un état anormal / legacy / corruption, pas un mode dégradé à combler.
+
+### P5-A — Désactivation du fallback actif
+
+**Commit :** `969c8f6` — `fix(webhook): disable order item metadata fallback`
+**Fichier :** `server/controllers/webhookController.js`
+
+Avant le noyau paid : `orderHasItems(db, orderId)`.
+
+- Erreur DB → HTTP 500 `{ received: false, orderId, error: 'WEBHOOK_ORDER_ITEMS_CHECK_FAILED' }` : fail-closed, aucun paid, aucun fallback, aucun INSERT items, aucun side effect.
+- Zéro item → HTTP 500 `{ received: false, orderId, error: 'WEBHOOK_ORDER_ITEMS_MISSING' }` : aucune reconstruction depuis `session.metadata.cart_items`, aucun INSERT, aucun paid, aucun Printful, aucun side effect.
+
+Dans les deux cas : `event_id` n’est **pas** supprimé ; P4-C permet le replay du même business event (une réparation contrôlée des données pourrait alors laisser un retry continuer ; le webhook ne fabrique aucune ligne manquante). Le recheck P4-F (`SELECT id FROM order_items … LIMIT 1` sous `FOR UPDATE`) reste en plus du check P5. Une commande sans `order_item` ne peut pas devenir `paid`. `usedFallbackItems` reste `const false` : Printful automatique n’est pas activé.
+
+### P5-B — Suppression du code mort
+
+**Commit :** `28ce844` — `refactor(webhook): remove dead order item fallback`
+
+Suppression de `insertOrderItemsFromMetadata`, `parseNonNegativeSafeInteger` et `canAddCents`. Aucun `INSERT INTO order_items` ne reste dans `webhookController.js`. `normalizeMetaCartItem` est conservé (bloc Printful historique). `parsePositiveSafeInteger` est conservé (validations actives, dont la résolution d’order).
+
+### Printful / P19
+
+P5 n’active pas Printful. Le bloc historique `usedFallbackItems && PRINTFUL_AUTOMATIC_ORDER === 'true'` reste inatteignable via le chemin P5. Le parsing `metadata.cart_items` / `normalizeMetaCartItem` peut encore subsister pour ce code. **P19 reste un chantier séparé** ; P5 ne le ferme pas.
+
+### Validations
+
+Statiques avant commits (P5-A et P5-B) : `git diff --check` réussi ; `node --check server/controllers/webhookController.js` réussi. P5-A : helper plus appelé ; `usedFallbackItems = false` ; erreurs `WEBHOOK_ORDER_ITEMS_CHECK_FAILED` / `WEBHOOK_ORDER_ITEMS_MISSING` ; pas de `releaseEventIdempotence` sur ces chemins ; recheck P4-F intact. P5-B : plus d’occurrence de `insertOrderItemsFromMetadata`, `parseNonNegativeSafeInteger`, `canAddCents`, `INSERT INTO order_items` ; `normalizeMetaCartItem` présent ; `usedFallbackItems` toujours false.
+
+Après chaque push P5 : `GET /readiness` → `ok: true`. Après P5-B : `GET https://flippinmaple.com/readiness` → `{ "ok": true }`.
+
+Aucune commande de production n’a été volontairement corrompue (sans `order_items`) pour déclencher le HTTP 500. Le chemin no-items est validé **statiquement** par le code ; le déploiement nominal par readiness. Aucune migration, aucun changement de schéma, aucune donnée production modifiée pour tester P5.
+
+### Statut final P5
+
+P5 est **FERMÉ / COMPLET**. Hors scope volontaire : Printful automatique (P19).
 
 ---
 

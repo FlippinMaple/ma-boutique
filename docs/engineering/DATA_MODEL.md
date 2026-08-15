@@ -516,7 +516,7 @@ FK variant_id → product_variants.id ON DELETE CASCADE
 CHECK json_valid(meta)
 
 Rôle métier
-Snapshot des lignes d’articles d’une commande. On capture le prix payé, la variante, et l’ID d’exécution Printful.
+Snapshot des lignes d’articles d’une commande (prix payé, variante, ID d’exécution Printful). Les lignes sont créées dans la transaction d’initialisation checkout **avant** Stripe. Le webhook ne crée plus de `order_items` : leur absence pour un paiement est un état invalide qui bloque `paid`. Aucun fallback metadata ne les reconstruit. Aucune colonne, index, FK ni migration P5.
 
 Connecté à
 orders

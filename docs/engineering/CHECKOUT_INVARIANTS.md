@@ -22,7 +22,7 @@ Ce document n’est pas un tutoriel Stripe ni une référence API.
 | Phase | Qui écrit `pending` / snapshots / items | Qui écrit `paid` / `paid_at` | Qui écrit `cancelled` | Qui lock le panier |
 |---|---|---|---|---|
 | Checkout | `checkoutController` | — | — | — |
-| Webhook signé | — (sauf fallback items) | `webhookController` (`completed` / `async_payment_succeeded`) | `webhookController` (`expired`, `pending` uniquement) | `webhookController` (si `metadata.cart_id` historique) |
+| Webhook signé | — | `webhookController` (`completed` / `async_payment_succeeded`) | `webhookController` (`expired`, `pending` uniquement) | `webhookController` (si `metadata.cart_id` historique) |
 
 Pipeline :
 
@@ -90,10 +90,10 @@ Webhook signé  POST /webhook/stripe
 
 | | |
 |---|---|
-| **Description** | Les `order_items` de la commande sont insérés avant la création de la session Stripe (chemin nominal). |
-| **Justification** | Boucle d’insert `order_items` puis `sessions.create`. |
-| **Si violé** | Commande sans preuve des articles au moment du checkout ; dépendance accrue au mode dégradé webhook. |
-| **Fichiers** | `server/controllers/checkoutController.js` |
+| **Description** | Pour toute nouvelle tentative actuelle, les `order_items` sont insérés dans la transaction d’initialisation **avant** `stripe.checkout.sessions.create`. Il n’existe plus de mode dégradé webhook qui les reconstruit. |
+| **Justification** | TX checkout (P3-B) : `orders` + `checkout_idempotency` + tous les `order_items` + history, puis session Stripe. P5-A/B : plus de fallback metadata. |
+| **Si violé** | Commande sans preuve des articles ; le webhook refuse `paid` (fail-closed). |
+| **Fichiers** | `server/controllers/checkoutController.js`, `server/controllers/webhookController.js` |
 
 ### Prix, adresse et livraison validés avant la commande pending
 
@@ -148,9 +148,9 @@ Webhook signé  POST /webhook/stripe
 
 | | |
 |---|---|
-| **Description** | Les **nouvelles** sessions portent en `metadata` : `cart_items` (lignes serveur normalisées), `shipping` (adresse saisie normalisée), `shipping_rate` (représentation serveur `{ id, name, shipping_cents }`), `source = 'flippin-maple'`, `order_id`. Elles n’envoient **pas** `cart_id`. Le webhook peut encore lire un `metadata.cart_id` historique s’il existe. |
-| **Justification** | Objet `metadata` passé à `sessions.create` après P3-C. |
-| **Si violé** | Mode dégradé items / Printful / abandon sans contexte session, ou fallback webhook alimenté par des prix navigateur. |
+| **Description** | Les **nouvelles** sessions portent en `metadata` : `cart_items` (lignes serveur normalisées), `shipping` (adresse saisie normalisée), `shipping_rate` (représentation serveur `{ id, name, shipping_cents }`), `source = 'flippin-maple'`, `order_id`. Elles n’envoient **pas** `cart_id`. Le webhook peut encore lire un `metadata.cart_id` historique s’il existe. `metadata.cart_items` reste un contexte Stripe / code historique Printful (P19) ; ce n’est **plus** une source permettant au webhook de créer des snapshots `order_items`. |
+| **Justification** | Objet `metadata` passé à `sessions.create` après P3-C ; P5-A/B. |
+| **Si violé** | Printful historique / abandon sans contexte session, ou metadata alimentées par des prix navigateur. |
 | **Fichiers** | `server/controllers/checkoutController.js` |
 
 ### Montants Stripe issus des valeurs serveur
@@ -323,13 +323,13 @@ Webhook signé  POST /webhook/stripe
 | **Si violé** | Perte de boîte noire Stripe pour audit. |
 | **Fichiers** | `server/controllers/webhookController.js` |
 
-### Items non réécrits si déjà présents
+### Le webhook n’écrit jamais d’order_items
 
 | | |
 |---|---|
-| **Description** | Le webhook n’insère des `order_items` que si aucun item n’existe déjà pour `order_id`. |
-| **Justification** | `orderHasItems` puis `insertOrderItemsFromMetadata` seulement si aucun item n’existe ; contrôle additionnel dans la transaction. |
-| **Si violé** | Doublons d’articles ou écrasement du snapshot contractuel. |
+| **Description** | Le webhook ne possède aucun `INSERT INTO order_items`. Les `order_items` existants sont des snapshots créés au checkout avant Stripe. Le webhook les traite comme précondition du paiement, pas comme données à reconstruire. Il ne les supprime ni ne les réécrit. |
+| **Justification** | P5-A (plus d’appel fallback) + P5-B (helper et INSERT supprimés). |
+| **Si violé** | Snapshots d’achat inventés après paiement. |
 | **Fichiers** | `server/controllers/webhookController.js` |
 
 ---
@@ -358,7 +358,7 @@ Webhook signé  POST /webhook/stripe
 
 | | |
 |---|---|
-| **Description** | Après résolution et garantie des `order_items`, une connexion dédiée : `BEGIN` → `SELECT orders … FOR UPDATE` → recheck d’au moins un item → `UPDATE` `pending` → `paid` (totaux, `paid_at`, email COALESCE, `stripe_payment_intent_id` COALESCE) + history → `COMMIT`. `WHERE id = ? AND status = 'pending'`. Échec avant COMMIT → rollback, 500 `WEBHOOK_PAYMENT_TX_FAILED`, `event_id` conservé. Side effects (reconcile, cart historique, abandoned, Printful, upsert) **après** COMMIT. |
+| **Description** | Après résolution et **vérification** des `order_items`, une connexion dédiée : `BEGIN` → `SELECT orders … FOR UPDATE` → recheck d’au moins un item → `UPDATE` `pending` → `paid` (totaux, `paid_at`, email COALESCE, `stripe_payment_intent_id` COALESCE) + history → `COMMIT`. `WHERE id = ? AND status = 'pending'`. Échec avant COMMIT → rollback, 500 `WEBHOOK_PAYMENT_TX_FAILED`, `event_id` conservé. Side effects (reconcile, cart historique, abandoned, Printful, upsert) **après** COMMIT. |
 | **Justification** | P4-F. |
 | **Si violé** | Paid sans history / sans PI, ou double transition. |
 | **Fichiers** | `server/controllers/webhookController.js` |
@@ -416,10 +416,10 @@ Webhook signé  POST /webhook/stripe
 
 | | |
 |---|---|
-| **Description** | Chaque item stocke `price_at_purchase` et `unit_price_cents` au moment de l’insert. Au checkout, ces montants proviennent du prix officiel DB de la variante, pas du navigateur. Le fallback webhook, s’il s’exécute, réutilise `unit_price_cents` des metadata serveur déjà figées, jamais le prix catalogue courant. |
-| **Justification** | Inserts `order_items` dans les deux contrôleurs. |
+| **Description** | Chaque item stocke `price_at_purchase` et `unit_price_cents` au moment de l’insert checkout. Ces montants proviennent du prix officiel DB de la variante, pas du navigateur. Le webhook ne recrée plus ces lignes et ne réécrit pas ces prix. |
+| **Justification** | Insert `order_items` dans `createCheckoutSession` uniquement (P5). |
 | **Si violé** | Montant vendu non reconstituable, ou prix d’achat réécrit après changement de catalogue. |
-| **Fichiers** | `server/controllers/checkoutController.js`, `server/controllers/webhookController.js` |
+| **Fichiers** | `server/controllers/checkoutController.js` |
 
 ### Meta vitrine sur les items checkout
 
@@ -608,13 +608,13 @@ Webhook signé  POST /webhook/stripe
 
 ## Reprise après erreur
 
-### Mode dégradé : items absents uniquement
+### Items absents : paiement bloqué, aucune reconstruction
 
 | | |
 |---|---|
-| **Description** | Si la commande existe mais n’a aucun `order_items`, le webhook peut les insérer depuis `metadata.cart_items`. Le fallback est all-or-nothing : format serveur uniquement (`id` PK, `variant_id` business, `quantity`, `unit_price_cents`) ; lookup groupé par PK ; concordance des identifiants ; subtotal reconstruit strictement égal à `orders.subtotal_cents`. Une ligne invalide fait échouer tout le fallback. Les items existants ne sont jamais réécrits. Le webhook ne recrée pas une commande absente. |
-| **Justification** | `insertOrderItemsFromMetadata` + règle « Pas de création de commande magique si introuvable ». |
-| **Si violé** | Panier partiel, mauvais identifiant, ou commande inventée hors checkout. |
+| **Description** | Avant paid, le webhook appelle `orderHasItems`. Erreur DB → HTTP 500 `WEBHOOK_ORDER_ITEMS_CHECK_FAILED`. Zéro item → HTTP 500 `WEBHOOK_ORDER_ITEMS_MISSING`. Aucun INSERT `order_items`, aucune reconstruction depuis `metadata.cart_items`, aucune transition paid. `event_id` est conservé ; P4-C permet le replay du même business event. P4-F refait le check sous transaction (`SELECT id FROM order_items … LIMIT 1`). Jamais `paid` sans item. |
+| **Justification** | P5-A + recheck P4-F. |
+| **Si violé** | Snapshots inventés après paiement, ou paid sans preuve d’articles. |
 | **Fichiers** | `server/controllers/webhookController.js` |
 
 ### Échec de résolution commande : event conservé, pas de paid
