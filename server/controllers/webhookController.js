@@ -318,32 +318,6 @@ async function releaseEventIdempotence(db, eventId) {
   }
 }
 
-/**
- * S'assure que la table stripe_events existe pour loguer les webhooks Stripe,
- * et tente d'ajouter order_id si pas présent.
- * En prod Hostinger on sait que ALTER TABLE peut échouer (erreur 1044),
- * donc on essaie et si ça plante, on continue tranquille.
- */
-async function ensureStripeEventsTable(req) {
-  const db = req.app.locals.db;
-
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS stripe_events (
-      event_id   VARCHAR(255) PRIMARY KEY,
-      event_type VARCHAR(64)  NOT NULL,
-      created_at DATETIME     NOT NULL DEFAULT UTC_TIMESTAMP(),
-      payload    LONGTEXT     NULL
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-  `);
-
-  try {
-    // On essaie d'ajouter order_id si pas déjà là.
-    await db.query(`ALTER TABLE stripe_events ADD COLUMN order_id INT NULL`);
-  } catch {
-    // silencieux
-  }
-}
-
 /** Upsert d'un événement Stripe dans stripe_events, en tentant de résoudre order_id */
 async function upsertStripeEvent(event, req, possibleOrderId = null) {
   const db = req.app.locals.db;
@@ -680,9 +654,7 @@ async function handleStripeWebhook(req, res) {
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
-  // 3. Idempotence + table stripe_events
-  await ensureStripeEventsTable(req);
-
+  // 3. Idempotence : réserve event_id dans stripe_events (table déjà provisionnée)
   // On tente d'insérer l'event_id; si déjà vu => on sort
   try {
     const db = req.app.locals.db;
