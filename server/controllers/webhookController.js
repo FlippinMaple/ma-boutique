@@ -442,116 +442,88 @@ async function markAbandonedRecovered({ sessionId, email, req }) {
 }
 
 /**
- * PAY-006 : résoudre de façon robuste quelle commande doit passer à 'paid'
- * à partir de la session Stripe.
+ * Résoudre quelle commande peut passer à 'paid' à partir de la session Stripe.
+ * Autorité : stripe_session_id exact, puis order_id corroboré. Jamais l'email.
  */
 async function resolveOrderIdFromSession({ db, session }) {
-  // 1. via stripe_session_id
-  try {
-    const [[byStripeSession]] = await db.query(
-      `
-      SELECT id, shipping_cost
-        FROM orders
-       WHERE stripe_session_id = ?
-       LIMIT 1
-      `,
-      [session.id]
-    );
+  const sessionId = String(session.id);
 
-    if (byStripeSession) {
-      return {
-        orderId: byStripeSession.id,
-        prevShippingCost: byStripeSession.shipping_cost
-      };
-    }
-  } catch (e) {
-    await logWarn(
-      `[webhook] resolveOrderIdFromSession: lookup stripe_session_id failed ${
-        e?.message || e
-      }`,
-      'webhook'
-    );
+  const [[byStripeSession]] = await db.query(
+    `
+    SELECT id, shipping_cost
+      FROM orders
+     WHERE stripe_session_id = ?
+     LIMIT 1
+    `,
+    [sessionId]
+  );
+
+  if (byStripeSession) {
+    return {
+      orderId: byStripeSession.id,
+      prevShippingCost: byStripeSession.shipping_cost
+    };
   }
 
-  // 2. via client_reference_id ou metadata.order_id
-  let refId = null;
-  if (session.client_reference_id) {
-    refId = session.client_reference_id;
-  } else if (session.metadata?.order_id) {
-    refId = session.metadata.order_id;
-  }
+  const clientRefId = parsePositiveSafeInteger(session.client_reference_id);
+  const metadataOrderId = parsePositiveSafeInteger(session.metadata?.order_id);
 
-  if (refId) {
-    try {
-      const [[byClientRef]] = await db.query(
-        `
-        SELECT id, shipping_cost
-          FROM orders
-         WHERE id = ?
-         LIMIT 1
-        `,
-        [refId]
-      );
-
-      if (byClientRef) {
-        return {
-          orderId: byClientRef.id,
-          prevShippingCost: byClientRef.shipping_cost
-        };
-      }
-    } catch (e) {
+  if (session.client_reference_id != null && session.client_reference_id !== '') {
+    if (clientRefId == null) {
       await logWarn(
-        `[webhook] resolveOrderIdFromSession: lookup client_reference_id/order_id failed ${
-          e?.message || e
-        }`,
+        '[webhook] resolveOrderIdFromSession: client_reference_id invalide',
+        'webhook'
+      );
+    }
+  }
+  if (
+    session.metadata?.order_id != null &&
+    session.metadata.order_id !== ''
+  ) {
+    if (metadataOrderId == null) {
+      await logWarn(
+        '[webhook] resolveOrderIdFromSession: metadata.order_id invalide',
         'webhook'
       );
     }
   }
 
-  // 3. fallback: dernière pending pour le même email
-  const customer_email =
-    (session.customer_details && session.customer_details.email) ||
-    session.customer_email ||
-    (session.metadata && session.metadata.shipping
-      ? (() => {
-          try {
-            const sh = JSON.parse(session.metadata.shipping);
-            return sh.email || null;
-          } catch {
-            return null;
-          }
-        })()
-      : null);
-
-  if (customer_email) {
-    try {
-      const [[byEmail]] = await db.query(
-        `
-        SELECT id, shipping_cost
-          FROM orders
-         WHERE customer_email = ?
-           AND status = 'pending'
-         ORDER BY created_at DESC
-         LIMIT 1
-        `,
-        [customer_email]
-      );
-
-      if (byEmail) {
-        return {
-          orderId: byEmail.id,
-          prevShippingCost: byEmail.shipping_cost
-        };
-      }
-    } catch (e) {
-      await logWarn(
-        `[webhook] resolveOrderIdFromSession: lookup fallback email failed ${
-          e?.message || e
-        }`,
+  let candidateId = null;
+  if (clientRefId != null && metadataOrderId != null) {
+    if (clientRefId !== metadataOrderId) {
+      await logError(
+        '[webhook] resolveOrderIdFromSession: client_reference_id et metadata.order_id contradictoires',
         'webhook'
       );
+      return { orderId: null, prevShippingCost: null };
     }
+    candidateId = clientRefId;
+  } else if (clientRefId != null) {
+    candidateId = clientRefId;
+  } else if (metadataOrderId != null) {
+    candidateId = metadataOrderId;
+  }
+
+  if (candidateId == null) {
+    return { orderId: null, prevShippingCost: null };
+  }
+
+  const [[byRef]] = await db.query(
+    `
+    SELECT id, shipping_cost
+      FROM orders
+     WHERE id = ?
+       AND (stripe_session_id = ? OR stripe_session_id IS NULL)
+     LIMIT 1
+    `,
+    [candidateId, sessionId]
+  );
+
+  if (byRef) {
+    return {
+      orderId: byRef.id,
+      prevShippingCost: byRef.shipping_cost
+    };
   }
 
   return { orderId: null, prevShippingCost: null };
@@ -805,8 +777,22 @@ async function handleStripeWebhook(req, res) {
     const db = req.app.locals.db;
 
     // A) Résoudre la commande à passer en 'paid'
-    const { orderId: resolvedOrderId, prevShippingCost } =
-      await resolveOrderIdFromSession({ db, session });
+    let resolvedOrderId;
+    let prevShippingCost;
+    try {
+      const resolved = await resolveOrderIdFromSession({ db, session });
+      resolvedOrderId = resolved.orderId;
+      prevShippingCost = resolved.prevShippingCost;
+    } catch (e) {
+      await logError(
+        `[${traceId}] resolveOrderIdFromSession failed: ${e?.message || e}`,
+        'webhook'
+      );
+      return res.status(500).json({
+        received: false,
+        error: 'WEBHOOK_ORDER_RESOLUTION_FAILED'
+      });
+    }
 
     await logInfo(
       `[${traceId}] resolveOrderIdFromSession => ${resolvedOrderId || 'NONE'}`,
@@ -816,7 +802,7 @@ async function handleStripeWebhook(req, res) {
     // Si on ne trouve pas de commande, on NE crée PAS une commande magique
     if (!resolvedOrderId) {
       await logError(
-        `[${traceId}] Aucune commande pending pour session ${session.id}. clientRef=${session.client_reference_id || 'null'} email=${session.customer_details?.email || session.customer_email || 'null'}`,
+        `[${traceId}] Aucune commande resolue pour session ${session.id}. clientRef=${session.client_reference_id || 'null'}`,
         'webhook'
       );
 
