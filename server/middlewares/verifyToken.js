@@ -14,7 +14,9 @@ export const verifyToken = (req, res, next) => {
         .status(401)
         .json({ error: 'Accès refusé. Aucun token trouvé.' });
     }
-    const payload = jwt.verify(token, process.env.JWT_ACCESS_SECRET);
+    const payload = jwt.verify(token, process.env.JWT_ACCESS_SECRET, {
+      algorithms: ['HS256']
+    });
 
     if (!payload?.sub) {
       return res.status(401).json({ error: 'Token invalide.' });

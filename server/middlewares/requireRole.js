@@ -18,7 +18,9 @@ export function requireRole(requiredRole = 'admin') {
 
       let payload;
       try {
-        payload = jwt.verify(access, process.env.JWT_ACCESS_SECRET);
+        payload = jwt.verify(access, process.env.JWT_ACCESS_SECRET, {
+          algorithms: ['HS256']
+        });
       } catch (err) {
         await logError(err, 'requireRole.payload');
         return res.status(401).json({ error: 'Session expired' });

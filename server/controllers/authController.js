@@ -33,12 +33,14 @@ const cookieOptsRefresh = {
 
 function signAccess(payload) {
   return jwt.sign(payload, process.env.JWT_ACCESS_SECRET, {
-    expiresIn: ACCESS_TTL
+    expiresIn: ACCESS_TTL,
+    algorithm: 'HS256'
   });
 }
 function signRefresh(payload) {
   return jwt.sign(payload, process.env.JWT_REFRESH_SECRET, {
-    expiresIn: REFRESH_TTL
+    expiresIn: REFRESH_TTL,
+    algorithm: 'HS256'
   });
 }
 
@@ -101,7 +103,9 @@ export const refreshToken = async (req, res) => {
       return res.status(401).json({ message: 'Aucun cookie refresh.' });
     }
 
-    const payload = jwt.verify(token, process.env.JWT_REFRESH_SECRET);
+    const payload = jwt.verify(token, process.env.JWT_REFRESH_SECRET, {
+      algorithms: ['HS256']
+    });
     const userId = payload?.sub;
     if (userId == null) {
       return res.status(401).json({ message: 'Refresh invalide ou expiré.' });

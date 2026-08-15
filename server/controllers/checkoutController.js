@@ -41,7 +41,8 @@ const isProd = process.env.NODE_ENV === 'production';
 
 function signAccess(payload) {
   return jwt.sign(payload, process.env.JWT_ACCESS_SECRET, {
-    expiresIn: process.env.JWT_ACCESS_TTL || '15m'
+    expiresIn: process.env.JWT_ACCESS_TTL || '15m',
+    algorithm: 'HS256'
   });
 }
 
@@ -275,7 +276,9 @@ export const createCheckoutSession = async (req, res) => {
     const access = req.cookies?.access;
     if (access) {
       try {
-        const payload = jwt.verify(access, process.env.JWT_ACCESS_SECRET);
+        const payload = jwt.verify(access, process.env.JWT_ACCESS_SECRET, {
+          algorithms: ['HS256']
+        });
         userId = payload?.sub ?? null;
       } catch {
         // access absent/expiré/invalide → tenter refresh si présent
@@ -285,7 +288,9 @@ export const createCheckoutSession = async (req, res) => {
       const refresh = req.cookies?.refresh;
       if (refresh) {
         try {
-          const r = jwt.verify(refresh, process.env.JWT_REFRESH_SECRET);
+          const r = jwt.verify(refresh, process.env.JWT_REFRESH_SECRET, {
+            algorithms: ['HS256']
+          });
           userId = r?.sub ?? null;
           if (userId != null) {
             const newAccess = signAccess({ sub: userId });
