@@ -272,33 +272,35 @@ export const createCheckoutSession = async (req, res) => {
 
     // Auth optionnelle : un checkout invité continue avec userId = null.
     // Identité uniquement via cookies httpOnly (jamais via req.body).
+    // Un JWT valide fournit seulement un candidat ; le compte est relu en DB.
     let userId = null;
+    let candidateUserId = null;
+    let identityFromRefresh = false;
     const access = req.cookies?.access;
     if (access) {
       try {
         const payload = jwt.verify(access, process.env.JWT_ACCESS_SECRET, {
           algorithms: ['HS256']
         });
-        userId = payload?.sub ?? null;
+        candidateUserId = payload?.sub ?? null;
       } catch {
         // access absent/expiré/invalide → tenter refresh si présent
       }
     }
-    if (userId == null) {
+    if (candidateUserId == null) {
       const refresh = req.cookies?.refresh;
       if (refresh) {
         try {
           const r = jwt.verify(refresh, process.env.JWT_REFRESH_SECRET, {
             algorithms: ['HS256']
           });
-          userId = r?.sub ?? null;
-          if (userId != null) {
-            const newAccess = signAccess({ sub: userId });
-            res.cookie('access', newAccess, cookieOptsAccess);
+          candidateUserId = r?.sub ?? null;
+          if (candidateUserId != null) {
+            identityFromRefresh = true;
           }
         } catch {
           // refresh invalide → checkout invité
-          userId = null;
+          candidateUserId = null;
         }
       }
     }
@@ -314,6 +316,25 @@ export const createCheckoutSession = async (req, res) => {
     }
 
     const pool = await getPool();
+    if (candidateUserId != null) {
+      const [rows] = await pool.query(
+        `SELECT id, email, role FROM customers WHERE id = ? LIMIT 1`,
+        [candidateUserId]
+      );
+      if (rows.length) {
+        userId = rows[0].id;
+        if (identityFromRefresh) {
+          const newAccess = signAccess({
+            sub: rows[0].id,
+            email: rows[0].email,
+            role: rows[0].role
+          });
+          res.cookie('access', newAccess, cookieOptsAccess);
+        }
+      } else {
+        userId = null;
+      }
+    }
     let existingAttempt;
     try {
       existingAttempt = await findExistingCheckoutAttempt(
