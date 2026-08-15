@@ -390,7 +390,6 @@ export const createCheckoutSession = async (req, res) => {
     // Un JWT valide fournit seulement un candidat ; le compte est relu en DB.
     let userId = null;
     let candidateUserId = null;
-    let identityFromRefresh = false;
     let managedRefreshToken = null;
     const access = req.cookies?.access;
     if (access) {
@@ -410,12 +409,15 @@ export const createCheckoutSession = async (req, res) => {
           const r = jwt.verify(refresh, process.env.JWT_REFRESH_SECRET, {
             algorithms: ['HS256']
           });
-          candidateUserId = r?.sub ?? null;
-          if (candidateUserId != null) {
-            identityFromRefresh = true;
-            if (typeof r?.jti === 'string' && r.jti.trim().length > 0) {
-              managedRefreshToken = refresh;
-            }
+          const refreshUserId = r?.sub ?? null;
+          const hasManagedJti =
+            typeof r?.jti === 'string' && r.jti.trim().length > 0;
+          if (refreshUserId != null && hasManagedJti) {
+            candidateUserId = refreshUserId;
+            managedRefreshToken = refresh;
+          } else {
+            candidateUserId = null;
+            managedRefreshToken = null;
           }
         } catch {
           // refresh invalide → checkout invité
@@ -437,7 +439,6 @@ export const createCheckoutSession = async (req, res) => {
     const pool = await getPool();
     if (
       candidateUserId != null &&
-      identityFromRefresh &&
       managedRefreshToken != null
     ) {
       const rotated = await rotateManagedRefreshToken(
@@ -447,7 +448,6 @@ export const createCheckoutSession = async (req, res) => {
       );
       if (!rotated) {
         candidateUserId = null;
-        identityFromRefresh = false;
       } else {
         userId = rotated.user.id;
         res.cookie('access', rotated.access, cookieOptsAccess);
@@ -460,14 +460,6 @@ export const createCheckoutSession = async (req, res) => {
       );
       if (rows.length) {
         userId = rows[0].id;
-        if (identityFromRefresh) {
-          const newAccess = signAccess({
-            sub: rows[0].id,
-            email: rows[0].email,
-            role: rows[0].role
-          });
-          res.cookie('access', newAccess, cookieOptsAccess);
-        }
       } else {
         userId = null;
       }

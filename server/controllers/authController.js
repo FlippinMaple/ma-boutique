@@ -227,40 +227,22 @@ export const refreshToken = async (req, res) => {
     const isManagedRefresh =
       typeof payload?.jti === 'string' && payload.jti.trim().length > 0;
 
-    const pool = await getPool();
-    if (isManagedRefresh) {
-      const rotated = await rotateManagedRefreshToken(pool, userId, token);
-      if (!rotated) {
-        return res
-          .status(401)
-          .json({ message: 'Refresh invalide ou expiré.' });
-      }
+    if (!isManagedRefresh) {
       return res
-        .cookie('access', rotated.access, cookieOptsAccess)
-        .cookie('refresh', rotated.refresh, cookieOptsRefresh)
-        .status(200)
-        .json({ ok: true });
+        .status(401)
+        .json({ message: 'Refresh invalide ou expiré.' });
     }
 
-    const [rows] = await pool.query(
-      'SELECT email, role FROM customers WHERE id = ? LIMIT 1',
-      [userId]
-    );
-    if (!rows.length) {
-      return res.status(401).json({ message: 'Refresh invalide ou expiré.' });
+    const pool = await getPool();
+    const rotated = await rotateManagedRefreshToken(pool, userId, token);
+    if (!rotated) {
+      return res
+        .status(401)
+        .json({ message: 'Refresh invalide ou expiré.' });
     }
-
-    const email = rows[0].email;
-    const role = rows[0].role;
-
-    const access = signAccess({
-      sub: userId,
-      email,
-      role
-    });
-
     return res
-      .cookie('access', access, cookieOptsAccess)
+      .cookie('access', rotated.access, cookieOptsAccess)
+      .cookie('refresh', rotated.refresh, cookieOptsRefresh)
       .status(200)
       .json({ ok: true });
   } catch (err) {
