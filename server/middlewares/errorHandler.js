@@ -23,15 +23,20 @@ export function notFound(req, res) {
 /** Handler d’erreurs Express (signature à 4 args OBLIGATOIRE) */
 export function errorHandler(err, req, res, _next) {
   const status = err?.statusCode || err?.status || 500;
+  const internalMessage = err?.message || 'Erreur interne';
+  const isProd = process.env.NODE_ENV === 'production';
+  const publicMessage =
+    isProd && status >= 500 ? 'Erreur interne' : internalMessage;
   const body = {
-    error: err?.message || 'Erreur interne',
-    ...(process.env.NODE_ENV !== 'production' ? { stack: err?.stack } : {})
+    error: publicMessage,
+    ...(!isProd ? { stack: err?.stack } : {})
   };
 
   // log en base (sans casser la réponse si ça échoue)
-  logError(`[${req.method} ${req.originalUrl}] ${body.error}`, 'server').catch(
-    () => {}
-  );
+  logError(
+    `[${req.method} ${req.originalUrl}] ${internalMessage}`,
+    'server'
+  ).catch(() => {});
 
   // Si on a une réponse Express, utilise-la
   if (typeof res.status === 'function' && typeof res.json === 'function') {
