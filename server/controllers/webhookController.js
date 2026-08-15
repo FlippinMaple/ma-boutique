@@ -892,7 +892,7 @@ async function handleStripeWebhook(req, res) {
       );
     }
 
-    // D) Garantir des order_items avant tout passage a paid
+    // D) Vérifier des order_items avant tout passage a paid (P5: plus de fallback metadata)
     let cart_items = [];
     try {
       if (session.metadata?.cart_items) {
@@ -903,44 +903,30 @@ async function handleStripeWebhook(req, res) {
     }
 
     let hasItems = false;
-    let usedFallbackItems = false;
+    const usedFallbackItems = false;
     try {
       hasItems = await orderHasItems(db, orderId);
     } catch (e) {
-      await logWarn(
-        `[${traceId}] Check order_items failed: ${e?.message || e}`,
+      await logError(
+        `[${traceId}] order_items check failed for order #${orderId}: ${e?.message || e}`,
         'webhook'
       );
-    }
-
-    if (!hasItems) {
-      usedFallbackItems = await insertOrderItemsFromMetadata(
-        db,
+      return res.status(500).json({
+        received: false,
         orderId,
-        cart_items,
-        traceId
-      );
-      try {
-        hasItems = await orderHasItems(db, orderId);
-      } catch (e) {
-        await logWarn(
-          `[${traceId}] Re-check order_items failed: ${e?.message || e}`,
-          'webhook'
-        );
-        hasItems = false;
-      }
+        error: 'WEBHOOK_ORDER_ITEMS_CHECK_FAILED'
+      });
     }
 
     if (!hasItems) {
       await logError(
-        `[${traceId}] paid blocked: no order_items for order #${orderId} (session ${session.id})`,
+        `[${traceId}] paid blocked: no order_items for order #${orderId} (session ${session.id}); automatic metadata reconstruction disabled by P5`,
         'webhook'
       );
-      await releaseEventIdempotence(db, event.id);
       return res.status(500).json({
-        received: true,
+        received: false,
         orderId,
-        note: 'paid_blocked_no_order_items'
+        error: 'WEBHOOK_ORDER_ITEMS_MISSING'
       });
     }
 
