@@ -77,8 +77,6 @@ export const login = async (req, res, next) => {
 
     return res.status(200).json({
       ok: true,
-      accessToken: access,
-      refreshToken: refresh,
       user: {
         id: user.id,
         email: user.email,
@@ -136,7 +134,7 @@ export const refreshToken = async (req, res) => {
     return res
       .cookie('access', access, cookieOptsAccess)
       .status(200)
-      .json({ ok: true, accessToken: access });
+      .json({ ok: true });
   } catch (err) {
     console.error('[auth:refreshToken] error:', err?.message);
     return res.status(401).json({ message: 'Refresh invalide ou expiré.' });
