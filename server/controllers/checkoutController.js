@@ -1,5 +1,6 @@
 import Stripe from 'stripe';
 import axios from 'axios';
+import { createHash } from 'node:crypto';
 import { getPool } from '../db.js';
 import jwt from 'jsonwebtoken';
 
@@ -53,6 +54,25 @@ const cookieOptsAccess = {
   maxAge: 1000 * 60 * 60,
   path: '/'
 };
+
+function hashRefreshToken(token) {
+  return createHash('sha256').update(token, 'utf8').digest('hex');
+}
+
+async function isRegisteredRefreshToken(pool, userId, token) {
+  const tokenHash = hashRefreshToken(token);
+  const [rows] = await pool.query(
+    `SELECT id
+       FROM refresh_tokens
+      WHERE user_id = ?
+        AND refresh_token = ?
+        AND expires_at IS NOT NULL
+        AND expires_at > NOW()
+      LIMIT 1`,
+    [userId, tokenHash]
+  );
+  return rows.length > 0;
+}
 
 const STRIPE_KEY = process.env.STRIPE_SECRET_KEY || process.env.STRIPE_SK || '';
 const stripe = STRIPE_KEY ? new Stripe(STRIPE_KEY) : null;
@@ -276,6 +296,8 @@ export const createCheckoutSession = async (req, res) => {
     let userId = null;
     let candidateUserId = null;
     let identityFromRefresh = false;
+    let refreshTokenForRegistry = null;
+    let refreshRequiresRegistry = false;
     const access = req.cookies?.access;
     if (access) {
       try {
@@ -297,6 +319,10 @@ export const createCheckoutSession = async (req, res) => {
           candidateUserId = r?.sub ?? null;
           if (candidateUserId != null) {
             identityFromRefresh = true;
+            if (typeof r?.jti === 'string' && r.jti.trim().length > 0) {
+              refreshTokenForRegistry = refresh;
+              refreshRequiresRegistry = true;
+            }
           }
         } catch {
           // refresh invalide → checkout invité
@@ -316,6 +342,21 @@ export const createCheckoutSession = async (req, res) => {
     }
 
     const pool = await getPool();
+    if (
+      candidateUserId != null &&
+      identityFromRefresh &&
+      refreshRequiresRegistry
+    ) {
+      const registered = await isRegisteredRefreshToken(
+        pool,
+        candidateUserId,
+        refreshTokenForRegistry
+      );
+      if (!registered) {
+        candidateUserId = null;
+        identityFromRefresh = false;
+      }
+    }
     if (candidateUserId != null) {
       const [rows] = await pool.query(
         `SELECT id, email, role FROM customers WHERE id = ? LIMIT 1`,

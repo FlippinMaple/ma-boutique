@@ -50,6 +50,21 @@ function hashRefreshToken(token) {
   return createHash('sha256').update(token, 'utf8').digest('hex');
 }
 
+async function isRegisteredRefreshToken(pool, userId, token) {
+  const tokenHash = hashRefreshToken(token);
+  const [rows] = await pool.query(
+    `SELECT id
+       FROM refresh_tokens
+      WHERE user_id = ?
+        AND refresh_token = ?
+        AND expires_at IS NOT NULL
+        AND expires_at > NOW()
+      LIMIT 1`,
+    [userId, tokenHash]
+  );
+  return rows.length > 0;
+}
+
 function getRefreshTokenExpiresAt(token) {
   const decoded = jwt.decode(token);
   const exp = decoded?.exp;
@@ -140,7 +155,19 @@ export const refreshToken = async (req, res) => {
       return res.status(401).json({ message: 'Refresh invalide ou expiré.' });
     }
 
+    const isManagedRefresh =
+      typeof payload?.jti === 'string' && payload.jti.trim().length > 0;
+
     const pool = await getPool();
+    if (isManagedRefresh) {
+      const registered = await isRegisteredRefreshToken(pool, userId, token);
+      if (!registered) {
+        return res
+          .status(401)
+          .json({ message: 'Refresh invalide ou expiré.' });
+      }
+    }
+
     const [rows] = await pool.query(
       'SELECT email, role FROM customers WHERE id = ? LIMIT 1',
       [userId]
