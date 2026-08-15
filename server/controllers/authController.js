@@ -50,21 +50,6 @@ function hashRefreshToken(token) {
   return createHash('sha256').update(token, 'utf8').digest('hex');
 }
 
-async function isRegisteredRefreshToken(pool, userId, token) {
-  const tokenHash = hashRefreshToken(token);
-  const [rows] = await pool.query(
-    `SELECT id
-       FROM refresh_tokens
-      WHERE user_id = ?
-        AND refresh_token = ?
-        AND expires_at IS NOT NULL
-        AND expires_at > NOW()
-      LIMIT 1`,
-    [userId, tokenHash]
-  );
-  return rows.length > 0;
-}
-
 function getRefreshTokenExpiresAt(token) {
   const decoded = jwt.decode(token);
   const exp = decoded?.exp;
@@ -94,6 +79,80 @@ async function revokeRefreshToken(pool, token) {
     [tokenHash]
   );
   return result.affectedRows;
+}
+
+async function rotateManagedRefreshToken(pool, userId, oldToken) {
+  const oldTokenHash = hashRefreshToken(oldToken);
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+
+    const [tokenRows] = await connection.query(
+      `SELECT id
+         FROM refresh_tokens
+        WHERE user_id = ?
+          AND refresh_token = ?
+          AND expires_at IS NOT NULL
+          AND expires_at > NOW()
+        LIMIT 1
+          FOR UPDATE`,
+      [userId, oldTokenHash]
+    );
+    if (!tokenRows.length) {
+      await connection.rollback();
+      return null;
+    }
+
+    const [customerRows] = await connection.query(
+      `SELECT email, role FROM customers WHERE id = ? LIMIT 1`,
+      [userId]
+    );
+    if (!customerRows.length) {
+      await connection.rollback();
+      return null;
+    }
+
+    const email = customerRows[0].email;
+    const role = customerRows[0].role;
+
+    const newAccess = signAccess({
+      sub: userId,
+      email,
+      role
+    });
+    const newRefresh = signRefresh({ sub: userId });
+    const newTokenHash = hashRefreshToken(newRefresh);
+    const newExpiresAt = getRefreshTokenExpiresAt(newRefresh);
+
+    const [upd] = await connection.query(
+      `UPDATE refresh_tokens
+          SET refresh_token = ?,
+              created_at = NOW(),
+              expires_at = ?
+        WHERE id = ?
+          AND user_id = ?
+          AND refresh_token = ?`,
+      [newTokenHash, newExpiresAt, tokenRows[0].id, userId, oldTokenHash]
+    );
+    if (upd.affectedRows !== 1) {
+      throw new Error('REFRESH_ROTATION_UPDATE_FAILED');
+    }
+
+    await connection.commit();
+    return {
+      access: newAccess,
+      refresh: newRefresh
+    };
+  } catch (err) {
+    try {
+      await connection.rollback();
+    } catch {
+      /* keep original error */
+    }
+    throw err;
+  } finally {
+    connection.release();
+  }
 }
 
 export const login = async (req, res, next) => {
@@ -170,12 +229,17 @@ export const refreshToken = async (req, res) => {
 
     const pool = await getPool();
     if (isManagedRefresh) {
-      const registered = await isRegisteredRefreshToken(pool, userId, token);
-      if (!registered) {
+      const rotated = await rotateManagedRefreshToken(pool, userId, token);
+      if (!rotated) {
         return res
           .status(401)
           .json({ message: 'Refresh invalide ou expiré.' });
       }
+      return res
+        .cookie('access', rotated.access, cookieOptsAccess)
+        .cookie('refresh', rotated.refresh, cookieOptsRefresh)
+        .status(200)
+        .json({ ok: true });
     }
 
     const [rows] = await pool.query(
