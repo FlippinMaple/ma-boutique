@@ -963,6 +963,29 @@ P5 est **FERMÉ / COMPLET**. Hors scope volontaire : Printful automatique (P19).
 
 ---
 
+## 15 août 2026 — Correction production des URLs de retour Stripe
+
+Découverte pendant les validations Stripe P4/P5 : les URLs de retour des sessions Checkout en production pointaient vers localhost.
+
+**Ancienne valeur Hostinger :** `FRONTEND_URL=http://localhost:3000,http://localhost:5173`
+
+`sanitizeBaseUrl(req)` lit `process.env.FRONTEND_URL` en priorité. Si la valeur contient une virgule, la première entrée est utilisée → `http://localhost:3000`. `createCheckoutSession` construit alors :
+
+- `success_url = ${FRONTEND_URL}/checkout/success?session_id={CHECKOUT_SESSION_ID}`
+- `cancel_url = ${FRONTEND_URL}/checkout/cancel`
+
+**Correction manuelle Hostinger (aucune autre variable, aucun changement de code) :** `FRONTEND_URL=https://flippinmaple.com`
+
+Après sauvegarde / redémarrage : `GET https://flippinmaple.com/readiness` → `{ "ok": true }`.
+
+Une nouvelle session Stripe **test** a été créée depuis le checkout production. **Aucun paiement** n’a été effectué. Depuis la page Stripe, le bouton de retour a mené à `https://flippinmaple.com/checkout/cancel` : le `cancel_url` production est confirmé empiriquement.
+
+Le `success_url` n’a **pas** été revalidé empiriquement par un nouveau paiement. Dans le code, `success_url` et `cancel_url` partagent le même `FRONTEND_URL` ; la configuration qui produisait les deux URLs localhost a donc été corrigée, sans preuve empirique du redirect success.
+
+Aucun secret n’est impliqué. Ce n’est pas un chantier P-number.
+
+---
+
 ## Règle de mise à jour
 
 - ajouter une entrée après chaque correctif déployé;
