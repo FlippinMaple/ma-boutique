@@ -769,8 +769,23 @@ async function handleStripeWebhook(req, res) {
   ) {
     const session = event.data.object;
 
+    if (
+      event.type === 'checkout.session.completed' &&
+      session.payment_status !== 'paid'
+    ) {
+      await logInfo(
+        `[${traceId}] ${event.type} session ${session.id} payment_status=${session.payment_status ?? 'null'} (pas encore paid)`,
+        'webhook'
+      );
+      await upsertStripeEvent(event, req, null);
+      return res.json({
+        received: true,
+        note: 'payment_not_yet_paid'
+      });
+    }
+
     await logInfo(
-      `[${traceId}] Webhook checkout.session.completed pour session ${session.id} clientRef=${session.client_reference_id || 'null'}`,
+      `[${traceId}] Webhook ${event.type} pour session ${session.id} clientRef=${session.client_reference_id || 'null'}`,
       'webhook'
     );
 
