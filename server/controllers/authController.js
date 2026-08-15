@@ -107,23 +107,17 @@ export const refreshToken = async (req, res) => {
       return res.status(401).json({ message: 'Refresh invalide ou expiré.' });
     }
 
-    let role = payload.role;
-    let email = payload.email;
-
-    if (!role) {
-      const pool = await getPool();
-      const [rows] = await pool.query(
-        'SELECT email, role FROM customers WHERE id = ? LIMIT 1',
-        [userId]
-      );
-      if (!rows.length) {
-        return res.status(401).json({ message: 'Refresh invalide ou expiré.' });
-      }
-      role = rows[0].role;
-      if (!email) {
-        email = rows[0].email;
-      }
+    const pool = await getPool();
+    const [rows] = await pool.query(
+      'SELECT email, role FROM customers WHERE id = ? LIMIT 1',
+      [userId]
+    );
+    if (!rows.length) {
+      return res.status(401).json({ message: 'Refresh invalide ou expiré.' });
     }
+
+    const email = rows[0].email;
+    const role = rows[0].role;
 
     const access = signAccess({
       sub: userId,
