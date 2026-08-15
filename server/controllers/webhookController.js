@@ -19,8 +19,9 @@ INVARIANTS CRITIQUES WEBHOOK STRIPE – NE PAS CASSER
 2. On NE MODIFIE PAS les snapshots ecrits par checkoutController :
    shipping_address_snapshot, email_snapshot, price_at_purchase, etc.
 
-3. On NE SUPPRIME PAS / NE REECRIT PAS order_items si la commande existe deja.
-   On insere des items uniquement en mode degrade (fallback metadata).
+3. Le checkout cree les order_items avant Stripe. Le webhook ne les
+   supprime ni ne les reecrit. Il ne reconstruit plus d'items depuis
+   les metadata. Une commande sans order_item ne peut pas devenir paid.
 
 4. Jamais de status 'paid' sans au moins un order_item confirme.
 */
@@ -47,34 +48,6 @@ function parsePositiveSafeInteger(value) {
     return n;
   }
   return null;
-}
-
-/** Entier sûr >= 0 (ex. orders.subtotal_cents). */
-function parseNonNegativeSafeInteger(value) {
-  if (typeof value === 'bigint') {
-    if (value < 0n || value > BigInt(Number.MAX_SAFE_INTEGER)) return null;
-    return Number(value);
-  }
-  if (typeof value === 'number') {
-    if (!Number.isInteger(value) || value < 0 || !Number.isSafeInteger(value)) {
-      return null;
-    }
-    return value;
-  }
-  if (typeof value === 'string') {
-    const trimmed = value.trim();
-    if (!/^\d+$/.test(trimmed)) return null;
-    const n = Number(trimmed);
-    if (!Number.isSafeInteger(n) || n < 0) return null;
-    return n;
-  }
-  return null;
-}
-
-function canAddCents(left, right) {
-  if (!Number.isSafeInteger(left) || !Number.isSafeInteger(right)) return false;
-  if (right > Number.MAX_SAFE_INTEGER - left) return false;
-  return Number.isSafeInteger(left + right);
 }
 
 /**
@@ -129,185 +102,6 @@ async function orderHasItems(db, orderId) {
     [orderId]
   );
   return rows.length > 0;
-}
-
-async function insertOrderItemsFromMetadata(db, orderId, cartItems, traceId) {
-  let normalizedItems;
-  try {
-    if (!Array.isArray(cartItems) || cartItems.length === 0) {
-      throw new Error('EMPTY_OR_INVALID_CART_ITEMS');
-    }
-
-    normalizedItems = cartItems.map((it) => normalizeMetaCartItem(it));
-
-    const seenPks = new Set();
-    for (const item of normalizedItems) {
-      if (seenPks.has(item.dbVariantId)) {
-        throw new Error('DUPLICATE_VARIANT_PK');
-      }
-      seenPks.add(item.dbVariantId);
-    }
-  } catch (e) {
-    await logError(
-      `[${traceId}] Fallback insert order_items failed: ${e?.message || e}`,
-      'webhook'
-    );
-    return false;
-  }
-
-  let conn = null;
-  try {
-    conn = await db.getConnection();
-    await conn.beginTransaction();
-
-    const [orderRows] = await conn.query(
-      `SELECT subtotal_cents FROM orders WHERE id = ? FOR UPDATE`,
-      [orderId]
-    );
-    if (!orderRows.length) {
-      throw new Error('ORDER_NOT_FOUND_FOR_FALLBACK');
-    }
-
-    const orderSubtotalCents = parseNonNegativeSafeInteger(
-      orderRows[0].subtotal_cents
-    );
-    if (orderSubtotalCents == null) {
-      throw new Error('INVALID_ORDER_SUBTOTAL');
-    }
-
-    const [existingItems] = await conn.query(
-      `SELECT id FROM order_items WHERE order_id = ? LIMIT 1`,
-      [orderId]
-    );
-    if (existingItems.length > 0) {
-      throw new Error('ORDER_ITEMS_ALREADY_EXIST');
-    }
-
-    const requestedIds = normalizedItems.map((item) => item.dbVariantId);
-    const placeholders = requestedIds.map(() => '?').join(',');
-    const [variantRows] = await conn.query(
-      `
-      SELECT id, variant_id, printful_variant_id
-        FROM product_variants
-       WHERE id IN (${placeholders})
-      `,
-      requestedIds
-    );
-
-    const variantById = new Map();
-    for (const row of variantRows) {
-      const pk = parsePositiveSafeInteger(row.id);
-      if (pk == null) {
-        throw new Error('INVALID_DB_VARIANT_PK');
-      }
-      variantById.set(pk, row);
-    }
-
-    let reconstructedSubtotal = 0;
-    const preparedItems = [];
-
-    for (const item of normalizedItems) {
-      const row = variantById.get(item.dbVariantId);
-      if (!row) {
-        throw new Error('VARIANT_NOT_FOUND');
-      }
-
-      const rowPk = parsePositiveSafeInteger(row.id);
-      if (rowPk == null || rowPk !== item.dbVariantId) {
-        throw new Error('VARIANT_PK_MISMATCH');
-      }
-
-      const rowBizId = parsePositiveSafeInteger(row.variant_id);
-      if (rowBizId == null || rowBizId !== item.bizVariantId) {
-        throw new Error('VARIANT_BIZ_ID_MISMATCH');
-      }
-
-      if (item.printfulVariantId != null) {
-        const rowPfId = parsePositiveSafeInteger(row.printful_variant_id);
-        if (rowPfId == null || rowPfId !== item.printfulVariantId) {
-          throw new Error('VARIANT_PRINTFUL_ID_MISMATCH');
-        }
-      }
-
-      if (item.unitPriceCents > Number.MAX_SAFE_INTEGER / item.quantity) {
-        throw new Error('AMOUNT_OVERFLOW');
-      }
-      const lineCents = item.unitPriceCents * item.quantity;
-      if (!Number.isSafeInteger(lineCents)) {
-        throw new Error('AMOUNT_OVERFLOW');
-      }
-      if (!canAddCents(reconstructedSubtotal, lineCents)) {
-        throw new Error('AMOUNT_OVERFLOW');
-      }
-      reconstructedSubtotal += lineCents;
-
-      preparedItems.push({
-        dbVariantId: rowPk,
-        printfulVariantId: row.printful_variant_id ?? null,
-        quantity: item.quantity,
-        unitPriceCents: item.unitPriceCents,
-        priceAtPurchase: (item.unitPriceCents / 100).toFixed(2),
-        name: item.name,
-        sku: item.sku
-      });
-    }
-
-    if (reconstructedSubtotal !== orderSubtotalCents) {
-      throw new Error('SUBTOTAL_MISMATCH');
-    }
-
-    for (const line of preparedItems) {
-      await conn.execute(
-        `
-        INSERT INTO order_items
-               (order_id,
-                variant_id,
-                printful_variant_id,
-                quantity,
-                price_at_purchase,
-                unit_price_cents,
-                meta,
-                created_at,
-                updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, UTC_TIMESTAMP(), UTC_TIMESTAMP())
-        `,
-        [
-          orderId,
-          line.dbVariantId,
-          line.printfulVariantId,
-          line.quantity,
-          line.priceAtPurchase,
-          line.unitPriceCents,
-          JSON.stringify({
-            name: line.name,
-            sku: line.sku,
-            note: 'inserted from stripe webhook (fallback mode)',
-            source: 'webhookController.fallback'
-          })
-        ]
-      );
-    }
-
-    await conn.commit();
-    return true;
-  } catch (e) {
-    if (conn) {
-      try {
-        await conn.rollback();
-      } catch {
-        /* keep original error */
-      }
-    }
-    await logError(
-      `[${traceId}] Fallback insert order_items failed: ${e?.message || e}`,
-      'webhook'
-    );
-    return false;
-  } finally {
-    if (conn) {
-      conn.release();
-    }
-  }
 }
 
 async function releaseEventIdempotence(db, eventId) {
