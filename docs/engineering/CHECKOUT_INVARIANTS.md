@@ -36,7 +36,7 @@ TX : orders + checkout_idempotency + order_items + history
 Session Stripe
   ↓
 Webhook signé  POST /webhook/stripe
-  ├─ completed / async_payment_succeeded → paid
+  ├─ completed (si payment_status === 'paid') / async_payment_succeeded → paid
   └─ expired → cancelled (si encore pending)
 ```
 
@@ -206,17 +206,17 @@ Webhook signé  POST /webhook/stripe
 
 | | |
 |---|---|
-| **Description** | Le passage à `paid` est déclenché pour `checkout.session.completed` et `checkout.session.async_payment_succeeded`. `checkout.session.expired` ferme une `pending` liée à **cette** session (`cancelled`). Les autres types sont journalisés sans changer le statut de paiement. |
-| **Justification** | Branches dédiées dans `handleStripeWebhook`. |
-| **Si violé** | Paiement confirmé non enregistré, pending éternelle après expiration, ou statut `paid` sur un mauvais type d’événement. |
+| **Description** | `checkout.session.completed` n’entre dans le chemin paid que si `session.payment_status === 'paid'`. Toute autre valeur (`unpaid`, `no_payment_required`, absent, inattendue) → 200 `payment_not_yet_paid`, aucune mutation. `checkout.session.async_payment_succeeded` conserve le chemin paid (succès différé). `checkout.session.expired` ferme une `pending` liée à **cette** session (`cancelled`). Les autres types sont journalisés sans changer le statut de paiement. `no_payment_required` n’est pas assimilé à paid. |
+| **Justification** | Branches dédiées + garde P4-E dans `handleStripeWebhook`. |
+| **Si violé** | Paiement confirmé non enregistré, pending éternelle après expiration, ou statut `paid` sur un mauvais type / un completed encore unpaid. |
 | **Fichiers** | `server/controllers/webhookController.js` |
 
 ### Résolution de commande pour le paiement
 
 | | |
 |---|---|
-| **Description** | Pour `completed` / `async_payment_succeeded`, l’`orderId` est résolu dans cet ordre : (1) `orders.stripe_session_id = session.id`, (2) `client_reference_id` ou `metadata.order_id` comme `orders.id`, (3) dernière commande `pending` pour le même email. |
-| **Justification** | `resolveOrderIdFromSession`. |
+| **Description** | Pour `completed` / `async_payment_succeeded` : (1) `orders.stripe_session_id = session.id` ; (2) sinon `client_reference_id` et `metadata.order_id` parsés en entiers positifs sûrs — s’ils sont tous deux valides et différents, aucune résolution ; une candidate n’est acceptée que si `orders.id` correspond **et** (`stripe_session_id = session.id` OU `stripe_session_id IS NULL`). Une order déjà liée à une autre session est refusée. Aucun fallback email. Erreur DB → 500 `WEBHOOK_ORDER_RESOLUTION_FAILED`. Aucun match sûr → 200 `order_not_found_no_fallback`. |
+| **Justification** | `resolveOrderIdFromSession` (P4-D). |
 | **Si violé** | Mauvaise commande marquée payée, ou aucune. |
 | **Fichiers** | `server/controllers/webhookController.js` |
 
@@ -309,9 +309,9 @@ Webhook signé  POST /webhook/stripe
 
 | | |
 |---|---|
-| **Description** | Avant traitement métier, insertion `INSERT IGNORE` dans `stripe_events` sur `event_id`. Si `affectedRows === 0`, réponse `{ received: true, duplicate: true }` sans re-traiter. |
-| **Justification** | Bloc idempotence dans `handleStripeWebhook`. |
-| **Si violé** | Double passage `pending` → `paid`, double historisation, double effets de bord. |
+| **Description** | Avant traitement métier, `INSERT IGNORE` réserve `event_id` dans `stripe_events` (table déjà provisionnée). Échec de l’INSERT → 500 `WEBHOOK_IDEMPOTENCE_UNAVAILABLE` (fail-closed). `affectedRows === 0` signifie « event_id déjà vu », pas « métier terminé ». Duplicate non métier → 200 `{ received: true, duplicate: true }`. Duplicate métier (`expired`, `completed`, `async_payment_succeeded`) **rejoue** les branches existantes ; les gardes de statut et la TX paid rendent le rejeu idempotent. |
+| **Justification** | Bloc idempotence P4-A/B/C dans `handleStripeWebhook`. |
+| **Si violé** | Perte d’événement après crash post-réservation, ou double transition métier. |
 | **Fichiers** | `server/controllers/webhookController.js` |
 
 ### Upsert ultérieur de l’événement avec payload
@@ -349,9 +349,27 @@ Webhook signé  POST /webhook/stripe
 
 | | |
 |---|---|
-| **Description** | Après marquage payé, insertion `order_status_history` avec `old_status = 'pending'`, `new_status = 'paid'`. |
-| **Justification** | Insert dans le handler après `UPDATE orders`. |
-| **Si violé** | Pas de preuve temporelle du passage payé. |
+| **Description** | L’INSERT `order_status_history` (`pending` → `paid`) fait partie du **même** COMMIT que l’UPDATE paid. Un échec history rollback toute la transition. |
+| **Justification** | Noyau transactionnel P4-F. |
+| **Si violé** | Order paid sans preuve temporelle, ou paid partiel. |
+| **Fichiers** | `server/controllers/webhookController.js` |
+
+### Noyau paid atomique
+
+| | |
+|---|---|
+| **Description** | Après résolution et garantie des `order_items`, une connexion dédiée : `BEGIN` → `SELECT orders … FOR UPDATE` → recheck d’au moins un item → `UPDATE` `pending` → `paid` (totaux, `paid_at`, email COALESCE, `stripe_payment_intent_id` COALESCE) + history → `COMMIT`. `WHERE id = ? AND status = 'pending'`. Échec avant COMMIT → rollback, 500 `WEBHOOK_PAYMENT_TX_FAILED`, `event_id` conservé. Side effects (reconcile, cart historique, abandoned, Printful, upsert) **après** COMMIT. |
+| **Justification** | P4-F. |
+| **Si violé** | Paid sans history / sans PI, ou double transition. |
+| **Fichiers** | `server/controllers/webhookController.js` |
+
+### Une commande cancelled ne redevient jamais paid
+
+| | |
+|---|---|
+| **Description** | Sous `FOR UPDATE`, seul `pending` peut devenir `paid`. `cancelled` (ou tout statut non-pending / non-paid) → no-op, 200, aucune history paid. `checkout.session.expired` ne peut pas non plus annuler une `paid`. |
+| **Justification** | Lock P4-F + `AND status = 'pending'` ; branche expired P3-E2. |
+| **Si violé** | Commande annulée réécrite en paid, ou paid annulée. |
 | **Fichiers** | `server/controllers/webhookController.js` |
 
 ### Totaux mis à jour depuis Stripe à l’encaissement
@@ -367,9 +385,9 @@ Webhook signé  POST /webhook/stripe
 
 | | |
 |---|---|
-| **Description** | Si la session expose `payment_intent`, il est écrit dans `orders.stripe_payment_intent_id`. |
-| **Justification** | `UPDATE` conditionnel dans le webhook. |
-| **Si violé** | Traçabilité support / rapprochement events PI dégradée. |
+| **Description** | `stripe_payment_intent_id` est écrit dans le **même** `UPDATE` paid (`COALESCE` : n’écrase pas une valeur existante par NULL). Plus d’UPDATE PI séparé après coup. |
+| **Justification** | Noyau transactionnel P4-F. |
+| **Si violé** | Order paid sans PI, ou PI écrit sans paid. |
 | **Fichiers** | `server/controllers/webhookController.js` |
 
 ---
@@ -612,7 +630,7 @@ Webhook signé  POST /webhook/stripe
 
 | | |
 |---|---|
-| **Description** | Certaines étapes annexes (customer Stripe, historisation, lock panier historique, Printful automatique) sont dans des `try/catch` qui journalisent sans toujours annuler le flux principal déjà engagé. Le checkout ne crée plus d’`abandoned_carts`. |
+| **Description** | Certaines étapes annexes **après** COMMIT paid (lock panier historique, abandoned recovered, Printful automatique, reconcile) sont dans des `try/catch` qui journalisent sans annuler le paid déjà commité. L’historisation paid et le payment_intent ne sont plus best-effort : ils sont dans la TX. Le checkout ne crée plus d’`abandoned_carts`. |
 | **Justification** | Patterns `console.warn` / `logWarn` autour de ces blocs. |
 | **Si violé** | (Observation) Un échec annexe peut laisser des écarts (panier non locké, Printful non créé) alors que la commande est `paid`. |
 | **Fichiers** | `server/controllers/checkoutController.js`, `server/controllers/webhookController.js` |
@@ -626,13 +644,13 @@ Webhook signé  POST /webhook/stripe
 | **Si violé** | (Observation) Pending orphelines sans session, ou pending éternelles après expiration Stripe. |
 | **Fichiers** | `server/controllers/checkoutController.js`, `server/controllers/webhookController.js` |
 
-### Idempotence soft si insert ignore échoue
+### Idempotence fail-closed si insert ignore échoue
 
 | | |
 |---|---|
-| **Description** | Si l’assert d’idempotence (`INSERT IGNORE`) échoue exceptionnellement, le handler log un warning et continue le traitement. |
-| **Justification** | `catch` « Unable to assert idempotence » puis poursuite. |
-| **Si violé** | Risque de double traitement si la contrainte d’unicité n’a pas pu être appliquée. |
+| **Description** | Si l’assert d’idempotence (`INSERT IGNORE`) échoue, le webhook log et retourne 500 `WEBHOOK_IDEMPOTENCE_UNAVAILABLE` sans aucun traitement métier. |
+| **Justification** | P4-A. |
+| **Si violé** | Traitement métier sans garantie d’unicité d’événement. |
 | **Fichiers** | `server/controllers/webhookController.js` |
 
 ---

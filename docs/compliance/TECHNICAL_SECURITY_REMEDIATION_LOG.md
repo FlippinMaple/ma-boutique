@@ -1,6 +1,6 @@
 # Journal des correctifs techniques et de sécurité
 
-**Statut :** journal actif — chantier P3 (protections du checkout public) : **FERMÉ / COMPLET**
+**Statut :** journal actif — chantiers P3 (checkout public) et P4 (webhook Stripe / idempotence) : **FERMÉS / COMPLETS**
 
 Ce document complète `docs/compliance/TECHNICAL_SECURITY_AUDIT.md`.
 
@@ -835,7 +835,89 @@ Fermé.
 
 ### Statut final P3
 
-Le chantier P3 est **FERMÉ / COMPLET** et validé en production. Hors scope restant : P4 (idempotence générale des events Stripe), runner `scripts/run-migrations.js` (non fiable : importe `{ pool }` alors que `server/db.js` exporte `getPool()`).
+Le chantier P3 est **FERMÉ / COMPLET** et validé en production. Au moment de cette clôture, P4 (idempotence générale des events Stripe) et le runner `scripts/run-migrations.js` (non fiable : importe `{ pool }` alors que `server/db.js` exporte `getPool()`) restaient hors de ce chantier.
+
+P4 a depuis été traité et fermé dans la section suivante. Le runner de migrations n’a pas été corrigé.
+
+---
+
+## 15 août 2026 — Chantier P4 : webhook Stripe et idempotence des événements (FERMÉ)
+
+Objectif : ingestion Stripe fail-closed, replay métier sûr, résolution d’order sans email, `payment_status` pour `completed`, et noyau `pending → paid` atomique. Aucune migration. Printful / fulfillment restent hors P4 (P19). Le rapport `TECHNICAL_SECURITY_AUDIT.md` n’a pas été modifié.
+
+### P4-A — Fail-closed sur l’assert d’idempotence
+
+**Commit :** `57ebe19` — `fix(webhook): fail closed on idempotency errors`
+
+`INSERT IGNORE` réserve `event_id`. Si cet INSERT échoue : aucun métier, HTTP 500 `WEBHOOK_IDEMPOTENCE_UNAVAILABLE`.
+
+### P4-B — Plus de DDL runtime
+
+**Commit :** `5a16e26` — `fix(webhook): remove runtime stripe events ddl`
+
+Plus de `CREATE TABLE IF NOT EXISTS` ni `ALTER TABLE … order_id` dans le webhook. `stripe_events` est un prérequis déjà provisionné.
+
+### P4-C — Duplicate ≠ métier terminé
+
+**Commit :** `7b90801` — `fix(webhook): replay duplicate business events`
+
+`affectedRows === 0` = `event_id` déjà vu. Les events métier (`expired`, `completed`, `async_payment_succeeded`) rejouent ; les invariants de statut / TX empêchent une seconde transition. Les events non métier restent 200 `duplicate`. Permet un retry Stripe après crash post-réservation.
+
+### P4-D — Résolution d’order durcie
+
+**Commit :** `444fb98` — `fix(webhook): harden order resolution`
+
+Autorité : `orders.stripe_session_id = session.id`. Sinon `client_reference_id` / `metadata.order_id` (entiers positifs sûrs, identiques si les deux, et `stripe_session_id` égal à la session ou NULL). Une order liée à une autre session est refusée. Plus de fallback email. Erreur DB → 500 `WEBHOOK_ORDER_RESOLUTION_FAILED`. Aucun match sûr → 200 `order_not_found_no_fallback`. `customer_email` n’est plus une autorité de résolution.
+
+### P4-E — `payment_status` sur completed
+
+**Commit :** `59ca9df` — `fix(webhook): require paid checkout status`
+
+`checkout.session.completed` n’entre dans le chemin paid que si `session.payment_status === 'paid'`. Sinon (unpaid, `no_payment_required`, absent, autre) : journal, `upsertStripeEvent`, 200 `payment_not_yet_paid`, aucune mutation. `async_payment_succeeded` conserve le chemin paid. `no_payment_required` n’est pas assimilé à paid.
+
+### P4-F — Noyau paid atomique
+
+**Commit :** `8f8e2ce` — `fix(webhook): make paid transition atomic`
+
+Connexion dédiée, TX courte : `FOR UPDATE` → recheck items → `UPDATE` `pending` → `paid` (totaux, `paid_at`, email COALESCE, `stripe_payment_intent_id` COALESCE) + history `pending` → `paid` → COMMIT. `WHERE id = ? AND status = 'pending'`. `cancelled` ne redevient pas paid. Échec avant COMMIT → rollback, 500 `WEBHOOK_PAYMENT_TX_FAILED`, `event_id` conservé (P4-C rejoue). Hors TX après COMMIT : reconcile, cart historique, abandoned, Printful, upsert.
+
+### Validation production test (15 août 2026)
+
+Après déploiement P4-F : `GET /readiness` → `ok: true`.
+
+Tentative test :
+- clé d’idempotence `9f0c25d1-ff28-414d-b14b-fc87215ee0af`
+- session `cs_test_a1cVC4xj4kEju61mB64MqCZgBL8olHtyI9N3s5EDnzt7M2tkzboKVwmMKg`
+- order **#104**
+- paiement Stripe **mode test uniquement**
+
+Après `checkout.session.completed`, order #104 :
+- `status = paid`
+- `total = 40.94` CAD
+- `shipping_cost = 10.95`
+- `stripe_payment_intent_id = pi_3U4bodFA34RmQBx30MLJAzhA`
+- `item_count = 1`
+- `paid_history_count = 1`
+- `paid_at = 2026-08-15 07:15:41` UTC
+
+Historique observé : `init` → `pending`, puis `pending` → `paid`.
+
+Événement : `evt_1U4bofFA34RmQBx3EMGd5ZOM`, type `checkout.session.completed`.
+
+L’événement exact a ensuite été renvoyé manuellement depuis Stripe (mode test). Réponse webhook : HTTP 200 `{"received":true,"orderId":104}`.
+
+Vérification DB après le rejeu :
+- order #104 toujours `paid`
+- `paid_at` toujours exactement `2026-08-15 07:15:41`
+- `stripe_payment_intent_id` inchangé
+- `paid_history_count = 1`
+- `event_row_count` pour `evt_1U4bofFA34RmQBx3EMGd5ZOM` = 1
+
+Conclusion : le duplicate métier a été rejoué sans nouvelle transition ; aucune deuxième history `pending` → `paid` ; aucune réécriture de `paid_at` ; aucune deuxième row `stripe_events`. P4-C + P4-F sont validés ensemble sur un rejeu réel Stripe test.
+
+### Statut final P4
+
+Le chantier P4 est **FERMÉ / COMPLET**. Hors scope volontaire : Printful (P19), rétention/PII `payload` (P13), correction du runner `npm run migrate`.
 
 ---
 

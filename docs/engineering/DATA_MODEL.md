@@ -492,7 +492,7 @@ shipping_address_id et billing_address_id existent encore sur `orders`, mais le 
 
 shipping et billing PEUVENT être différentes (cadeau envoyé à quelqu’un d’autre, facture pour l’acheteur). La base permet deux IDs différents mais ne déclare pas de FK.
 
-Statuts checkout réellement écrits aujourd’hui : `pending` (création), `paid` (webhook paiement), `cancelled` (webhook `checkout.session.expired` si encore `pending`, avec `cancelled_at`).
+Statuts checkout réellement écrits aujourd’hui : `pending` (création), `paid` (webhook paiement), `cancelled` (webhook `checkout.session.expired` si encore `pending`, avec `cancelled_at`). Le passage `pending` → `paid` commit atomiquement le statut, `paid_at`, `stripe_payment_intent_id` et l’history `pending` → `paid` (P4-F). Une `cancelled` ne redevient pas `paid`.
 
 ### order_items ← inventaire §1.6
 
@@ -536,7 +536,7 @@ Index(order_id)
 FK order_id → orders.id ON DELETE CASCADE
 
 Rôle métier
-Historique d’état de chaque commande. Transitions checkout actuelles : `init` → `pending` à la création ; `pending` → `paid` au paiement signé ; `pending` → `cancelled` à l’expiration de la Checkout Session Stripe.
+Historique d’état de chaque commande. Transitions checkout actuelles : `init` → `pending` à la création ; `pending` → `paid` au paiement signé (même COMMIT que l’UPDATE paid, P4-F) ; `pending` → `cancelled` à l’expiration de la Checkout Session Stripe.
 
 ### checkout_idempotency
 
@@ -583,20 +583,22 @@ Suivi logistique : numéro de suivi, transporteur, statut d’expédition.
 
 Colonnes clés
 event_id varchar(255) PK
-event_type varchar(64) INDEX
-created_at datetime DEFAULT utc_timestamp()
-payload longtext
-received_at datetime DEFAULT current_timestamp()
+event_type varchar(64), indexé
+created_at datetime
+payload longtext nullable
+received_at datetime
+order_id int nullable, indexé
 
 PK / Index
 PK(event_id)
-Index(event_type,created_at)
+Index(event_type)
+Index(order_id)
 
 Rôle métier
-Log brut des webhooks Stripe (paiement, remboursement, etc.). C’est ta boîte noire Stripe pour audit.
+Table déjà provisionnée (plus de CREATE/ALTER runtime depuis P4-B). `event_id` réserve la réception d’un webhook (INSERT IGNORE). La présence d’une row **ne signifie pas** que le traitement métier est terminé : les duplicates métier (`expired`, `completed`, `async_payment_succeeded`) peuvent être rejoués ; les invariants de statut et la TX paid rendent le rejeu idempotent. Aucune colonne `processing` / `completed` / `failed`, aucun lease. P4 utilise un protocole logiciel (replay + gardes métier), pas une machine d’état supplémentaire. Aucune migration P4.
 
 Connexions logiques supplémentaires
-Pas de FK vers orders, mais on peut relier un event Stripe à une commande en utilisant orders.stripe_session_id / orders.stripe_payment_intent_id qu’on retrouve dans le payload.
+Pas de FK vers orders. `order_id` est renseigné à l’upsert quand la commande est connue. On peut aussi relier un event via `orders.stripe_session_id` / `orders.stripe_payment_intent_id` dans le payload.
 
 ---
 
