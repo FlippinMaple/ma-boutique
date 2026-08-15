@@ -1,6 +1,6 @@
 # Journal des correctifs techniques et de sécurité
 
-**Statut :** journal actif — chantiers P3 (checkout public), P4 (webhook Stripe / idempotence) et P5 (fallback `order_items`) : **FERMÉS / COMPLETS**
+**Statut :** journal actif — chantiers P3 (checkout public), P4 (webhook Stripe / idempotence), P5 (fallback `order_items`) et P6 (gestionnaire d’erreurs) : **FERMÉS / COMPLETS**
 
 Ce document complète `docs/compliance/TECHNICAL_SECURITY_AUDIT.md`.
 
@@ -983,6 +983,40 @@ Une nouvelle session Stripe **test** a été créée depuis le checkout producti
 Le `success_url` n’a **pas** été revalidé empiriquement par un nouveau paiement. Dans le code, `success_url` et `cancel_url` partagent le même `FRONTEND_URL` ; la configuration qui produisait les deux URLs localhost a donc été corrigée, sans preuve empirique du redirect success.
 
 Aucun secret n’est impliqué. Ce n’est pas un chantier P-number.
+
+---
+
+## 15 août 2026 — Chantier P6 : gestionnaire global d’erreurs (FERMÉ)
+
+Le constat d’audit initial (signature Express à trois arguments, stack en `NODE_ENV=development`, `/readiness` exposant un détail MySQL, 5xx globaux susceptibles d’exposer `err.message`) reste figé dans `TECHNICAL_SECURITY_AUDIT.md`.
+
+**Déjà corrigé avant P6-A.** Signature `errorHandler(err, req, res, _next)`. Hostinger : `NODE_ENV=production` (pas de stack dans les réponses production). `/readiness` en erreur : `{ ok: false, error: 'service_unavailable' }`, sans `e.message` public.
+
+### P6-A — Masquage des 5xx production
+
+**Commit :** `44b8957` — `fix(server): hide production 5xx details`
+**Fichier :** `server/middlewares/errorHandler.js`
+
+Le handler distingue `internalMessage = err?.message || 'Erreur interne'` et un message public : si production et `status >= 500` → `Erreur interne` ; sinon le message métier original.
+
+- Production + 5xx : `{ error: 'Erreur interne' }` — aucun `err.message` public, aucune stack.
+- Production + 4xx : message métier conservé.
+- Développement : message original + stack comme auparavant.
+- Logging : `logError` utilise `internalMessage`, pas le message public générique.
+
+`notFound` inchangé. Aucune modification de route, contrôleur, DB, ordre des middlewares, ni migration.
+
+### Validations
+
+Statiques avant commit : `git diff --check` réussi ; `node --check server/middlewares/errorHandler.js` réussi. Inspection : signature 4 arguments ; `internalMessage` / `publicMessage` ; masquage si `status >= 500` ; stack seulement hors production ; `logError` sur `internalMessage`.
+
+Après push `44b8957` : `GET https://flippinmaple.com/readiness` → `{ "ok": true }`.
+
+Test CORS non destructif : `Origin: https://not-allowed.invalid` sur `GET https://flippinmaple.com/api/products` → HTTP 500, body exact `{"error":"Erreur interne"}`. Aucun message `Not allowed by CORS`, aucune stack, aucun détail d’exception. Aucun checkout, aucune session Stripe, aucune donnée DB créée ou modifiée. Les 4xx métier sont validés **statiquement** par la condition du handler ; aucun test 4xx spécifique P6 n’a été effectué dans cette étape.
+
+### Statut final P6
+
+P6 est **FERMÉ / COMPLET**.
 
 ---
 
