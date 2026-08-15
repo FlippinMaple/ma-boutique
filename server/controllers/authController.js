@@ -86,6 +86,16 @@ async function persistRefreshToken(pool, userId, token) {
   );
 }
 
+async function revokeRefreshToken(pool, token) {
+  const tokenHash = hashRefreshToken(token);
+  const [result] = await pool.query(
+    `DELETE FROM refresh_tokens
+      WHERE refresh_token = ?`,
+    [tokenHash]
+  );
+  return result.affectedRows;
+}
+
 export const login = async (req, res, next) => {
   try {
     const { email, password } = req.body || {};
@@ -197,6 +207,12 @@ export const refreshToken = async (req, res) => {
 
 export async function logout(req, res) {
   try {
+    const token = req.cookies?.refresh;
+    if (token) {
+      const pool = await getPool();
+      await revokeRefreshToken(pool, token);
+    }
+
     res.clearCookie('access', {
       httpOnly: true,
       sameSite: 'lax',
