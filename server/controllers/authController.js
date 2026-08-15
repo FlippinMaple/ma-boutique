@@ -1,6 +1,7 @@
 // server/controllers/authController.js
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
+import { createHash, randomUUID } from 'node:crypto';
 import { getPool } from '../db.js';
 
 const isProd = process.env.NODE_ENV === 'production';
@@ -40,8 +41,34 @@ function signAccess(payload) {
 function signRefresh(payload) {
   return jwt.sign(payload, process.env.JWT_REFRESH_SECRET, {
     expiresIn: REFRESH_TTL,
-    algorithm: 'HS256'
+    algorithm: 'HS256',
+    jwtid: randomUUID()
   });
+}
+
+function hashRefreshToken(token) {
+  return createHash('sha256').update(token, 'utf8').digest('hex');
+}
+
+function getRefreshTokenExpiresAt(token) {
+  const decoded = jwt.decode(token);
+  const exp = decoded?.exp;
+  if (typeof exp !== 'number' || !Number.isInteger(exp) || exp <= 0) {
+    throw new Error('REFRESH_TOKEN_EXP_MISSING');
+  }
+  return new Date(exp * 1000);
+}
+
+async function persistRefreshToken(pool, userId, token) {
+  const tokenHash = hashRefreshToken(token);
+  const expiresAt = getRefreshTokenExpiresAt(token);
+  await pool.query(
+    `INSERT INTO refresh_tokens
+       (user_id, refresh_token, created_at, expires_at)
+     VALUES
+       (?, ?, NOW(), ?)`,
+    [userId, tokenHash, expiresAt]
+  );
 }
 
 export const login = async (req, res, next) => {
@@ -73,6 +100,8 @@ export const login = async (req, res, next) => {
       role: user.role
     });
     const refresh = signRefresh({ sub: user.id });
+
+    await persistRefreshToken(pool, user.id, refresh);
 
     res.cookie('access', access, cookieOptsAccess);
     res.cookie('refresh', refresh, cookieOptsRefresh);
@@ -239,6 +268,8 @@ export const register = async (req, res, next) => {
 
     const access = signAccess({ sub: userId, email, role });
     const refresh = signRefresh({ sub: userId });
+
+    await persistRefreshToken(pool, userId, refresh);
 
     return res
       .cookie('access', access, cookieOptsAccess)
