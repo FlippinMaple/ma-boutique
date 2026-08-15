@@ -655,7 +655,12 @@ async function handleStripeWebhook(req, res) {
   }
 
   // 3. Idempotence : réserve event_id dans stripe_events (table déjà provisionnée)
-  // On tente d'insérer l'event_id; si déjà vu => on sort
+  // event_id déjà présent ≠ métier terminé ; les events métier peuvent rejouer.
+  const isBusinessEvent =
+    event.type === 'checkout.session.expired' ||
+    event.type === 'checkout.session.completed' ||
+    event.type === 'checkout.session.async_payment_succeeded';
+
   try {
     const db = req.app.locals.db;
     const [ins] = await db.query(
@@ -667,9 +672,15 @@ async function handleStripeWebhook(req, res) {
     );
 
     if (ins.affectedRows === 0) {
-      // Event déjà traité
-      await logInfo(`[${traceId}] Event deja recu: ${event.id}`, 'webhook');
-      return res.json({ received: true, duplicate: true });
+      await logInfo(
+        `[${traceId}] Event id deja present: ${event.type}${
+          isBusinessEvent ? ' (rejeu metier)' : ' (duplicate ignore)'
+        }`,
+        'webhook'
+      );
+      if (!isBusinessEvent) {
+        return res.json({ received: true, duplicate: true });
+      }
     }
   } catch (e) {
     await logError(
