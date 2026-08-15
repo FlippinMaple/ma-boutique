@@ -700,11 +700,14 @@ async function handleStripeWebhook(req, res) {
       return res.json({ received: true, duplicate: true });
     }
   } catch (e) {
-    await logWarn(
+    await logError(
       `[${traceId}] Unable to assert idempotence: ${e?.message || e}`,
       'webhook'
     );
-    // pas bloquant, on poursuit quand même
+    return res.status(500).json({
+      received: false,
+      error: 'WEBHOOK_IDEMPOTENCE_UNAVAILABLE'
+    });
   }
 
   // 4. checkout.session.expired → pending → cancelled (stripe_session_id exact only)
