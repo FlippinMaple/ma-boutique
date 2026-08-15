@@ -1,6 +1,6 @@
 # Journal des correctifs techniques et de sécurité
 
-**Statut :** corrections en cours
+**Statut :** journal actif — chantier P3 (protections du checkout public) : **FERMÉ / COMPLET**
 
 Ce document complète `docs/compliance/TECHNICAL_SECURITY_AUDIT.md`.
 
@@ -761,6 +761,81 @@ Le constat « prix et total contrôlés par le navigateur » est corrigé :
 - Stripe et snapshots monétaires construits à partir de valeurs serveur.
 
 Les autres constats du rapport d’audit figé restent hors de ce chantier.
+
+---
+
+## 15 août 2026 — Chantier P3 : protections du checkout public (FERMÉ)
+
+Le checkout public reste volontairement ouvert (invité autorisé). P3 borne l’abus, durcit l’initialisation, retire les IDs client non fiables, valide les entrées, ferme les pending expirées et rend la création de commande idempotente. P1 (prix / shipping autoritaires) n’a pas été rouvert. P4 (idempotence générale `stripe_events`) n’est pas ce chantier.
+
+Le rapport `TECHNICAL_SECURITY_AUDIT.md` n’a pas été modifié.
+
+### P3-A — Limites d’abus
+
+**Commit :** `72a87c4` — `fix(checkout): limit checkout abuse`
+
+- `checkoutLimiter` : 10 requêtes / 60 s / IP → 429 `CHECKOUT_RATE_LIMITED`
+- max 20 lignes panier → 400 `CART_TOO_LARGE`
+- max quantité 20 par ligne → 400 `QUANTITY_LIMIT_EXCEEDED`
+
+**Validation production :** limites et codes observés. Fermé.
+
+### P3-B — Initialisation atomique
+
+**Commit :** `66255fd` — `fix(checkout): make order initialization atomic`
+
+Transaction MySQL dédiée : `orders` + `order_items` + `order_status_history` (`init` → `pending`). Rollback complet si échec avant commit. Stripe hors transaction.
+
+**Validation production :** commande de test créée atomiquement. Fermé.
+
+### P3-C — IDs relationnels client non fiables
+
+**Commit :** `7af49f0` — `fix(checkout): remove untrusted relational ids`
+
+`cartId`, `shipping_address_id` et `billing_address_id` ne sont plus lus par le checkout. Les nouvelles sessions Stripe n’envoient plus `metadata.cart_id`. Le webhook conserve une compatibilité historique si un ancien `cart_id` est présent.
+
+**Validation production :** commande de test sans IDs relationnels client. Fermé.
+
+### P3-D — Validation email et shipping
+
+**Commit :** `f4b70f3` — `fix(checkout): validate customer and shipping input`
+
+Validations backend avant Printful : email (trim, lowercase, longueur, format), champs shipping requis et bornés, pays `CA`/`US`, state/province exactement 2 caractères. Frontend aligné.
+
+**Validation production :** `INVALID_EMAIL`, `INVALID_SHIPPING_COUNTRY`, `INVALID_SHIPPING_STATE`, `SHIPPING_FIELD_TOO_LONG` → 400 ; checkout valide → commande #101, session Stripe créée, `paid` false. Fermé.
+
+### P3-E2 — Expiration Stripe → cancelled
+
+**Commit :** `562f20e` — `fix(checkout): cancel expired pending orders`
+
+Branche webhook `checkout.session.expired` uniquement. Résolution **stricte** : `orders.stripe_session_id = session.id`. Aucun fallback email / `client_reference_id` / `metadata.order_id`. Transition `pending` → `cancelled` seulement (`cancelled_at`, `updated_at`, history). Une commande déjà non-pending n’est pas réécrite. Erreur DB réelle : `releaseEventIdempotence` + HTTP 500 pour retry Stripe.
+
+Endpoint applicatif : `POST /webhook/stripe`. Aucun secret de signature n’est documenté ici.
+
+**Validation production :** commande #102, session expirée unpaid, webhook HTTP 200 `{"received":true,"orderId":102}`, status `cancelled`, history `init` → `pending` puis `pending` → `cancelled`. Fermé.
+
+### P3-E1 — Idempotence de création
+
+**Migration :** `960bf90` — `chore(db): add checkout idempotency table`
+**Code :** `36fd232` — `fix(checkout): make checkout creation idempotent`
+
+Table dédiée `checkout_idempotency` (`CREATE TABLE IF NOT EXISTS`, pas d’ALTER `orders`) : PK `idempotency_key`, `order_id`, `created_at`, index `order_id`, **aucune FK** (Hostinger).
+
+Frontend : UUID v4 (`crypto.randomUUID()`) par tentative logique, `useRef` local, généré seulement après validation + confirmation. Signature `JSON.stringify(checkoutPayload)` locale uniquement (jamais envoyée, jamais en DB, pas une autorité métier). Même payload → même clé ; payload modifié → nouvelle clé ; `CHECKOUT_NO_LONGER_OPEN` reset ; erreurs temporaires / `CHECKOUT_IN_PROGRESS` conservent la clé.
+
+Backend : `idempotency_key` obligatoire, UUID v4 lowercase. Fast path avant `pickCart` / Printful / TX. TX : `orders` → `checkout_idempotency` → `order_items` → history → commit. Duplicate 1062 → rollback. Stripe `{ idempotencyKey }` = même UUID, hors TX. La PK MySQL est la garantie de concurrence ; le SELECT initial ne l’est pas.
+
+**Validation production (sans paiement) :**
+
+- clé `ab833f65-d29f-4b1d-a1a6-4d828b892366`
+- deux POST identiques → même session `cs_test_a1zOEoGWkcM0SW06s4AjnzxGyLq40gWs8v3Ckqwyuunshs6yBfls5mtzBP`, `reused: true`
+- order **#103**, `pending`, 1 row clé, 1 order avec session
+
+Fermé.
+
+### Statut final P3
+
+Le chantier P3 est **FERMÉ / COMPLET** et validé en production. Hors scope restant : P4 (idempotence générale des events Stripe), runner `scripts/run-migrations.js` (non fiable : importe `{ pool }` alors que `server/db.js` exporte `getPool()`).
 
 ---
 

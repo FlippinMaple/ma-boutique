@@ -27,3 +27,9 @@ On enregistre immédiatement stripe_session_id dans orders pour pouvoir relier l
 On écrit aussi une ligne initiale dans order_status_history.
 
 Ces règles côté code SONT la vérité opérationnelle tant qu’on n’a pas les droits ALTER TABLE sur l’hébergeur. Le jour où on migre vers une base où on a les droits root, on pourra les traduire en vraies contraintes SQL.
+
+**CREATE TABLE vs ALTER TABLE.** `CREATE TABLE IF NOT EXISTS` est le mécanisme de schéma le moins risqué observé en prod (ex. `stripe_events`, `logs`, `checkout_idempotency`). P3-E1 a donc ajouté une table dédiée plutôt qu’un `ALTER TABLE orders` (colonne / UNIQUE), précisément à cause de l’erreur 1044.
+
+**Runner de migrations.** `npm run migrate` (`scripts/run-migrations.js`) n’est **pas** un mécanisme opérationnel fiable aujourd’hui : le script importe `{ pool }` depuis `server/db.js`, alors que ce module exporte `getPool()`. Les fichiers sous `db/migrations/` restent la trace versionnée du SQL ; l’application en prod Hostinger se fait hors de ce runner tant qu’il n’est pas corrigé. Ne pas présenter `npm run migrate` comme déjà utilisable.
+
+**Panier `ordered`.** Le checkout ne verrouille plus un panier à la création de session (plus de `cart_id` client). Un passage `open` → `ordered` n’existe que dans le webhook, et seulement si un `metadata.cart_id` historique est encore présent.

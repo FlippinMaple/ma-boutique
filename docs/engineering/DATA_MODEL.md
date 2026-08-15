@@ -37,6 +37,7 @@ Les TODO, décisions ouvertes et dettes techniques restent dans `docs/INVENTAIRE
    - [orders](#orders--inventaire-15)
    - [order_items](#order_items--inventaire-16)
    - [order_status_history](#order_status_history--inventaire-17)
+   - [checkout_idempotency](#checkout_idempotency)
    - [shipping_logs](#shipping_logs--inventaire-18)
 6. [Paiement — événements Stripe](#paiement--evenements-stripe)
    - [stripe_events](#stripe_events--inventaire-120)
@@ -484,12 +485,14 @@ customers via customer_id
 order_items.order_id → orders.id
 order_status_history.order_id → orders.id
 shipping_logs.order_id → orders.id
+checkout_idempotency.order_id → orders.id (relation logique, pas de FK)
 
 Connexions logiques supplémentaires
-shipping_address_id devrait normalement correspondre à une ligne d’addresses de type 'shipping'.
-billing_address_id devrait normalement correspondre à une ligne d’addresses de type 'billing'.
+shipping_address_id et billing_address_id existent encore sur `orders`, mais le checkout public ne les lit plus et n’y écrit plus (P3-C). L’autorité d’adresse est le snapshot.
 
 shipping et billing PEUVENT être différentes (cadeau envoyé à quelqu’un d’autre, facture pour l’acheteur). La base permet deux IDs différents mais ne déclare pas de FK.
+
+Statuts checkout réellement écrits aujourd’hui : `pending` (création), `paid` (webhook paiement), `cancelled` (webhook `checkout.session.expired` si encore `pending`, avec `cancelled_at`).
 
 ### order_items ← inventaire §1.6
 
@@ -533,7 +536,28 @@ Index(order_id)
 FK order_id → orders.id ON DELETE CASCADE
 
 Rôle métier
-Historique d’état de chaque commande : pending → paid → fulfilled → shipped → etc.
+Historique d’état de chaque commande. Transitions checkout actuelles : `init` → `pending` à la création ; `pending` → `paid` au paiement signé ; `pending` → `cancelled` à l’expiration de la Checkout Session Stripe.
+
+### checkout_idempotency
+
+Colonnes clés
+idempotency_key varchar(64) NOT NULL
+order_id int NOT NULL
+created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP
+
+PK / Index / FK
+PK(idempotency_key)
+INDEX idx_checkout_idempotency_order_id (order_id)
+Aucune FOREIGN KEY volontaire (contrainte Hostinger : éviter une FK supplémentaire sur une table existante / un ALTER associé).
+
+Rôle métier
+Barrière atomique d’une tentative logique de checkout. Une `idempotency_key` UUID v4 (fournie par le client, validée côté serveur) correspond à au plus une commande. L’INSERT a lieu dans la même transaction que `orders` / `order_items` / `order_status_history` : un duplicate 1062 rollback l’order temporaire du perdant. Le SELECT fast path n’est qu’une optimisation de retry ; la PRIMARY KEY est la garantie de concurrence.
+
+Création
+`CREATE TABLE IF NOT EXISTS` via `db/migrations/2026-08-15_checkout_idempotency.sql`. Pas d’ALTER sur `orders` (fingerprint / colonne UNIQUE refusés pour Hostinger 1044).
+
+Connecté à
+orders.id via `order_id` (logique uniquement)
 
 ### shipping_logs ← inventaire §1.8
 

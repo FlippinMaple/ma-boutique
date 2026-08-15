@@ -19,25 +19,25 @@ Ce document n’est pas un tutoriel Stripe ni une référence API.
 
 ## Synthèse des responsabilités
 
-| Phase | Qui écrit `pending` / snapshots / items | Qui écrit `paid` / `paid_at` | Qui lock le panier |
-|---|---|---|---|
-| Checkout | `checkoutController` | — | — |
-| Webhook signé | — (sauf fallback items) | `webhookController` | `webhookController` |
+| Phase | Qui écrit `pending` / snapshots / items | Qui écrit `paid` / `paid_at` | Qui écrit `cancelled` | Qui lock le panier |
+|---|---|---|---|---|
+| Checkout | `checkoutController` | — | — | — |
+| Webhook signé | — (sauf fallback items) | `webhookController` (`completed` / `async_payment_succeeded`) | `webhookController` (`expired`, `pending` uniquement) | `webhookController` (si `metadata.cart_id` historique) |
 
 Pipeline :
 
 ```text
 Panier
   ↓
-Commande pending
+Clé d’idempotence (fast path ou nouvelle tentative)
+  ↓
+TX : orders + checkout_idempotency + order_items + history
   ↓
 Session Stripe
   ↓
-Webhook signé
-  ↓
-Commande paid
-  ↓
-Panier verrouillé
+Webhook signé  POST /webhook/stripe
+  ├─ completed / async_payment_succeeded → paid
+  └─ expired → cancelled (si encore pending)
 ```
 
 ---
@@ -63,8 +63,8 @@ Panier verrouillé
 
 | | |
 |---|---|
-| **Description** | Une ligne `orders` avec `status = 'pending'` est créée en base avant l’appel `stripe.checkout.sessions.create`. |
-| **Justification** | Observer dans `createCheckoutSession` : insert `orders` puis création de session ; échec d’insert → réponse `ORDER_INIT_FAILED` sans session. |
+| **Description** | Une ligne `orders` avec `status = 'pending'` est créée en base avant l’appel `stripe.checkout.sessions.create`, dans la même transaction que `checkout_idempotency`, les `order_items` et l’historique initial. |
+| **Justification** | Observer dans `createCheckoutSession` : TX dédiée puis création de session ; échec d’insert → réponse `ORDER_INIT_FAILED` sans session. |
 | **Si violé** | Impossible de rattacher un paiement Stripe à une commande interne préexistante ; perte de snapshots et d’items avant paiement. |
 | **Fichiers** | `server/controllers/checkoutController.js` |
 
@@ -81,8 +81,8 @@ Panier verrouillé
 
 | | |
 |---|---|
-| **Description** | Après création de la commande, une ligne `order_status_history` est insérée avec `old_status = 'init'`, `new_status = 'pending'`. |
-| **Justification** | Insert explicite dans `createCheckoutSession` après les `order_items`. |
+| **Description** | Dans la transaction d’initialisation, après `orders` et `checkout_idempotency` et les `order_items`, une ligne `order_status_history` est insérée avec `old_status = 'init'`, `new_status = 'pending'`. |
+| **Justification** | Insert explicite dans `createCheckoutSession` avant `COMMIT`. |
 | **Si violé** | Timeline de commande incomplète dès la création. |
 | **Fichiers** | `server/controllers/checkoutController.js` |
 
@@ -99,9 +99,18 @@ Panier verrouillé
 
 | | |
 |---|---|
-| **Description** | Avant tout `INSERT INTO orders`, le checkout valide le panier, résout les variantes DB, calcule le sous-total, normalise l’adresse, valide le `shipping_rate.id`, interroge Printful et convertit le tarif matché. Un échec de ces étapes ne crée pas de commande `pending`. |
-| **Justification** | Ordre de `createCheckoutSession` : lookup variantes et Printful `shipping/rates` avant l’insert `orders`. |
+| **Description** | Avant tout `INSERT INTO orders`, le checkout valide le panier, résout les variantes DB, calcule le sous-total, normalise l’adresse, valide le `shipping_rate.id`, interroge Printful et convertit le tarif matché. Un échec de ces étapes ne crée pas de commande `pending`. Exception : une `idempotency_key` déjà connue reprend la tentative existante **avant** ces validations (fast path). |
+| **Justification** | Ordre de `createCheckoutSession` : lookup variantes et Printful `shipping/rates` avant l’insert `orders` sur une clé nouvelle. |
 | **Si violé** | Commandes `pending` orphelines, ou totaux figés à partir de données encore non autoritaires. |
+| **Fichiers** | `server/controllers/checkoutController.js` |
+
+### Initialisation atomique orders, idempotency, items et history
+
+| | |
+|---|---|
+| **Description** | La transaction dédiée insère, dans cet ordre : `orders`, `checkout_idempotency`, tous les `order_items`, `order_status_history` (`init` → `pending`), puis `COMMIT`. Un échec avant commit annule tout, y compris l’order temporaire. Aucun appel Stripe n’a lieu dans cette transaction. |
+| **Justification** | Bloc TX de `createCheckoutSession` (P3-B + P3-E1). |
+| **Si violé** | Commande sans items, sans mapping d’idempotence, ou order fantôme commité. |
 | **Fichiers** | `server/controllers/checkoutController.js` |
 
 ### Le panier n’est pas verrouillé au checkout
@@ -130,8 +139,8 @@ Panier verrouillé
 
 | | |
 |---|---|
-| **Description** | La session Checkout est créée avec `client_reference_id = String(orderId)` et `metadata.order_id = String(orderId)`. Après création, `orders.stripe_session_id` et `orders.client_reference_id` sont mis à jour avec l’id de session / l’orderId. |
-| **Justification** | Appels `sessions.create` puis `UPDATE orders SET stripe_session_id, client_reference_id`. |
+| **Description** | La session Checkout est créée avec `client_reference_id = String(orderId)` et `metadata.order_id = String(orderId)`, et `{ idempotencyKey }` égal à l’UUID de tentative. Après création, `orders.stripe_session_id` et `orders.client_reference_id` sont mis à jour. La clé Stripe complète la PK DB ; elle ne la remplace pas. |
+| **Justification** | `sessions.create(params, { idempotencyKey })` puis `UPDATE orders SET stripe_session_id, client_reference_id`. |
 | **Si violé** | Le webhook ne peut pas résoudre la commande de façon fiable. |
 | **Fichiers** | `server/controllers/checkoutController.js` |
 
@@ -139,8 +148,8 @@ Panier verrouillé
 
 | | |
 |---|---|
-| **Description** | La session porte en `metadata` : `cart_items` (lignes serveur normalisées), `shipping` (adresse saisie normalisée), `shipping_rate` (représentation serveur `{ id, name, shipping_cents }`), `cart_id`, `source = 'flippin-maple'`. |
-| **Justification** | Objet `metadata` passé à `sessions.create` après calculs autoritaires. |
+| **Description** | Les **nouvelles** sessions portent en `metadata` : `cart_items` (lignes serveur normalisées), `shipping` (adresse saisie normalisée), `shipping_rate` (représentation serveur `{ id, name, shipping_cents }`), `source = 'flippin-maple'`, `order_id`. Elles n’envoient **pas** `cart_id`. Le webhook peut encore lire un `metadata.cart_id` historique s’il existe. |
+| **Justification** | Objet `metadata` passé à `sessions.create` après P3-C. |
 | **Si violé** | Mode dégradé items / Printful / abandon sans contexte session, ou fallback webhook alimenté par des prix navigateur. |
 | **Fichiers** | `server/controllers/checkoutController.js` |
 
@@ -197,18 +206,36 @@ Panier verrouillé
 
 | | |
 |---|---|
-| **Description** | Le passage à `paid` est déclenché pour `checkout.session.completed` et `checkout.session.async_payment_succeeded`. Les autres types sont journalisés sans marquer la commande payée. |
-| **Justification** | Branche conditionnelle puis chemin « Event ignoré ». |
-| **Si violé** | Paiement confirmé non enregistré, ou statut `paid` sur un mauvais type d’événement. |
+| **Description** | Le passage à `paid` est déclenché pour `checkout.session.completed` et `checkout.session.async_payment_succeeded`. `checkout.session.expired` ferme une `pending` liée à **cette** session (`cancelled`). Les autres types sont journalisés sans changer le statut de paiement. |
+| **Justification** | Branches dédiées dans `handleStripeWebhook`. |
+| **Si violé** | Paiement confirmé non enregistré, pending éternelle après expiration, ou statut `paid` sur un mauvais type d’événement. |
 | **Fichiers** | `server/controllers/webhookController.js` |
 
-### Résolution de commande ordonnée
+### Résolution de commande pour le paiement
 
 | | |
 |---|---|
-| **Description** | L’`orderId` est résolu dans cet ordre : (1) `orders.stripe_session_id = session.id`, (2) `client_reference_id` ou `metadata.order_id` comme `orders.id`, (3) dernière commande `pending` pour le même email. |
+| **Description** | Pour `completed` / `async_payment_succeeded`, l’`orderId` est résolu dans cet ordre : (1) `orders.stripe_session_id = session.id`, (2) `client_reference_id` ou `metadata.order_id` comme `orders.id`, (3) dernière commande `pending` pour le même email. |
 | **Justification** | `resolveOrderIdFromSession`. |
 | **Si violé** | Mauvaise commande marquée payée, ou aucune. |
+| **Fichiers** | `server/controllers/webhookController.js` |
+
+### Résolution stricte pour l’expiration
+
+| | |
+|---|---|
+| **Description** | Pour `checkout.session.expired`, la commande est trouvée **uniquement** par `orders.stripe_session_id = session.id`. Aucun fallback email, `client_reference_id`, `metadata.order_id` ou dernière pending. Si aucune row : HTTP 200 `expired_order_not_found`, rien n’est créé. |
+| **Justification** | Branche dédiée ; `resolveOrderIdFromSession` n’est pas utilisée. |
+| **Si violé** | Fermeture d’une autre commande que celle de la session expirée. |
+| **Fichiers** | `server/controllers/webhookController.js` |
+
+### Expiration : pending vers cancelled uniquement
+
+| | |
+|---|---|
+| **Description** | `UPDATE orders SET status = 'cancelled', cancelled_at, updated_at` seulement si `status = 'pending'`. History `pending` → `cancelled` si et seulement si `affectedRows === 1`. Une commande `paid` ou déjà `cancelled` n’est pas réécrite. |
+| **Justification** | Branche `checkout.session.expired` (P3-E2). |
+| **Si violé** | Pending zombies, ou annulation d’une commande déjà payée. |
 | **Fichiers** | `server/controllers/webhookController.js` |
 
 ### Pas de création de commande magique si introuvable
@@ -224,14 +251,59 @@ Panier verrouillé
 
 | | |
 |---|---|
-| **Description** | `POST /stripe` sur le routeur webhook appelle uniquement `handleStripeWebhook`. |
-| **Justification** | `webhookRoutes.js`. |
+| **Description** | L’endpoint applicatif est `POST /webhook/stripe`. Il appelle uniquement `handleStripeWebhook`. |
+| **Justification** | Montage du routeur webhook ; `webhookRoutes.js`. |
 | **Si violé** | Entrées de paiement non signées ou non centralisées. |
 | **Fichiers** | `server/routes/webhookRoutes.js` |
 
 ---
 
 ## Idempotence
+
+### Clé d’idempotence checkout obligatoire
+
+| | |
+|---|---|
+| **Description** | `POST /api/create-checkout-session` exige `idempotency_key` : UUID v4 strict, normalisé lowercase. Absent ou invalide → 400 `INVALID_IDEMPOTENCY_KEY`. Le serveur ne génère jamais la clé. |
+| **Justification** | `parseIdempotencyKey` en tête de `createCheckoutSession` (P3-E1). |
+| **Si violé** | Doublons de pending / sessions, ou clés non corrélables. |
+| **Fichiers** | `server/controllers/checkoutController.js`, `src/pages/Checkout.jsx` |
+
+### Fast path avant validations coûteuses
+
+| | |
+|---|---|
+| **Description** | Dès que la clé est valide, le checkout lit `checkout_idempotency` JOIN `orders` par `idempotency_key` uniquement, **avant** `pickCart`, lookup variantes, Printful et la transaction. Une tentative connue ignore le body. Lookup DB en échec → 500 `CHECKOUT_IDEMPOTENCY_LOOKUP_FAILED` (fail-closed). |
+| **Justification** | `findExistingCheckoutAttempt` puis `respondWithExistingCheckoutAttempt`. |
+| **Si violé** | Retry séquentiel revalide Printful / peut diverger ; ou création d’un doublon si le lookup est impossible. |
+| **Fichiers** | `server/controllers/checkoutController.js` |
+
+### Réutilisation d’une tentative existante
+
+| | |
+|---|---|
+| **Description** | Tentative connue : status ≠ `pending` → 409 `CHECKOUT_NO_LONGER_OPEN` ; `pending` sans `stripe_session_id` → 409 `CHECKOUT_IN_PROGRESS` + `Retry-After: 2` ; `pending` + session Stripe `open` + `url` → 200 `{ id, url, reused: true }` via `sessions.retrieve` ; session non-`open` → 409 `CHECKOUT_NO_LONGER_OPEN` ; erreur retrieve → 502 `CHECKOUT_SESSION_LOOKUP_FAILED`. Aucune nouvelle session ni order depuis le body du retry. |
+| **Justification** | `respondWithExistingCheckoutAttempt`. |
+| **Si violé** | Deux sessions / deux orders pour une même tentative logique. |
+| **Fichiers** | `server/controllers/checkoutController.js` |
+
+### PRIMARY KEY checkout_idempotency comme garantie de concurrence
+
+| | |
+|---|---|
+| **Description** | Le fast SELECT n’est pas la garantie d’unicité. Dans la TX, `INSERT checkout_idempotency` après `orders` : une seule requête obtient la PK. L’autre reçoit MySQL 1062, rollback (l’order temporaire disparaît), puis lookup de la tentative gagnante. |
+| **Justification** | Table `checkout_idempotency` ; catch `ER_DUP_ENTRY` / 1062 ciblé sur cet INSERT. |
+| **Si violé** | Deux orders commitées pour la même clé. |
+| **Fichiers** | `server/controllers/checkoutController.js`, `docs/engineering/DATA_MODEL.md` |
+
+### Tentative logique frontend
+
+| | |
+|---|---|
+| **Description** | `Checkout.jsx` génère un UUID v4 (`crypto.randomUUID()`) dans un `useRef` **après** validation + confirmation, pas au montage. Une signature locale `JSON.stringify(checkoutPayload)` décide si le retry est la même tentative. Cette signature n’est ni envoyée, ni stockée, ni une autorité métier. `CHECKOUT_NO_LONGER_OPEN` reset le ref ; `CHECKOUT_IN_PROGRESS` / erreurs temporaires conservent la clé. |
+| **Justification** | `checkoutAttemptRef` dans `handleCheckout`. |
+| **Si violé** | Nouvelle clé à chaque retry (doublons) ou clé éternelle globale. |
+| **Fichiers** | `src/pages/Checkout.jsx` |
 
 ### Identifiant d’événement Stripe comme clé d’idempotence
 
@@ -402,7 +474,7 @@ Panier verrouillé
 
 | | |
 |---|---|
-| **Description** | Un panier absent ou vide produit `EMPTY_CART` (400). |
+| **Description** | Un panier absent ou vide produit `EMPTY_CART` (400), sur le chemin d’une **nouvelle** tentative (après le fast path). |
 | **Justification** | Garde après `pickCart`. |
 | **Si violé** | Session ou commande sans articles. |
 | **Fichiers** | `server/controllers/checkoutController.js` |
@@ -415,9 +487,36 @@ Panier verrouillé
 
 | | |
 |---|---|
-| **Description** | `customer_id` / `userId` provient exclusivement des JWT dans les cookies `access` / `refresh`. Aucun `userId` du body n’est utilisé. |
-| **Justification** | Commentaire d’invariants + lecture `req.cookies` ; échec → 401. |
+| **Description** | `customer_id` / `userId` provient exclusivement des JWT dans les cookies `access` / `refresh`. Aucun `userId` du body n’est utilisé. Cookies absents ou invalides → checkout invité (`customer_id` null), pas un 401. |
+| **Justification** | Commentaire d’invariants + lecture `req.cookies`. |
 | **Si violé** | Usurpation d’identité au checkout. |
+| **Fichiers** | `server/controllers/checkoutController.js` |
+
+### Limites d’abus du checkout public
+
+| | |
+|---|---|
+| **Description** | `checkoutLimiter` : 10 requêtes / 60 s / IP → 429 `CHECKOUT_RATE_LIMITED`. Panier > 20 lignes → 400 `CART_TOO_LARGE`. Quantité > 20 par ligne → 400 `QUANTITY_LIMIT_EXCEEDED`. |
+| **Justification** | P3-A ; `rateLimiters.js` + gardes dans `createCheckoutSession`. |
+| **Si violé** | Spam de pending / sessions Stripe. |
+| **Fichiers** | `server/middlewares/rateLimiters.js`, `server/controllers/checkoutController.js` |
+
+### Validation email et adresse avant Printful
+
+| | |
+|---|---|
+| **Description** | Email obligatoire, trim + lowercase, longueur max 100, format basique. Shipping requis (name, address1, city, state, country, zip) avec longueurs max. Pays uniquement `CA` / `US`. State/province exactement 2 caractères. Échec → 400 (`INVALID_EMAIL`, `INVALID_SHIPPING_ADDRESS`, `SHIPPING_FIELD_TOO_LONG`, `INVALID_SHIPPING_COUNTRY`, `INVALID_SHIPPING_STATE`) avant l’appel Printful et avant l’INSERT. |
+| **Justification** | P3-D. |
+| **Si violé** | Commandes / appels Printful avec données invalides. |
+| **Fichiers** | `server/controllers/checkoutController.js`, `src/pages/Checkout.jsx` |
+
+### Aucun ID relationnel client comme autorité checkout
+
+| | |
+|---|---|
+| **Description** | Le checkout n’utilise pas `cartId`, `shipping_address_id` ni `billing_address_id` fournis par le client. L’adresse et l’email saisis, après validation, deviennent des snapshots. |
+| **Justification** | P3-C. |
+| **Si violé** | Commande liée à un panier ou une adresse d’un autre client. |
 | **Fichiers** | `server/controllers/checkoutController.js` |
 
 ### Secret webhook requis
@@ -464,9 +563,9 @@ Panier verrouillé
 
 | | |
 |---|---|
-| **Description** | Après `paid`, si `metadata.cart_id` est présent, `carts.status` passe de `open` à `ordered` (UPDATE conditionnel `status = 'open'`). |
-| **Justification** | Bloc « Verrouiller le panier » du webhook. |
-| **Si violé** | Même panier open réutilisable après paiement. |
+| **Description** | Après `paid`, si un `metadata.cart_id` **historique** est présent, `carts.status` passe de `open` à `ordered` (UPDATE conditionnel `status = 'open'`). Les nouvelles sessions checkout n’envoient plus `cart_id`. |
+| **Justification** | Bloc « Verrouiller le panier » du webhook ; P3-C. |
+| **Si violé** | Même panier open réutilisable après un ancien paiement encore lié à un cart. |
 | **Fichiers** | `server/controllers/webhookController.js` |
 
 ### Abandoned cart marqué récupéré après paiement
@@ -513,7 +612,7 @@ Panier verrouillé
 
 | | |
 |---|---|
-| **Description** | Certaines étapes annexes (customer Stripe, abandoned_carts insert au checkout, historisation, lock panier, Printful) sont dans des `try/catch` qui journalisent sans toujours annuler le flux principal déjà engagé. |
+| **Description** | Certaines étapes annexes (customer Stripe, historisation, lock panier historique, Printful automatique) sont dans des `try/catch` qui journalisent sans toujours annuler le flux principal déjà engagé. Le checkout ne crée plus d’`abandoned_carts`. |
 | **Justification** | Patterns `console.warn` / `logWarn` autour de ces blocs. |
 | **Si violé** | (Observation) Un échec annexe peut laisser des écarts (panier non locké, Printful non créé) alors que la commande est `paid`. |
 | **Fichiers** | `server/controllers/checkoutController.js`, `server/controllers/webhookController.js` |
@@ -522,10 +621,10 @@ Panier verrouillé
 
 | | |
 |---|---|
-| **Description** | La résolution des variantes, la validation d’adresse et la revalidation Printful du tarif ont lieu avant l’insert `orders`. Un échec sur ces étapes ne crée pas de commande. En revanche, si Stripe échoue après l’insert `pending` / `order_items`, une commande `pending` sans session aboutie peut subsister. |
-| **Justification** | Ordre actuel : validations panier / shipping → insert `orders` → `sessions.create`. |
-| **Si violé** | (Observation) Commandes `pending` orphelines après un échec Stripe post-insert. |
-| **Fichiers** | `server/controllers/checkoutController.js` |
+| **Description** | La résolution des variantes, la validation d’adresse et la revalidation Printful du tarif ont lieu avant l’insert `orders` (sauf fast path d’une clé déjà connue). Un échec sur ces étapes ne crée pas de commande. Si Stripe échoue après commit, une `pending` sans `stripe_session_id` peut subsister : un retry de la **même** clé reçoit `CHECKOUT_IN_PROGRESS` et ne recrée pas de session depuis un autre body. Une session Stripe **expirée** ne laisse plus la commande `pending` indéfiniment : `checkout.session.expired` la passe `cancelled` si elle est encore `pending`. |
+| **Justification** | Ordre actuel + P3-E1 / P3-E2. |
+| **Si violé** | (Observation) Pending orphelines sans session, ou pending éternelles après expiration Stripe. |
+| **Fichiers** | `server/controllers/checkoutController.js`, `server/controllers/webhookController.js` |
 
 ### Idempotence soft si insert ignore échoue
 
