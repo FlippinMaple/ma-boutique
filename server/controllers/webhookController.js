@@ -944,42 +944,115 @@ async function handleStripeWebhook(req, res) {
       });
     }
 
-    // E) Transition pending → paid uniquement
-    const [resUpd] = await db.execute(
-      `
-      UPDATE orders
-         SET status = 'paid',
-             total = ?,
-             shipping_cost = ?,
-             paid_at = UTC_TIMESTAMP(),
-             updated_at = UTC_TIMESTAMP(),
-             customer_email = COALESCE(customer_email, ?)
-       WHERE id = ?
-         AND status = 'pending'
-      `,
-      [totalFloat, shipping_cost, customer_email, orderId]
-    );
+    // E) Noyau atomique pending → paid (connexion dédiée)
+    const paymentIntentId = session.payment_intent
+      ? String(session.payment_intent)
+      : null;
 
-    const transitioned = resUpd.affectedRows === 1;
+    let conn = null;
+    let transitioned = false;
+    let lockedStatus = null;
+    try {
+      conn = await db.getConnection();
+      await conn.beginTransaction();
 
-    if (!transitioned) {
-      try {
-        const [[again]] = await db.query(
-          `SELECT status FROM orders WHERE id = ? LIMIT 1`,
-          [orderId]
-        );
-        if (again?.status === 'paid') {
-          await upsertStripeEvent(event, req, orderId);
-          await logInfo(
-            `[${traceId}] order #${orderId} already paid after race; skip rewrite`,
-            'webhook'
-          );
-          return res.json({ received: true, orderId });
-        }
-      } catch {
-        /* ignore */
+      const [[locked]] = await conn.query(
+        `
+        SELECT id, status
+          FROM orders
+         WHERE id = ?
+         FOR UPDATE
+        `,
+        [orderId]
+      );
+
+      if (!locked) {
+        throw new Error('ORDER_NOT_FOUND_FOR_PAYMENT_TX');
       }
 
+      lockedStatus = locked.status;
+
+      if (locked.status === 'paid' || locked.status !== 'pending') {
+        await conn.rollback();
+      } else {
+        const [itemRows] = await conn.query(
+          `SELECT id FROM order_items WHERE order_id = ? LIMIT 1`,
+          [orderId]
+        );
+        if (!itemRows.length) {
+          throw new Error('PAID_BLOCKED_NO_ORDER_ITEMS_IN_TX');
+        }
+
+        const [resUpd] = await conn.execute(
+          `
+          UPDATE orders
+             SET status = 'paid',
+                 total = ?,
+                 shipping_cost = ?,
+                 paid_at = UTC_TIMESTAMP(),
+                 updated_at = UTC_TIMESTAMP(),
+                 customer_email = COALESCE(customer_email, ?),
+                 stripe_payment_intent_id = COALESCE(?, stripe_payment_intent_id)
+           WHERE id = ?
+             AND status = 'pending'
+          `,
+          [
+            totalFloat,
+            shipping_cost,
+            customer_email,
+            paymentIntentId,
+            orderId
+          ]
+        );
+
+        if (resUpd.affectedRows !== 1) {
+          throw new Error('PAID_UPDATE_AFFECTED_ROWS');
+        }
+
+        await conn.execute(
+          `
+          INSERT INTO order_status_history
+                 (order_id, old_status, new_status, changed_at)
+          VALUES (?, 'pending', 'paid', UTC_TIMESTAMP())
+          `,
+          [orderId]
+        );
+
+        await conn.commit();
+        transitioned = true;
+      }
+    } catch (e) {
+      if (conn) {
+        try {
+          await conn.rollback();
+        } catch {
+          /* keep original error */
+        }
+      }
+      await logError(
+        `[${traceId}] payment tx failed for order #${orderId}: ${e?.message || e}`,
+        'webhook'
+      );
+      return res.status(500).json({
+        received: false,
+        orderId,
+        error: 'WEBHOOK_PAYMENT_TX_FAILED'
+      });
+    } finally {
+      if (conn) {
+        conn.release();
+      }
+    }
+
+    if (!transitioned) {
+      if (lockedStatus === 'paid') {
+        await upsertStripeEvent(event, req, orderId);
+        await logInfo(
+          `[${traceId}] order #${orderId} already paid; skip rewrite`,
+          'webhook'
+        );
+        return res.json({ received: true, orderId });
+      }
       await logWarn(
         `[${traceId}] paid transition skipped for order #${orderId} (not pending)`,
         'webhook'
@@ -988,46 +1061,14 @@ async function handleStripeWebhook(req, res) {
       return res.json({ received: true, orderId });
     }
 
-    // F) payment_intent (apres transition reelle)
-    try {
-      const pi = session.payment_intent || null;
-      if (pi) {
-        await db.execute(
-          `UPDATE orders
-             SET stripe_payment_intent_id = ?
-           WHERE id = ?`,
-          [String(pi), orderId]
-        );
-        await reconcileStripeEvents({
-          db,
-          orderId,
-          sessionId: session.id,
-          paymentIntentId: session.payment_intent || null,
-          traceId
-        });
-      }
-    } catch (e) {
-      await logWarn(
-        `[${traceId}] PI save failed: ${e?.message || e}`,
-        'webhook'
-      );
-    }
-
-    // G) Historiser pending → paid (seulement si transition)
-    try {
-      await db.execute(
-        `
-        INSERT INTO order_status_history
-               (order_id, old_status, new_status, changed_at)
-        VALUES (?, 'pending', 'paid', UTC_TIMESTAMP())
-        `,
-        [orderId]
-      );
-    } catch (e) {
-      await logWarn(
-        `[${traceId}] Historisation statut echouee: ${e.message || e}`,
-        'webhook'
-      );
+    if (paymentIntentId) {
+      await reconcileStripeEvents({
+        db,
+        orderId,
+        sessionId: session.id,
+        paymentIntentId,
+        traceId
+      });
     }
 
     // H) Verrouiller le panier (seulement si transition)
