@@ -707,6 +707,103 @@ async function handleStripeWebhook(req, res) {
     // pas bloquant, on poursuit quand même
   }
 
+  // 4. checkout.session.expired → pending → cancelled (stripe_session_id exact only)
+  if (event.type === 'checkout.session.expired') {
+    const session = event.data.object;
+    const db = req.app.locals.db;
+
+    try {
+      const sessionId = String(session.id);
+
+      await logInfo(
+        `[${traceId}] Webhook checkout.session.expired pour session ${sessionId}`,
+        'webhook'
+      );
+
+      const [[order]] = await db.query(
+        `
+        SELECT id, status
+          FROM orders
+         WHERE stripe_session_id = ?
+         LIMIT 1
+        `,
+        [sessionId]
+      );
+
+      if (!order) {
+        await logInfo(
+          `[${traceId}] checkout.session.expired: aucune commande reliée à session ${sessionId}`,
+          'webhook'
+        );
+        await upsertStripeEvent(event, req, null);
+        return res.json({
+          received: true,
+          note: 'expired_order_not_found'
+        });
+      }
+
+      const orderId = order.id;
+
+      const [resUpd] = await db.execute(
+        `
+        UPDATE orders
+           SET status = 'cancelled',
+               cancelled_at = UTC_TIMESTAMP(),
+               updated_at = UTC_TIMESTAMP()
+         WHERE id = ?
+           AND status = 'pending'
+        `,
+        [orderId]
+      );
+
+      if (resUpd.affectedRows !== 1) {
+        await logInfo(
+          `[${traceId}] checkout.session.expired: transition skipped for order #${orderId} (status=${order.status})`,
+          'webhook'
+        );
+        await upsertStripeEvent(event, req, orderId);
+        return res.json({
+          received: true,
+          orderId,
+          note: 'expired_transition_skipped'
+        });
+      }
+
+      try {
+        await db.execute(
+          `
+          INSERT INTO order_status_history
+                 (order_id, old_status, new_status, changed_at)
+          VALUES (?, 'pending', 'cancelled', UTC_TIMESTAMP())
+          `,
+          [orderId]
+        );
+      } catch (e) {
+        await logWarn(
+          `[${traceId}] Historisation statut echouee: ${e.message || e}`,
+          'webhook'
+        );
+      }
+
+      await upsertStripeEvent(event, req, orderId);
+      await logInfo(
+        `[${traceId}] checkout.session.expired → order #${orderId} marque CANCELLED`,
+        'webhook'
+      );
+      return res.json({ received: true, orderId });
+    } catch (e) {
+      await logError(
+        `[${traceId}] checkout.session.expired failed: ${e?.message || e}`,
+        'webhook'
+      );
+      await releaseEventIdempotence(db, event.id);
+      return res.status(500).json({
+        received: false,
+        note: 'expired_processing_failed'
+      });
+    }
+  }
+
   // 4. On gère l'événement clé : checkout.session.completed
   if (
     event.type === 'checkout.session.completed' ||
