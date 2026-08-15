@@ -6,13 +6,18 @@ import {
   register
 } from '../controllers/authController.js';
 import { verifyToken } from '../middlewares/verifyToken.js';
+import {
+  authLoginLimiter,
+  authRegisterLimiter,
+  authRefreshLimiter
+} from '../middlewares/rateLimiters.js';
 
 const router = Router();
 
-router.post('/login', login);
-router.post('/refresh-token', refreshToken);
+router.post('/login', authLoginLimiter, login);
+router.post('/refresh-token', authRefreshLimiter, refreshToken);
 router.post('/logout', logout);
-router.post('/register', register);
+router.post('/register', authRegisterLimiter, register);
 
 // 🔎 diag simple : lit le cookie "access" et renvoie l'utilisateur
 router.get('/whoami', verifyToken, (req, res) => {
