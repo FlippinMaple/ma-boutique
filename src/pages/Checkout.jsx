@@ -43,6 +43,10 @@ const Checkout = () => {
   const navigate = useNavigate();
   const [shippingRate, setShippingRate] = useState(null);
   const hasRedirected = useRef(false);
+  const checkoutAttemptRef = useRef({
+    signature: null,
+    key: null
+  });
 
   // Reset shippingRate when address changes
   useEffect(() => {
@@ -232,7 +236,7 @@ const Checkout = () => {
         db_variant_id: item.db_variant_id
       }));
 
-      const payload = {
+      const checkoutPayload = {
         cartItems: preparedItems,
         customer_email: formatEmail(userEmail),
         shipping: {
@@ -240,6 +244,29 @@ const Checkout = () => {
           name: capitalizeSmart(shipping.name)
         },
         shipping_rate: { id: shippingRate.id }
+      };
+
+      const attemptSignature = JSON.stringify(checkoutPayload);
+      if (
+        !checkoutAttemptRef.current.key ||
+        checkoutAttemptRef.current.signature !== attemptSignature
+      ) {
+        const newKey = globalThis.crypto?.randomUUID?.();
+        if (!newKey) {
+          toast.error(
+            'Impossible de sécuriser cette tentative de paiement. Recharge la page et réessaie.'
+          );
+          return;
+        }
+        checkoutAttemptRef.current = {
+          signature: attemptSignature,
+          key: newKey
+        };
+      }
+
+      const payload = {
+        ...checkoutPayload,
+        idempotency_key: checkoutAttemptRef.current.key
       };
 
       // api.baseURL already includes /api
@@ -262,6 +289,12 @@ const Checkout = () => {
         'Stripe checkout error:',
         err.response?.data || err.message
       );
+      if (err?.response?.data?.code === 'CHECKOUT_NO_LONGER_OPEN') {
+        checkoutAttemptRef.current = {
+          signature: null,
+          key: null
+        };
+      }
       toast.error(err?.response?.data?.error || 'Erreur durant le paiement.');
     } finally {
       setLoading(false);

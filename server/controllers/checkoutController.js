@@ -158,6 +158,89 @@ function pickCart(raw) {
   return [];
 }
 
+const IDEMPOTENCY_KEY_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+
+function parseIdempotencyKey(rawKey) {
+  const key = String(rawKey ?? '')
+    .trim()
+    .toLowerCase();
+  if (!IDEMPOTENCY_KEY_RE.test(key)) return null;
+  return key;
+}
+
+function isMysqlDuplicateKey(err) {
+  return err?.code === 'ER_DUP_ENTRY' || err?.errno === 1062;
+}
+
+async function findExistingCheckoutAttempt(pool, idempotencyKey) {
+  const [[row]] = await pool.query(
+    `
+    SELECT
+      o.id,
+      o.status,
+      o.stripe_session_id,
+      o.client_reference_id
+    FROM checkout_idempotency ci
+    JOIN orders o ON o.id = ci.order_id
+    WHERE ci.idempotency_key = ?
+    LIMIT 1
+    `,
+    [idempotencyKey]
+  );
+  return row || null;
+}
+
+async function respondWithExistingCheckoutAttempt({
+  stripeClient,
+  res,
+  existing
+}) {
+  if (existing.status !== 'pending') {
+    console.warn(
+      `[checkout] idempotency reuse skipped: order #${existing.id} not pending`
+    );
+    return res.status(409).json({
+      error: 'Cette tentative de paiement n’est plus ouverte.',
+      code: 'CHECKOUT_NO_LONGER_OPEN'
+    });
+  }
+
+  if (!existing.stripe_session_id) {
+    res.set('Retry-After', '2');
+    return res.status(409).json({
+      error: 'Tentative de paiement en cours. Réessaie dans quelques instants.',
+      code: 'CHECKOUT_IN_PROGRESS'
+    });
+  }
+
+  try {
+    const session = await stripeClient.checkout.sessions.retrieve(
+      String(existing.stripe_session_id)
+    );
+    if (session?.status === 'open' && session.url) {
+      return res.status(200).json({
+        id: session.id,
+        url: session.url,
+        reused: true
+      });
+    }
+    return res.status(409).json({
+      error: 'Cette session de paiement n’est plus ouverte.',
+      code: 'CHECKOUT_NO_LONGER_OPEN'
+    });
+  } catch (e) {
+    console.warn(
+      `[checkout] stripe session retrieve failed for order #${existing.id}:`,
+      e?.message
+    );
+    return res.status(502).json({
+      error: 'Impossible de récupérer la session de paiement.',
+      code: 'CHECKOUT_SESSION_LOOKUP_FAILED'
+    });
+  }
+}
+
 /*
 ██████████████████████████████████████████████████████████████████████
 INVARIANTS CRITIQUES CHECKOUT – NE PAS CASSER
@@ -217,6 +300,36 @@ export const createCheckoutSession = async (req, res) => {
 
     const FRONTEND_URL = sanitizeBaseUrl(req);
     const raw = req.body || {};
+    const idempotencyKey = parseIdempotencyKey(raw.idempotency_key);
+    if (!idempotencyKey) {
+      return res.status(400).json({
+        error: 'Clé d’idempotence invalide.',
+        code: 'INVALID_IDEMPOTENCY_KEY'
+      });
+    }
+
+    const pool = await getPool();
+    let existingAttempt;
+    try {
+      existingAttempt = await findExistingCheckoutAttempt(
+        pool,
+        idempotencyKey
+      );
+    } catch (e) {
+      console.warn('[checkout] idempotency lookup failed:', e?.message);
+      return res.status(500).json({
+        error: 'Impossible de vérifier la tentative de paiement.',
+        code: 'CHECKOUT_IDEMPOTENCY_LOOKUP_FAILED'
+      });
+    }
+    if (existingAttempt) {
+      return respondWithExistingCheckoutAttempt({
+        stripeClient: stripe,
+        res,
+        existing: existingAttempt
+      });
+    }
+
     const cart = pickCart(raw);
 
     if (!Array.isArray(cart) || cart.length === 0) {
@@ -231,8 +344,6 @@ export const createCheckoutSession = async (req, res) => {
         code: 'CART_TOO_LARGE'
       });
     }
-
-    const pool = await getPool();
 
     // 2) Normaliser / valider chaque ligne AVANT toute écriture (PK + quantité).
     //    Prix, Stripe Price ID et autres montants client sont ignorés.
@@ -570,9 +681,10 @@ export const createCheckoutSession = async (req, res) => {
     }
     const totalCents = cartSubtotalCents + shippingCents;
 
-    // 4) Commande pending + items + history — transaction dédiée (après validation)
+    // 4) Commande pending + idempotency + items + history — transaction dédiée
     let orderId = null;
     let conn = null;
+    let reuseExistingAttempt = false;
     try {
       conn = await pool.getConnection();
       await conn.beginTransaction();
@@ -603,6 +715,20 @@ export const createCheckoutSession = async (req, res) => {
       orderId = ins.insertId;
       if (!orderId) {
         throw new Error('ORDER_INIT_FAILED');
+      }
+
+      try {
+        await conn.query(
+          `INSERT INTO checkout_idempotency
+                 (idempotency_key, order_id)
+           VALUES (?, ?)`,
+          [idempotencyKey, orderId]
+        );
+      } catch (e) {
+        if (isMysqlDuplicateKey(e)) {
+          reuseExistingAttempt = true;
+        }
+        throw e;
       }
 
       for (const line of normalizedLines) {
@@ -658,16 +784,47 @@ export const createCheckoutSession = async (req, res) => {
           );
         }
       }
-      console.warn('[checkout] order init transaction failed:', e?.message);
-      return res.status(500).json({
-        error:
-          "Impossible de créer l'ordre 'pending' avec snapshots avant Stripe.",
-        code: 'ORDER_INIT_FAILED'
-      });
+      if (!reuseExistingAttempt) {
+        console.warn('[checkout] order init transaction failed:', e?.message);
+        return res.status(500).json({
+          error:
+            "Impossible de créer l'ordre 'pending' avec snapshots avant Stripe.",
+          code: 'ORDER_INIT_FAILED'
+        });
+      }
     } finally {
       if (conn) {
         conn.release();
       }
+    }
+
+    if (reuseExistingAttempt) {
+      let existingAfterConflict;
+      try {
+        existingAfterConflict = await findExistingCheckoutAttempt(
+          pool,
+          idempotencyKey
+        );
+      } catch (e) {
+        console.warn('[checkout] idempotency lookup failed:', e?.message);
+        return res.status(500).json({
+          error: 'Impossible de vérifier la tentative de paiement.',
+          code: 'CHECKOUT_IDEMPOTENCY_LOOKUP_FAILED'
+        });
+      }
+      if (!existingAfterConflict) {
+        res.set('Retry-After', '2');
+        return res.status(409).json({
+          error:
+            'Tentative de paiement en cours. Réessaie dans quelques instants.',
+          code: 'CHECKOUT_IN_PROGRESS'
+        });
+      }
+      return respondWithExistingCheckoutAttempt({
+        stripeClient: stripe,
+        res,
+        existing: existingAfterConflict
+      });
     }
 
     // 5) Stripe customer enrichi
@@ -756,42 +913,45 @@ export const createCheckoutSession = async (req, res) => {
       email: emailSnapshot || ''
     };
 
-    const session = await stripe.checkout.sessions.create({
-      mode: 'payment',
-      line_items,
-      success_url: `${FRONTEND_URL}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${FRONTEND_URL}/checkout/cancel`,
-      shipping_address_collection: { allowed_countries: ['CA', 'US'] },
-      customer: stripeCustomerId || undefined,
-      customer_update: { address: 'auto', shipping: 'auto', name: 'auto' },
-      client_reference_id: String(orderId),
-      shipping_options:
-        shippingCents > 0
-          ? [
-              {
-                shipping_rate_data: {
-                  type: 'fixed_amount',
-                  display_name: shippingName,
-                  fixed_amount: {
-                    amount: shippingCents,
-                    currency: currency.toLowerCase()
+    const session = await stripe.checkout.sessions.create(
+      {
+        mode: 'payment',
+        line_items,
+        success_url: `${FRONTEND_URL}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${FRONTEND_URL}/checkout/cancel`,
+        shipping_address_collection: { allowed_countries: ['CA', 'US'] },
+        customer: stripeCustomerId || undefined,
+        customer_update: { address: 'auto', shipping: 'auto', name: 'auto' },
+        client_reference_id: String(orderId),
+        shipping_options:
+          shippingCents > 0
+            ? [
+                {
+                  shipping_rate_data: {
+                    type: 'fixed_amount',
+                    display_name: shippingName,
+                    fixed_amount: {
+                      amount: shippingCents,
+                      currency: currency.toLowerCase()
+                    }
                   }
                 }
-              }
-            ]
-          : undefined,
-      metadata: {
-        source: 'flippin-maple',
-        order_id: String(orderId),
-        shipping_rate: JSON.stringify({
-          id: selectedShippingRateId,
-          name: shippingName,
-          shipping_cents: shippingCents
-        }),
-        shipping: JSON.stringify(metadataShipping),
-        cart_items: JSON.stringify(metadataCartItems)
-      }
-    });
+              ]
+            : undefined,
+        metadata: {
+          source: 'flippin-maple',
+          order_id: String(orderId),
+          shipping_rate: JSON.stringify({
+            id: selectedShippingRateId,
+            name: shippingName,
+            shipping_cents: shippingCents
+          }),
+          shipping: JSON.stringify(metadataShipping),
+          cart_items: JSON.stringify(metadataCartItems)
+        }
+      },
+      { idempotencyKey }
+    );
 
     // 7) Lier la session Stripe à la commande (+ miroir client_reference_id)
     await pool.query(
