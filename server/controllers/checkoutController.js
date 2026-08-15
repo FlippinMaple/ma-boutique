@@ -1,6 +1,6 @@
 import Stripe from 'stripe';
 import axios from 'axios';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { getPool } from '../db.js';
 import jwt from 'jsonwebtoken';
 
@@ -47,6 +47,14 @@ function signAccess(payload) {
   });
 }
 
+function signRefresh(payload) {
+  return jwt.sign(payload, process.env.JWT_REFRESH_SECRET, {
+    expiresIn: process.env.JWT_REFRESH_TTL || '30d',
+    algorithm: 'HS256',
+    jwtid: randomUUID()
+  });
+}
+
 const cookieOptsAccess = {
   httpOnly: true,
   sameSite: 'lax',
@@ -55,23 +63,110 @@ const cookieOptsAccess = {
   path: '/'
 };
 
+const cookieOptsRefresh = {
+  httpOnly: true,
+  sameSite: 'lax',
+  secure: isProd,
+  maxAge: 1000 * 60 * 60 * 24 * 30,
+  path: '/'
+};
+
 function hashRefreshToken(token) {
   return createHash('sha256').update(token, 'utf8').digest('hex');
 }
 
-async function isRegisteredRefreshToken(pool, userId, token) {
-  const tokenHash = hashRefreshToken(token);
-  const [rows] = await pool.query(
-    `SELECT id
-       FROM refresh_tokens
-      WHERE user_id = ?
-        AND refresh_token = ?
-        AND expires_at IS NOT NULL
-        AND expires_at > NOW()
-      LIMIT 1`,
-    [userId, tokenHash]
-  );
-  return rows.length > 0;
+function getRefreshTokenExpiresAt(token) {
+  const decoded = jwt.decode(token);
+  const exp = decoded?.exp;
+  if (typeof exp !== 'number' || !Number.isInteger(exp) || exp <= 0) {
+    throw new Error('REFRESH_TOKEN_EXP_MISSING');
+  }
+  return new Date(exp * 1000);
+}
+
+async function rotateManagedRefreshToken(pool, userId, oldToken) {
+  const oldTokenHash = hashRefreshToken(oldToken);
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+
+    const [tokenRows] = await connection.query(
+      `SELECT id
+         FROM refresh_tokens
+        WHERE user_id = ?
+          AND refresh_token = ?
+          AND expires_at IS NOT NULL
+          AND expires_at > NOW()
+        LIMIT 1
+          FOR UPDATE`,
+      [userId, oldTokenHash]
+    );
+    if (!tokenRows.length) {
+      await connection.rollback();
+      return null;
+    }
+
+    const [customerRows] = await connection.query(
+      `SELECT id, email, role FROM customers WHERE id = ? LIMIT 1`,
+      [userId]
+    );
+    if (!customerRows.length) {
+      await connection.rollback();
+      return null;
+    }
+
+    const customer = customerRows[0];
+    const newAccess = signAccess({
+      sub: customer.id,
+      email: customer.email,
+      role: customer.role
+    });
+    const newRefresh = signRefresh({
+      sub: customer.id
+    });
+    const newTokenHash = hashRefreshToken(newRefresh);
+    const newExpiresAt = getRefreshTokenExpiresAt(newRefresh);
+
+    const [upd] = await connection.query(
+      `UPDATE refresh_tokens
+          SET refresh_token = ?,
+              created_at = NOW(),
+              expires_at = ?
+        WHERE id = ?
+          AND user_id = ?
+          AND refresh_token = ?`,
+      [
+        newTokenHash,
+        newExpiresAt,
+        tokenRows[0].id,
+        customer.id,
+        oldTokenHash
+      ]
+    );
+    if (upd.affectedRows !== 1) {
+      throw new Error('REFRESH_ROTATION_UPDATE_FAILED');
+    }
+
+    await connection.commit();
+    return {
+      user: {
+        id: customer.id,
+        email: customer.email,
+        role: customer.role
+      },
+      access: newAccess,
+      refresh: newRefresh
+    };
+  } catch (err) {
+    try {
+      await connection.rollback();
+    } catch {
+      /* keep original error */
+    }
+    throw err;
+  } finally {
+    connection.release();
+  }
 }
 
 const STRIPE_KEY = process.env.STRIPE_SECRET_KEY || process.env.STRIPE_SK || '';
@@ -296,8 +391,7 @@ export const createCheckoutSession = async (req, res) => {
     let userId = null;
     let candidateUserId = null;
     let identityFromRefresh = false;
-    let refreshTokenForRegistry = null;
-    let refreshRequiresRegistry = false;
+    let managedRefreshToken = null;
     const access = req.cookies?.access;
     if (access) {
       try {
@@ -320,8 +414,7 @@ export const createCheckoutSession = async (req, res) => {
           if (candidateUserId != null) {
             identityFromRefresh = true;
             if (typeof r?.jti === 'string' && r.jti.trim().length > 0) {
-              refreshTokenForRegistry = refresh;
-              refreshRequiresRegistry = true;
+              managedRefreshToken = refresh;
             }
           }
         } catch {
@@ -345,19 +438,22 @@ export const createCheckoutSession = async (req, res) => {
     if (
       candidateUserId != null &&
       identityFromRefresh &&
-      refreshRequiresRegistry
+      managedRefreshToken != null
     ) {
-      const registered = await isRegisteredRefreshToken(
+      const rotated = await rotateManagedRefreshToken(
         pool,
         candidateUserId,
-        refreshTokenForRegistry
+        managedRefreshToken
       );
-      if (!registered) {
+      if (!rotated) {
         candidateUserId = null;
         identityFromRefresh = false;
+      } else {
+        userId = rotated.user.id;
+        res.cookie('access', rotated.access, cookieOptsAccess);
+        res.cookie('refresh', rotated.refresh, cookieOptsRefresh);
       }
-    }
-    if (candidateUserId != null) {
+    } else if (candidateUserId != null) {
       const [rows] = await pool.query(
         `SELECT id, email, role FROM customers WHERE id = ? LIMIT 1`,
         [candidateUserId]
