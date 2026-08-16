@@ -20,7 +20,7 @@ const cookieOptsAccess = {
   httpOnly: true,
   sameSite: 'lax',
   secure: isProd,
-  maxAge: 1000 * 60 * 60,
+  maxAge: 1000 * 60 * 15,
   path: '/'
 };
 
