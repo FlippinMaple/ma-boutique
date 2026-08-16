@@ -306,8 +306,15 @@ export const register = async (req, res, next) => {
       ''
     ).toString();
 
-    const isSubscribedRaw = raw.is_subscribed ?? raw.consentLoi25 ?? false;
-    const is_subscribed = isSubscribedRaw ? 1 : 0;
+    let is_subscribed = 0;
+    if (raw.marketingConsent !== undefined) {
+      if (typeof raw.marketingConsent !== 'boolean') {
+        return res
+          .status(400)
+          .json({ message: 'Consentement marketing invalide.' });
+      }
+      is_subscribed = raw.marketingConsent ? 1 : 0;
+    }
 
     if (!f || !l) {
       return res.status(400).json({ message: 'Prénom et nom sont requis.' });

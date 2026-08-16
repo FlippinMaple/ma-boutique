@@ -14,7 +14,7 @@ const Register = () => {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [acceptedCGU, setAcceptedCGU] = useState(false);
-  const [consentLoi25, setConsentLoi25] = useState(false);
+  const [marketingConsent, setMarketingConsent] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const navigate = useNavigate();
 
@@ -49,11 +49,6 @@ const Register = () => {
       return false;
     }
 
-    if (!consentLoi25) {
-      toast('Vous devez consentir à la Loi 25.', { icon: '🔒' });
-      return false;
-    }
-
     return true;
   };
 
@@ -70,7 +65,7 @@ const Register = () => {
         email: formatEmail(email),
         password,
         passwordConfirm: confirmPassword,
-        consentLoi25
+        marketingConsent
       });
 
       // Axios renvoie directement le JSON dans response.data
@@ -85,7 +80,7 @@ const Register = () => {
       setPassword('');
       setConfirmPassword('');
       setAcceptedCGU(false);
-      setConsentLoi25(false);
+      setMarketingConsent(false);
 
       setTimeout(() => {
         navigate('/login'); // ou '/dashboard' selon le flux désiré
@@ -223,19 +218,11 @@ const Register = () => {
         <label className="checkbox-container">
           <input
             type="checkbox"
-            checked={consentLoi25}
-            onChange={(e) => setConsentLoi25(e.target.checked)}
+            checked={marketingConsent}
+            onChange={(e) => setMarketingConsent(e.target.checked)}
           />
-          Je consens à la collecte de mes renseignements personnels conformément
-          à la&nbsp;
-          <a
-            href="/politique-confidentialite"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Loi 25
-          </a>
-          .
+          Je souhaite recevoir par courriel des nouvelles, nouveautés et offres
+          de Flippin’ Maple.
         </label>
 
         <button type="submit" disabled={isSubmitting}>
