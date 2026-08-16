@@ -351,7 +351,7 @@ export const register = async (req, res, next) => {
 
     const password_hash = await bcrypt.hash(password, 10);
 
-    const role = 'customer';
+    const role = 'user';
     const [result] = await pool.query(
       `INSERT INTO customers
         (first_name, last_name, email, password_hash, is_subscribed, role, created_at, updated_at, last_login)
