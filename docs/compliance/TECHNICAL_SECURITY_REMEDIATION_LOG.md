@@ -1,6 +1,6 @@
 # Journal des correctifs techniques et de sécurité
 
-**Statut :** journal actif — chantiers P3 (checkout public), P4 (webhook Stripe / idempotence), P5 (fallback `order_items`) et P6 (gestionnaire d’erreurs) : **FERMÉS / COMPLETS**
+**Statut :** journal actif — chantiers P3 (checkout public), P4 (webhook Stripe / idempotence), P5 (fallback `order_items`), P6 (gestionnaire d’erreurs) et P7 (authentification / sessions / JWT) : **FERMÉS / COMPLETS**. Prochaine priorité d’audit : **P8** (inscription / consentement marketing / privacy).
 
 Ce document complète `docs/compliance/TECHNICAL_SECURITY_AUDIT.md`.
 
@@ -1017,6 +1017,149 @@ Test CORS non destructif : `Origin: https://not-allowed.invalid` sur `GET https:
 ### Statut final P6
 
 P6 est **FERMÉ / COMPLET**.
+
+---
+
+## 16 août 2026 — Chantier P7 : authentification, sessions et JWT (FERMÉ)
+
+Objectif : cookies httpOnly comme seule mécanique d’authentification, JWT HS256, registre `refresh_tokens`, révocation au logout, rotation one-time atomique, et refus des refresh legacy sans `jti`. Le constat d’audit initial (JWT dans le JSON, rate limit auth, revalidation compte, algorithme, identité checkout, registre / révocation / rotation) reste figé dans `TECHNICAL_SECURITY_AUDIT.md`.
+
+P7 est **FERMÉ / COMPLET / VALIDÉ EN PRODUCTION**.
+
+### P7-A — JWT hors des réponses JSON
+
+**Commit :** `0ffaced3fddbd84b59cfd54c19bccc9d0b0eaf69` — `fix(auth): keep jwt tokens out of json responses`
+
+Login et refresh ne retournent plus de JWT dans le JSON. Les cookies `access` et `refresh` httpOnly restent la mécanique d’authentification. Frontend confirmé compatible.
+
+**Validation production :** `LOGIN_FIELDS` = `ok, user` ; cookies après login = `access, refresh` ; `REFRESH_FIELDS` = `ok` ; `WHOAMI_OK` = True.
+
+### P7-B — Rate limit auth publique
+
+**Commit :** `42b3555af017c56c2a03f174e0e6ce83328bf804` — `fix(auth): rate limit public auth endpoints`
+
+- login : 10 requêtes / 15 minutes / IP
+- register : 5 requêtes / 60 minutes / IP
+- refresh : 60 requêtes / 60 secondes / IP
+
+Headers de limitation validés en production. Limite connue : store **en mémoire**, donc non distribué entre instances et réinitialisé au restart. Ce n’est **pas** une faille bloquante P7.
+
+### P7-C — Revalidation du compte au refresh
+
+**Commit :** `4c79e016721e17aa744d0868ba815ae87af9829b` — `fix(auth): revalidate account on refresh`
+
+Le refresh relit systématiquement `customers`. Email/role du JWT refresh ne sont plus une source de vérité. Compte absent → 401. Nouvel access signé depuis la DB.
+
+**Validation production :** login → refresh → whoami réussis.
+
+### P7-D — Algorithme JWT explicite
+
+**Commit :** `bc920673057de634dc0c2a1e8d864aa58f12171f` — `fix(auth): restrict jwt algorithm to hs256`
+
+Sign et verify access/refresh imposent HS256 (`algorithm` / `algorithms: ['HS256']`) sur `authController`, `checkoutController`, `verifyToken` et `requireRole`. Aucun fallback algorithmique implicite sur les chemins actifs.
+
+### P7-E — Revalidation identité checkout
+
+**Commit :** `6afcab66aba0d4dbcae3126cac942fc8dce98dc5` — `fix(auth): revalidate checkout identity`
+
+Le JWT fournit seulement un `candidateUserId`. Le customer est relu en DB. Compte absent → checkout invité. Email/role JWT ne deviennent pas source de vérité. Le checkout n’accepte jamais un `userId` fourni par le frontend.
+
+**Validation production :** refresh-only + panier vide → HTTP 400 ; cookie access réémis ; aucune commande ni paiement créé.
+
+### P7-F0 — Schéma production `refresh_tokens` confirmé
+
+La table production existait déjà (InnoDB) : `id` PK auto_increment, `user_id`, `refresh_token` varchar(255), `created_at`, `expires_at` nullable, index sur le token et sur `user_id`. Aucune vraie foreign key malgré un nom d’index historique. Un SHA-256 hex (64 caractères) rentre dans varchar(255). **Aucune migration** n’a été nécessaire.
+
+### P7-F1 — Persistance des refresh émis
+
+**Commit :** `341ce6de10ac9908eff6ca900fe5816bd3106ac1` — `fix(auth): persist issued refresh tokens`
+
+Tout refresh nouvellement émis possède `jti: randomUUID()`. Le JWT brut n’est jamais stocké : SHA-256 hex uniquement. L’expiration DB est dérivée du `exp` du JWT signé. Login/register persistent le refresh **avant** de poser les cookies.
+
+**Validation production :** longueur hash = 64 ; format SHA-256 hex ; durée observée = 30 jours. Aucune valeur de token n’est documentée.
+
+### P7-F2 — Registre obligatoire pour refresh géré
+
+**Commit :** `34a46d161bfc5c14d2708704ecebb6b5683d705e` — `fix(auth): enforce refresh token registry`
+
+Un refresh possédant un `jti` exige une ligne registre active (`user_id` + SHA-256 + `expires_at > NOW()`). Absent/expiré → 401 côté auth ; checkout managed absent/expiré → checkout invité. Erreurs DB → fail-closed.
+
+**Validation production :** token actif accepté ; `expires_at` temporairement dans le passé → 401 ; expiry restaurée → accepté. Aucune valeur secrète documentée.
+
+### P7-F3 — Révocation au logout
+
+**Commit :** `45e292befe3665671519a207437bcd90674d5c92` — `fix(auth): revoke refresh token on logout`
+
+Logout : SHA-256 du cookie refresh, `DELETE` exact du hash. `affectedRows = 0` = succès idempotent. Cookies effacés après succès DB. Pas de révocation globale de tous les tokens d’un utilisateur.
+
+**Validation production :** `LOGOUT_OK` = True ; cookies après logout vides ; replay exact du refresh révoqué → HTTP 401.
+
+### P7-F4A — Rotation atomique `/auth/refresh-token`
+
+**Commit :** `cd8bcf0c6d0ea2065c6962495c447c722840d5aa` — `fix(auth): rotate managed refresh tokens`
+
+Connexion dédiée, transaction, `SELECT … FOR UPDATE`, customer relu dans la TX, nouvel access, nouveau refresh avec nouveau `jti`, nouveau SHA-256, `UPDATE` de **la même ligne** (ancien hash dans le `WHERE`), `affectedRows === 1`, COMMIT, cookies seulement après commit.
+
+**Validation production :** login / rotation / refresh changé / replay ancien → 401 / nouveau refresh OK.
+
+**Validation DB après rotations :** `total_rows = 5`, `expired_rows = 4`, `active_rows = 1`, `latest_id = 7`, `active_token_length = 64`. Rotation par UPDATE ; aucune nouvelle ligne à chaque refresh.
+
+### P7-F4B — Rotation atomique checkout
+
+**Commit :** `e89ff0e279314988916929b6ada95c02721ce5e5` — `fix(auth): rotate checkout refresh tokens`
+
+Même rotation one-time sur le chemin checkout refresh-only. Managed absent / rejoué / révoqué → identité refusée, checkout **invité**. Erreur DB réelle → **pas** convertie silencieusement en invité.
+
+**Validation production non destructive :** HTTP 400 (panier vide prévu) ; refresh changé ; access émis ; replay ancien → 401 ; nouveau refresh OK. Aucune commande ni session Stripe créée.
+
+P7-F4 est fermé après cette validation. Même constat DB final F4 que F4A.
+
+### P7-F5 — Retrait des refresh legacy sans `jti`
+
+**Commit :** `235e7a7fec065b647ecb1cb604f15635044000b1` — `fix(auth): reject legacy refresh tokens`
+
+Tous les émetteurs refresh runtime actifs utilisent `jti`. `/auth/refresh-token` : JWT valide sans `jti` → 401 **avant** `getPool()` (aucune DB, aucun access, aucune adoption, aucune rotation). Checkout : JWT valide sans `jti` → invité (aucun access, aucune adoption, aucune rotation). Les chemins access-only depuis un refresh legacy ont été retirés.
+
+**Validation production (chemins managed) :** `AUTH_MANAGED_OK` / `AUTH_REFRESH_CHANGED` / checkout HTTP 400 / refresh checkout changé / access checkout émis. Aucun JWT legacy artificiel n’a été fabriqué avec un secret production. Le rejet legacy est confirmé statiquement ; les chemins managed ont été revalidés en production.
+
+### P7-F6 — Alignement cookie access / JWT access
+
+**Commit :** `41a1fc4ef597520682c336685d3de848bd8e285f` — `fix(auth): align access cookie lifetime`
+
+`cookieOptsAccess.maxAge` : 1 heure → **15 minutes** dans `authController.js` et `checkoutController.js`. JWT access inchangé : `JWT_ACCESS_TTL || '15m'`. Cookie refresh inchangé : 30 jours.
+
+Ce n’était pas un bypass d’autorisation : le JWT expirait déjà à 15 minutes. Le correctif évite d’envoyer un cookie access déjà mort pendant ~45 minutes.
+
+**Validation production :** login OK ; `LOGIN_ACCESS_EXPIRES_MIN = 15` ; `LOGIN_REFRESH_EXPIRES_DAYS = 30` ; checkout HTTP 400 ; `CHECKOUT_ACCESS_EXPIRES_MIN = 15` ; `CHECKOUT_REFRESH_EXPIRES_DAYS = 30`. Les deux émetteurs runtime de cookie access sont à 15 minutes.
+
+### État final P7
+
+- JWT access et refresh hors JSON ;
+- cookies httpOnly, `Secure` en production, `SameSite=Lax` ;
+- access et refresh signés/vérifiés HS256 ;
+- access JWT et cookie access : 15 min par défaut ;
+- refresh cookie : 30 jours ;
+- `jti` obligatoire sur tout refresh actif ;
+- SHA-256 uniquement en DB (aucun JWT brut dans `refresh_tokens`) ;
+- registre obligatoire ; relecture `customers` au refresh et au checkout ;
+- révocation exacte au logout ;
+- rotation one-time atomique auth et checkout ;
+- replay d’un ancien refresh refusé ; legacy sans `jti` refusé.
+
+### Résidus acceptés / reportés
+
+P7 n’épuise pas tout le durcissement auth. Résidus connus :
+
+1. **`issuer` / `audience`** — absents. **Reporté** à un hardening post-P7. Les ajouter immédiatement au `verify` invaliderait les refresh déjà émis. Une grace period serait nécessaire. Non bloquant pour clôturer P7.
+2. **`verifyToken` / whoami sans relecture DB** — email/role UI peuvent être stale jusqu’à ~15 min. Compensé : admin API (`requireRole`) relit `customers` ; checkout et refresh aussi. Risque faible/borné **accepté**. Ce n’est pas une faille admin active.
+3. **Wishlist** — identité JWT pendant le TTL access ; l’IDOR client connu est bloqué. Un compte supprimé pourrait conserver cet access ~15 min. **Accepté**, faible, non bloquant.
+4. **Register account enumeration** — 409 `Un compte existe déjà avec ce courriel.` **Reporté à P8** (inscription / privacy / consentement). Login conserve déjà une erreur générique.
+5. **`authService.js` / `authModel.js`** — code historique **non branché** au runtime. Hors P7. Hygiène possible plus tard.
+6. **Lignes `refresh_tokens` expirées** — peuvent rester. Le registre actif exige `expires_at > NOW()`. Purge / family revoke : hardening ultérieur, non bloquant.
+
+### Statut final P7
+
+P7 est **FERMÉ / COMPLET**. Le constat historique d’audit P7 a été traité par les correctifs et validations ci-dessus. La prochaine priorité d’audit est **P8** (inscription / consentement marketing / privacy).
 
 ---
 
