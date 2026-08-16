@@ -32,6 +32,9 @@ const cookieOptsRefresh = {
   path: '/'
 };
 
+const MARKETING_CONSENT_TEXT =
+  'Je souhaite recevoir par courriel des nouvelles, nouveautés et offres de Flippin’ Maple.';
+
 function signAccess(payload) {
   return jwt.sign(payload, process.env.JWT_ACCESS_SECRET, {
     expiresIn: ACCESS_TTL,
@@ -352,26 +355,77 @@ export const register = async (req, res, next) => {
     const password_hash = await bcrypt.hash(password, 10);
 
     const role = 'user';
-    const [result] = await pool.query(
-      `INSERT INTO customers
-        (first_name, last_name, email, password_hash, is_subscribed, role, created_at, updated_at, last_login)
-       VALUES
-        (?, ?, ?, ?, ?, ?, NOW(), NOW(), NULL)`,
-      [f, l, email, password_hash, is_subscribed, role]
-    );
+    const connection = await pool.getConnection();
+    try {
+      await connection.beginTransaction();
 
-    const userId = result.insertId;
+      const [result] = await connection.query(
+        `INSERT INTO customers
+          (first_name, last_name, email, password_hash, is_subscribed, role, created_at, updated_at, last_login)
+         VALUES
+          (?, ?, ?, ?, ?, ?, NOW(), NOW(), NULL)`,
+        [f, l, email, password_hash, is_subscribed, role]
+      );
 
-    const access = signAccess({ sub: userId, email, role });
-    const refresh = signRefresh({ sub: userId });
+      const userId = result.insertId;
 
-    await persistRefreshToken(pool, userId, refresh);
+      if (is_subscribed === 1) {
+        await connection.query(
+          `INSERT INTO consents
+            (
+              customer_id,
+              subject_type,
+              subject_id,
+              email,
+              purpose,
+              basis,
+              method,
+              text_snapshot,
+              locale,
+              source,
+              ip,
+              user_agent,
+              granted_at
+            )
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, UTC_TIMESTAMP())`,
+          [
+            userId,
+            'user',
+            userId,
+            email,
+            'marketing_email',
+            'express',
+            'checkbox',
+            MARKETING_CONSENT_TEXT,
+            'fr-CA',
+            'register',
+            req.ip || null,
+            req.get('user-agent') || null
+          ]
+        );
+      }
 
-    return res
-      .cookie('access', access, cookieOptsAccess)
-      .cookie('refresh', refresh, cookieOptsRefresh)
-      .status(201)
-      .json({ ok: true, id: userId });
+      const access = signAccess({ sub: userId, email, role });
+      const refresh = signRefresh({ sub: userId });
+      await persistRefreshToken(connection, userId, refresh);
+
+      await connection.commit();
+
+      return res
+        .cookie('access', access, cookieOptsAccess)
+        .cookie('refresh', refresh, cookieOptsRefresh)
+        .status(201)
+        .json({ ok: true, id: userId });
+    } catch (txErr) {
+      try {
+        await connection.rollback();
+      } catch {
+        /* keep original error */
+      }
+      throw txErr;
+    } finally {
+      connection.release();
+    }
   } catch (err) {
     console.error('[auth:register] error:', err?.message);
     next(err);
