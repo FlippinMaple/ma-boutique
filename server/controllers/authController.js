@@ -342,19 +342,13 @@ export const register = async (req, res, next) => {
 
     const pool = await getPool();
 
-    const [exists] = await pool.query(
-      'SELECT id FROM customers WHERE email = ? LIMIT 1',
-      [email]
-    );
-    if (exists.length) {
-      return res
-        .status(409)
-        .json({ message: 'Un compte existe déjà avec ce courriel.' });
-    }
-
     const password_hash = await bcrypt.hash(password, 10);
 
     const role = 'user';
+    const publicRegisterResult = {
+      ok: true,
+      message: 'Inscription traitée. Vous pouvez maintenant vous connecter.'
+    };
     const connection = await pool.getConnection();
     try {
       await connection.beginTransaction();
@@ -405,22 +399,17 @@ export const register = async (req, res, next) => {
         );
       }
 
-      const access = signAccess({ sub: userId, email, role });
-      const refresh = signRefresh({ sub: userId });
-      await persistRefreshToken(connection, userId, refresh);
-
       await connection.commit();
 
-      return res
-        .cookie('access', access, cookieOptsAccess)
-        .cookie('refresh', refresh, cookieOptsRefresh)
-        .status(201)
-        .json({ ok: true, id: userId });
+      return res.status(200).json(publicRegisterResult);
     } catch (txErr) {
       try {
         await connection.rollback();
       } catch {
         /* keep original error */
+      }
+      if (txErr?.code === 'ER_DUP_ENTRY' || txErr?.errno === 1062) {
+        return res.status(200).json(publicRegisterResult);
       }
       throw txErr;
     } finally {
