@@ -148,14 +148,13 @@ const Checkout = () => {
     };
 
     const onBeforeUnload = () => sendAbandon();
-    const onPageHide = () => sendAbandon();
-    const onVisibilityChange = () => {
-      if (document.visibilityState === 'hidden') sendAbandon();
+    const onPageHide = (event) => {
+      if (event.persisted) return;
+      sendAbandon();
     };
 
     window.addEventListener('beforeunload', onBeforeUnload);
     window.addEventListener('pagehide', onPageHide);
-    document.addEventListener('visibilitychange', onVisibilityChange);
 
     // Optional manual debug hook
     window.__abandonTest = sendAbandon;
@@ -163,7 +162,6 @@ const Checkout = () => {
     return () => {
       window.removeEventListener('beforeunload', onBeforeUnload);
       window.removeEventListener('pagehide', onPageHide);
-      document.removeEventListener('visibilitychange', onVisibilityChange);
       try {
         delete window.__abandonTest;
       } catch {
