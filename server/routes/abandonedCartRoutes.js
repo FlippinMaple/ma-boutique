@@ -1,6 +1,7 @@
 // server/routes/abandonedCartRoutes.js
 import { Router } from 'express';
 import express from 'express';
+import { abandonedCartLimiter } from '../middlewares/rateLimiters.js';
 
 const router = Router();
 
@@ -76,7 +77,7 @@ function sanitizeAbandonedItem(it) {
 }
 
 // text/plain: sendBeacon Blob. application/json: already parsed globally in app.js.
-router.post('/log-abandoned-cart', express.text({ type: 'text/plain', limit: '100kb' }), async (req, res) => {
+router.post('/log-abandoned-cart', abandonedCartLimiter, express.text({ type: 'text/plain', limit: '100kb' }), async (req, res) => {
   try {
     const db = req.app.locals.db; // ✅ comme avant: la DB passe via Express
     if (!db) return res.status(500).json({ error: 'db db not available' });

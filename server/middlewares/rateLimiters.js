@@ -80,3 +80,16 @@ export const unsubscribeLimiter = rateLimit({
     });
   }
 });
+
+export const abandonedCartLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req, res) => {
+    res.status(429).json({
+      error: 'Trop de tentatives. Réessaie dans quelques instants.',
+      code: 'ABANDONED_CART_RATE_LIMITED'
+    });
+  }
+});
