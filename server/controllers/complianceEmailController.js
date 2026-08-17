@@ -1,6 +1,47 @@
 // controllers/complianceEmailController.js
 import { parseUnsubToken } from '../services/unsubscribeToken.js';
 import { markCustomerSubscribed } from '../services/emailService.js';
+import { getPool } from '../db.js';
+
+async function revokeMarketingForEmail(email) {
+  const pool = await getPool();
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+
+    await connection.query(
+      `INSERT INTO unsubscribes (email, reason, created_at)
+       VALUES (?, 'user_click', UTC_TIMESTAMP())
+       ON DUPLICATE KEY UPDATE created_at = UTC_TIMESTAMP(), reason='user_click'`,
+      [email]
+    );
+
+    await connection.query(
+      `UPDATE customers SET is_subscribed = 0 WHERE email = ?`,
+      [email]
+    );
+
+    await connection.query(
+      `UPDATE consents
+          SET revoked_at = UTC_TIMESTAMP()
+        WHERE email = ?
+          AND purpose = 'marketing_email'
+          AND revoked_at IS NULL`,
+      [email]
+    );
+
+    await connection.commit();
+  } catch (err) {
+    try {
+      await connection.rollback();
+    } catch {
+      /* keep original error */
+    }
+    throw err;
+  } finally {
+    connection.release();
+  }
+}
 
 export async function recordConsent(req, res) {
   const db = req.app.locals.db;
@@ -58,18 +99,10 @@ export async function recordConsent(req, res) {
 }
 
 export async function unsubscribePost(req, res) {
-  const db = req.app.locals.db;
-
   try {
     const token = req.body?.token || req.query?.e;
     const email = parseUnsubToken(token);
-    await db.query(
-      `INSERT INTO unsubscribes (email, reason, created_at)
-       VALUES (?, 'user_click', UTC_TIMESTAMP())
-       ON DUPLICATE KEY UPDATE created_at = UTC_TIMESTAMP(), reason='user_click'`,
-      [email]
-    );
-    await markCustomerSubscribed(email, false);
+    await revokeMarketingForEmail(email);
     res.json({ ok: true, email });
   } catch (err) {
     console.error('unsubscribePost error', err);
@@ -78,17 +111,9 @@ export async function unsubscribePost(req, res) {
 }
 
 export async function unsubscribeLanding(req, res) {
-  const db = req.app.locals.db;
-
   try {
     const email = parseUnsubToken(req.query.e);
-    await db.query(
-      `INSERT INTO unsubscribes (email, reason, created_at)
-       VALUES (?, 'user_click', UTC_TIMESTAMP())
-       ON DUPLICATE KEY UPDATE created_at = UTC_TIMESTAMP(), reason='user_click'`,
-      [email]
-    );
-    await markCustomerSubscribed(email, false);
+    await revokeMarketingForEmail(email);
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.end(
       `<html><body style="font-family:Arial"><h3>Vous êtes désabonné(e).</h3><p>${email}</p></body></html>`
