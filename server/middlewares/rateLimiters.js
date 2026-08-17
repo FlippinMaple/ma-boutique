@@ -66,3 +66,17 @@ export const authRefreshLimiter = rateLimit({
     });
   }
 });
+
+export const unsubscribeLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req, res) => {
+    res.status(429).json({
+      error:
+        'Trop de tentatives de désabonnement. Réessaie dans quelques instants.',
+      code: 'UNSUBSCRIBE_RATE_LIMITED'
+    });
+  }
+});
