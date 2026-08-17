@@ -22,6 +22,7 @@ import PreviewOrder from './pages/PreviewOrder';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
 import Login from './pages/Login';
+import Unsubscribe from './pages/Unsubscribe';
 import ProtectedCheckoutRoute from './components/ProtectedCheckoutRoute';
 
 import { adminRoutes } from './admin/AdminRoutes';
@@ -135,6 +136,7 @@ function AppInner() {
         <Route path="/cancel" element={<Cancel />} />
         <Route path="/product/:id" element={<ProductDetail />} />
         <Route path="/preview-order" element={<PreviewOrder />} />
+        <Route path="/unsubscribe" element={<Unsubscribe />} />
         {adminRoutes}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

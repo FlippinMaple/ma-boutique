@@ -1,0 +1,70 @@
+/* Unsubscribe — Northern Utility Editorial, page utilitaire */
+
+.unsubscribe {
+  width: 100%;
+  min-height: 60vh;
+  background-color: var(--color-maple-bone);
+  color: var(--color-ink-black);
+  display: flex;
+  justify-content: center;
+  padding: var(--space-7) var(--gutter);
+}
+
+.unsubscribe__panel {
+  width: 100%;
+  max-width: 28rem;
+}
+
+.unsubscribe__eyebrow {
+  margin: 0 0 var(--space-3);
+  font-family: var(--font-display);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-deep-forest);
+}
+
+.unsubscribe__title {
+  margin: 0 0 var(--space-4);
+  font-family: var(--font-display);
+  font-size: clamp(1.5rem, 4vw, 2rem);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--color-ink-black);
+}
+
+.unsubscribe__copy {
+  margin: 0 0 var(--space-5);
+  font-family: var(--font-body);
+  font-size: 1rem;
+  line-height: 1.55;
+  color: var(--color-text);
+}
+
+.unsubscribe button[type='submit'] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-3) var(--space-5);
+  font-family: var(--font-display);
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-maple-bone);
+  background-color: var(--color-ink-black);
+  border: 1px solid var(--color-ink-black);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.unsubscribe button[type='submit']:hover:not(:disabled) {
+  background-color: var(--color-charcoal);
+}
+
+.unsubscribe button[disabled] {
+  opacity: 0.6;
+  cursor: not-allowed;
+}

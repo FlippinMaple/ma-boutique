@@ -103,27 +103,10 @@ export async function unsubscribePost(req, res) {
     const token = req.body?.token || req.query?.e;
     const email = parseUnsubToken(token);
     await revokeMarketingForEmail(email);
-    res.json({ ok: true, email });
+    res.json({ ok: true });
   } catch (err) {
     console.error('unsubscribePost error', err);
     res.status(400).json({ error: 'invalid token' });
-  }
-}
-
-export async function unsubscribeLanding(req, res) {
-  try {
-    const email = parseUnsubToken(req.query.e);
-    await revokeMarketingForEmail(email);
-    res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    res.end(
-      `<html><body style="font-family:Arial"><h3>Vous êtes désabonné(e).</h3><p>${email}</p></body></html>`
-    );
-  } catch {
-    res
-      .status(400)
-      .end(
-        `<html><body style="font-family:Arial"><h3>Jeton invalide.</h3></body></html>`
-      );
   }
 }
 
