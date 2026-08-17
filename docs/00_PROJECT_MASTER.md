@@ -185,7 +185,7 @@ Ces décisions sont considérées **prises**, jusqu’à révocation formelle da
 | Constats de sécurité (audit figé) | `docs/compliance/TECHNICAL_SECURITY_AUDIT.md` |
 | Correctifs de sécurité validés | `docs/compliance/TECHNICAL_SECURITY_REMEDIATION_LOG.md` |
 | Page d’accueil | `docs/web/HOMEPAGE_SPEC.md` et documents `docs/web/` associés |
-| Architecture logicielle générale | Futur `docs/engineering/ARCHITECTURE.md` |
+| Architecture logicielle générale | `docs/engineering/ARCHITECTURE.md` |
 | Exploitation, incidents, runbooks | Futurs docs `docs/ops/` |
 | Dette et priorités d’exécution | Futur backlog documenté ; TODO encore dans l’inventaire |
 
@@ -269,6 +269,7 @@ Cette carte indique où vit l’autorité. Elle ne duplique pas le contenu des d
 | Document | Statut déclaré | Rôle |
 |---|---|---|
 | `docs/engineering/DATA_MODEL.md` | source officielle (sections migrées) | Schéma métier : tables, colonnes, clés, relations, contraintes |
+| `docs/engineering/ARCHITECTURE.md` | actif | Architecture générale, frontières du core, providers et portabilité |
 | `docs/engineering/HOSTING_CONSTRAINTS.md` | actif | Contraintes Hostinger / MySQL prod et émulation des règles en code |
 | `docs/engineering/CHECKOUT_INVARIANTS.md` | référence fonctionnelle | Invariants du pipeline checkout / paiement (snapshots, webhook, panier) |
 | `docs/engineering/PRODUCT_SEARCH_AND_SORT_SPEC.md` | spécification de référence | Recherche, tri, `min_price` et invariants du catalogue public |
@@ -296,7 +297,6 @@ Cette carte indique où vit l’autorité. Elle ne duplique pas le contenu des d
 | Document prévu | Répond à | Contenu attendu |
 |---|---|---|
 | `docs/product/CATALOG_RULES.md` | Quoi vendre | Curation, collections, critères d’entrée/sortie |
-| `docs/engineering/ARCHITECTURE.md` | Comment c’est bâti | Front, API, jobs, webhooks, flux |
 | `docs/engineering/INVARIANTS.md` | Quoi ne jamais casser transversalement | Invariants techniques généraux hors du périmètre spécialisé checkout / paiement |
 | `docs/engineering/SECURITY.md` | Comment on protège | Auth, sessions et règles de protection vivantes (distinctes de l’audit figé) |
 | `docs/ops/RUNBOOKS.md` | Quand ça casse | Stripe, commandes pending, sync production |
@@ -322,6 +322,7 @@ Format : date · ID · décision · raison.
 | 2026-07-16 | C02 | Architecture documentaire : un maître + docs spécialisés futurs | Éviter monolithe et dispersion |
 | 2026-07-16 | C03 | `DATA_MODEL.md` et `HOSTING_CONSTRAINTS.md` reconnus sources officielles ; README et §11 synchronisés | Post-migration Profil BDD ; éviter index et carte documentaire obsolètes |
 | 2026-08-13 | C04 | Carte documentaire centrale resynchronisée avec les documents spécialisés réellement présents | Les index de `00_PROJECT_MASTER.md` et du README ne reflétaient plus `docs/brand/`, `docs/engineering/`, `docs/compliance/` et `docs/web/` |
+| 2026-08-16 | C05 | Flippin’ Maple adopte comme direction un monolithe modulaire avec séparation progressive entre commerce core, configuration de marque/instance et intégrations fournisseurs ; Stripe et Printful sont des providers de l’instance actuelle, non des dépendances conceptuelles obligatoires du core | Préserver la simplicité actuelle tout en permettant l’évolution, le remplacement de fournisseurs et la réutilisation future du moteur, sans imposer des microservices prématurés |
 | 2025-10-21 | H01 | (Héritage) Auth JWT / cookies httpOnly — alignement front/back | Noté historiquement dans `NOTES.md` ; détail technique hors Constitution |
 
 ---

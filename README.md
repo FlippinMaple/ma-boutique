@@ -32,6 +32,7 @@ Le nom technique historique du dépôt (`mon-shop-artofwhere`) est un héritage 
 | Modèle de données | [docs/engineering/DATA_MODEL.md](docs/engineering/DATA_MODEL.md) |
 | Contraintes d’hébergement (Hostinger / prod) | [docs/engineering/HOSTING_CONSTRAINTS.md](docs/engineering/HOSTING_CONSTRAINTS.md) |
 | Invariants checkout et paiement | [docs/engineering/CHECKOUT_INVARIANTS.md](docs/engineering/CHECKOUT_INVARIANTS.md) |
+| Architecture générale / portabilité | [docs/engineering/ARCHITECTURE.md](docs/engineering/ARCHITECTURE.md) |
 | Recherche et tri du catalogue public | [docs/engineering/PRODUCT_SEARCH_AND_SORT_SPEC.md](docs/engineering/PRODUCT_SEARCH_AND_SORT_SPEC.md) |
 | Confidentialité, témoins, chatbot | [docs/compliance/PRIVACY_COOKIES_CHATBOT_PLAN.md](docs/compliance/PRIVACY_COOKIES_CHATBOT_PLAN.md) |
 | Audit de sécurité (constats figés) | [docs/compliance/TECHNICAL_SECURITY_AUDIT.md](docs/compliance/TECHNICAL_SECURITY_AUDIT.md) |
@@ -113,6 +114,7 @@ Le frontend attend le backend sur `http://localhost:4242` (cible du proxy Vite).
 | Document | Rôle |
 |---|---|
 | [docs/engineering/DATA_MODEL.md](docs/engineering/DATA_MODEL.md) | Source officielle du schéma métier (sections migrées) |
+| [docs/engineering/ARCHITECTURE.md](docs/engineering/ARCHITECTURE.md) | Architecture générale, frontières du core, providers et portabilité |
 | [docs/engineering/HOSTING_CONSTRAINTS.md](docs/engineering/HOSTING_CONSTRAINTS.md) | Contraintes Hostinger / prod |
 | [docs/engineering/CHECKOUT_INVARIANTS.md](docs/engineering/CHECKOUT_INVARIANTS.md) | Référence fonctionnelle du pipeline de paiement |
 | [docs/engineering/PRODUCT_SEARCH_AND_SORT_SPEC.md](docs/engineering/PRODUCT_SEARCH_AND_SORT_SPEC.md) | Spécification de la recherche et du tri du catalogue public |
