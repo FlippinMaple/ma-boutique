@@ -1,8 +1,10 @@
 // services/unsubscribeToken.js
 import crypto from 'crypto';
 
-const LEGACY_HMAC_SECRET = 'change-me';
 const PRIMARY_HMAC_SECRET = String(process.env.UNSUB_HMAC_SECRET || '').trim();
+if (!PRIMARY_HMAC_SECRET) {
+  throw new Error('UNSUB_HMAC_SECRET is required');
+}
 
 function hmacMac(message, secret) {
   return crypto.createHmac('sha256', secret).update(message).digest('base64url');
@@ -13,8 +15,7 @@ export function makeUnsubToken(email) {
     .trim()
     .toLowerCase();
   const v = 1;
-  const secret = PRIMARY_HMAC_SECRET || LEGACY_HMAC_SECRET;
-  const mac = hmacMac(`${e}::v${v}`, secret);
+  const mac = hmacMac(`${e}::v${v}`, PRIMARY_HMAC_SECRET);
   return Buffer.from(JSON.stringify({ e, v, mac })).toString('base64url');
 }
 
@@ -22,15 +23,10 @@ export function parseUnsubToken(token) {
   const payload = JSON.parse(
     Buffer.from(String(token), 'base64url').toString('utf8')
   );
-  const message = `${payload.e.toLowerCase()}::v${payload.v}`;
-  const effectiveSecret = PRIMARY_HMAC_SECRET || LEGACY_HMAC_SECRET;
-  const expect = hmacMac(message, effectiveSecret);
-  if (expect === payload.mac) return payload.e.toLowerCase();
-
-  if (PRIMARY_HMAC_SECRET) {
-    const expectLegacy = hmacMac(message, LEGACY_HMAC_SECRET);
-    if (expectLegacy === payload.mac) return payload.e.toLowerCase();
-  }
-
-  throw new Error('bad token');
+  const expect = hmacMac(
+    `${payload.e.toLowerCase()}::v${payload.v}`,
+    PRIMARY_HMAC_SECRET
+  );
+  if (expect !== payload.mac) throw new Error('bad token');
+  return payload.e.toLowerCase();
 }
