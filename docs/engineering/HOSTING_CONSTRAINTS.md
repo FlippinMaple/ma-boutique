@@ -35,3 +35,5 @@ Ces règles côté code SONT la vérité opérationnelle tant qu’on n’a pas 
 **Panier `ordered`.** Le checkout ne verrouille plus un panier à la création de session (plus de `cart_id` client). Un passage `open` → `ordered` n’existe que dans le webhook, et seulement si un `metadata.cart_id` historique est encore présent.
 
 **`FRONTEND_URL` (production).** Valeur officielle Hostinger : `FRONTEND_URL=https://flippinmaple.com`. Ne pas y mettre une liste comma-separated contenant des URLs locales : `sanitizeBaseUrl` prend actuellement la première entrée si la variable contient une virgule. Cette base sert notamment aux URLs Stripe `success_url` et `cancel_url`. Les origines localhost nécessaires au développement restent gérées séparément dans la configuration CORS du code ; elles n’ont pas à figurer dans `FRONTEND_URL` production.
+
+**`UNSUB_HMAC_SECRET` (production, obligatoire depuis P10-B2).** Variable Hostinger **requise**. L’application échoue au chargement si elle est absente ou vide. Ne jamais documenter, logger ou copier sa valeur. Une rotation du secret invalide les tokens unsubscribe existants. Après P10, aucun fallback public n’existe.

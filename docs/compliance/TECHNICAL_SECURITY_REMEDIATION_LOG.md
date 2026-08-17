@@ -1,6 +1,6 @@
 # Journal des correctifs techniques et de sécurité
 
-**Statut :** journal actif — chantiers P3 (checkout public), P4 (webhook Stripe / idempotence), P5 (fallback `order_items`), P6 (gestionnaire d’erreurs), P7 (authentification / sessions / JWT), P8 (inscription / consentement marketing / privacy technique) et P9 (consentements email / unsubscribe / webhooks et cycle de révocation) : **FERMÉS / COMPLETS**. Prochaine priorité d’audit : **P10** (secret unsubscribe / token hardening).
+**Statut :** journal actif — chantiers P3 (checkout public), P4 (webhook Stripe / idempotence), P5 (fallback `order_items`), P6 (gestionnaire d’erreurs), P7 (authentification / sessions / JWT), P8 (inscription / consentement marketing / privacy technique), P9 (consentements email / unsubscribe / webhooks et cycle de révocation) et P10 (secret unsubscribe / token hardening) : **FERMÉS / COMPLETS**. Prochaine priorité d’audit : **P11** (paniers abandonnés).
 
 Ce document complète `docs/compliance/TECHNICAL_SECURITY_AUDIT.md`.
 
@@ -1411,6 +1411,119 @@ Au sens technique :
 Cela ne constitue **pas** une certification de conformité légale.
 
 La prochaine priorité d’audit est **P10** (secret unsubscribe / token hardening).
+
+---
+
+## 17 août 2026 — Chantier P10 : secret unsubscribe / token hardening (FERMÉ)
+
+Objectif : retirer le fallback public du HMAC de désabonnement, rendre `UNSUB_HMAC_SECRET` obligatoire, et durcir la validation du token v1 (`v === 1`, email canonique, MAC SHA-256, `timingSafeEqual`) sans changer le protocole public ni le parcours P9-E. Le constat d’audit initial (fallback `'change-me'`, secret Hostinger non vérifié, token signé non chiffré, email décodable, pas d’expiration, version non imposée, comparaison string, validation email/payload faible) reste figé dans `TECHNICAL_SECURITY_AUDIT.md`.
+
+P10 est **FERMÉ / VALIDÉ EN PRODUCTION** au sens d’une **remédiation technique**. Ce n’est **pas** une certification de conformité légale. Aucune valeur de secret n’est documentée ici.
+
+### P10-A — Inspection statique
+
+Inspection uniquement. Aucun fichier modifié, aucun secret généré, aucun runtime.
+
+Constat code alors en vigueur : `UNSUB_HMAC_SECRET || 'change-me'` ; émission v1 `base64url(JSON({ e, v, mac }))` ; HMAC-SHA256 de `` `${e}::v${v}` `` ; digest MAC base64url ; `v = 1` émis mais non imposé au parse ; comparaison string `!==` ; pas de `timingSafeEqual` ; pas d’`iat` / `exp` ; email trim + lowercase à l’émission, pas de regex ; unique producteur `abandonedCartJob.marketingTemplate` ; unique consommateur runtime `unsubscribePost` (P9-E) ; token non persisté en DB.
+
+**Vérification manuelle Hostinger :** `UNSUB_HMAC_SECRET` était **ABSENT** des variables d’environnement de l’application production. Aucune valeur de secret n’a été révélée publiquement, inscrite dans la documentation ni journalisée. Avec le code alors déployé, la production utilisait donc le fallback public `change-me`, sauf mécanisme externe non identifié.
+
+### P10-B1 — Passerelle de rotation du secret
+
+**Commit :** `e8def11c0f0f3db6e195491e3fb41e9be7a7cccd` — `fix(compliance): prepare unsubscribe secret rotation`
+
+**Fichier :** `server/services/unsubscribeToken.js`
+
+Passerelle temporaire : secret primaire `UNSUB_HMAC_SECRET` (s’il est défini et non vide) et secret legacy historique `'change-me'`. Format v1 inchangé. `makeUnsubToken` émet avec le primaire s’il existe, sinon le legacy. `parseUnsubToken` vérifie d’abord le secret effectif ; si un vrai primaire est configuré et que le MAC primaire échoue, essai temporaire du legacy. Fail-closed **non** activé à cette étape. `timingSafeEqual` **non** ajouté.
+
+**Validation production avant rotation :** token legacy `change-me` → HTTP 200. Un secret cryptographiquement aléatoire a ensuite été généré hors logs et ajouté manuellement dans Hostinger. Aucune valeur n’a été affichée dans le journal ni dans la conversation. `/readiness` après configuration : `ok` true.
+
+**Validation production après rotation (passerelle encore en place) :** token legacy `change-me` → HTTP 200 ; token signé avec le secret primaire réel → HTTP 200 `{ "ok": true }`. Lignes DB de test nettoyées.
+
+P10-B1 n’était **pas** une correction finale : tant que `change-me` restait accepté, un tiers connaissant ce littéral public pouvait encore forger un token.
+
+### P10-B2 — Secret obligatoire / retrait du fallback legacy
+
+**Commit :** `b70b0dad3344e5edacf9c7d34686927d3f1c31c3` — `fix(compliance): require unsubscribe hmac secret`
+
+**Fichier :** `server/services/unsubscribeToken.js`
+
+`UNSUB_HMAC_SECRET` obligatoire. Fail-closed au chargement du module si la variable est absente ou vide (`throw new Error('UNSUB_HMAC_SECRET is required')` — le message ne contient aucune valeur). Suppression complète de `LEGACY_HMAC_SECRET` et du littéral `change-me`. Émission et validation uniquement avec le secret primaire. Format v1 / chaîne HMAC inchangés. `timingSafeEqual` encore reporté à P10-C.
+
+Décision volontaire : les anciens liens signés avec `change-me` deviennent invalides après déploiement.
+
+**Validation production :** durant le déploiement, un token legacy a encore été accepté par l’ancienne version. Une fois le nouveau déploiement actif, le même type de token `change-me` → HTTP 400 `{ "error": "invalid token" }`. `/readiness` = true. Ligne de test nettoyée.
+
+### P10-C — Validation stricte du token + comparaison HMAC en temps constant
+
+**Commit :** `d4d216cf594a6db865027513099bd9559c0fed5b` — `fix(compliance): harden unsubscribe token validation`
+
+**Fichier :** `server/services/unsubscribeToken.js`
+
+Parser final :
+
+- secret primaire obligatoire (P10-B2 conservé) ;
+- token brut : string non vide, max 1024, charset base64url `[A-Za-z0-9_-]+` ;
+- JSON contrôlé (`try/catch`) ; payload objet, pas `null`, pas tableau, pas primitive ;
+- `payload.e` string déjà canonique (`trim` + lowercase) ; max 100 ; regex conservatrice `/^[^\s@]+@[^\s@]+\.[^\s@]+$/` (alignée register / checkout) ;
+- `payload.v === 1` sans coercition ;
+- `payload.mac` string base64url de 43 caractères ; Buffer décodé exactement 32 octets ;
+- HMAC-SHA256 attendu calculé en Buffer (`hmacDigest`) ;
+- comparaison `crypto.timingSafeEqual` après garde de longueur ;
+- échecs malformés normalisés en `Error('bad token')` ;
+- `makeUnsubToken` refuse d’émettre un token pour un email vide ou invalide ;
+- controller P9-E inchangé → HTTP 400 `{ "error": "invalid token" }` ;
+- format public v1 inchangé : `` `${e}::v${v}` ``, HMAC-SHA256, `{ e, v, mac }`, JSON base64url.
+
+**Validation production P10-C :**
+
+- token v2 correctement signé → HTTP 400 `{ "error": "invalid token" }` ;
+- token v1 primaire valide → HTTP 200 `{ "ok": true }` ;
+- token malformé → HTTP 400 `{ "error": "invalid token" }` ;
+- `/readiness` = true ;
+- secret retiré de la session de test ;
+- ligne DB créée par le token valide nettoyée ;
+- aucun résidu de test.
+
+P9-D / P9-E / P9-F n’ont pas été modifiés. P11 / P12 (paniers abandonnés / cron) n’ont pas été corrigés dans P10.
+
+### Décision P10-D — non implémenté
+
+**P10-D n’est pas implémenté.** Décision technique intentionnelle, pas un oubli.
+
+1. **Pas d’expiration (`iat` / `exp`) pour le moment.** Un lien de désabonnement marketing doit rester utilisable longtemps. Le pouvoir du token est limité à la révocation marketing de l’adresse signée. La révocation P9-D est idempotente. Une expiration pourrait empêcher un destinataire de se désabonner à partir d’un ancien email, sans bénéfice proportionné maintenant que la forge via `change-me` est bloquée.
+
+2. **Pas de token opaque DB ni de chiffrement pour le moment.** Le payload v1 reste `base64url(JSON({ e, v, mac }))`. HMAC assure **intégrité / authenticité**, pas la **confidentialité**. L’email reste récupérable par décodage base64url. Le token peut apparaître dans l’URL, l’historique navigateur, ou des logs techniques éventuels. C’est un **résidu de confidentialité accepté** à ce stade. Le masquer réellement exigerait un token opaque avec état serveur ou un format chiffré ; cette complexité n’est pas jugée proportionnée au pouvoir limité du token, ni compatible avec la direction monolithe modulaire / contraintes Hostinger actuelles. Réévaluable plus tard si les exigences privacy, analytics, logs ou architecture changent.
+
+Cela ne constitue **pas** une certification juridique.
+
+### Résidus / décisions — hors P10 ou acceptés
+
+1. L’email dans le token v1 reste décodable (intégrité ≠ confidentialité). Accepté pour P10 ; voir décision P10-D.
+2. Pas d’expiration des liens unsubscribe. Accepté pour P10 ; voir décision P10-D.
+3. P11 / P12 (paniers abandonnés, job, cron, `req`) **non corrigés**.
+4. `recordConsent` / `emailWebhook` restent du code historique non monté (P9-A / P9-B).
+5. Les pages légales publiques ne sont **pas** fournies par P10.
+6. Aucun secret, longueur de secret, ni exemple de valeur n’est documenté.
+
+### Statut final P10
+
+P10 est **FERMÉ / VALIDÉ EN PRODUCTION**.
+
+Au sens technique :
+
+- fallback public `change-me` retiré ;
+- `UNSUB_HMAC_SECRET` obligatoire, fail-closed au chargement ;
+- rotation production validée (primaire accepté ; legacy rejeté après P10-B2) ;
+- parser v1 durci (structure, email, `v === 1`, MAC 32 octets, `timingSafeEqual`) ;
+- format public v1 et parcours P9-E inchangés ;
+- production validée ;
+- données de test nettoyées ;
+- P10-D (expiration / confidentialité URL) volontairement non implémenté.
+
+Cela ne constitue **pas** une certification de conformité légale.
+
+La prochaine priorité d’audit est **P11** (paniers abandonnés), selon la nomenclature du document d’audit gelé.
 
 ---
 
