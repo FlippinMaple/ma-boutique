@@ -4,20 +4,28 @@ import express from 'express';
 
 const router = Router();
 
-// Si tu veux accepter aussi text/plain pour sendBeacon, ajoute:
-// const parsers = [express.json({ type: ['application/json', 'text/plain'] }), express.text({ type: ['text/plain'] })];
-// puis remplace express.json() par parsers ci-dessous.
-router.post('/log-abandoned-cart', express.json(), async (req, res) => {
+// text/plain: sendBeacon Blob. application/json: already parsed globally in app.js.
+router.post('/log-abandoned-cart', express.text({ type: 'text/plain', limit: '100kb' }), async (req, res) => {
   try {
     const db = req.app.locals.db; // ✅ comme avant: la DB passe via Express
     if (!db) return res.status(500).json({ error: 'db db not available' });
 
     // Body: email + panier
     let payload = req.body || {};
-    // (optionnel) si tu actives text/plain via sendBeacon, dé-commente:
-    // if (typeof payload === 'string' && payload.trim().startsWith('{')) {
-    //   try { payload = JSON.parse(payload); } catch {}
-    // }
+    if (typeof payload === 'string') {
+      try {
+        payload = JSON.parse(payload);
+      } catch {
+        return res.sendStatus(204);
+      }
+    }
+    if (
+      payload == null ||
+      typeof payload !== 'object' ||
+      Array.isArray(payload)
+    ) {
+      return res.sendStatus(204);
+    }
 
     const email = String(payload.customer_email || payload.email || '')
       .trim()
