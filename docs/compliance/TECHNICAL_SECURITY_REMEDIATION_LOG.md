@@ -1,6 +1,6 @@
 # Journal des correctifs techniques et de sécurité
 
-**Statut :** journal actif — chantiers P3 (checkout public), P4 (webhook Stripe / idempotence), P5 (fallback `order_items`), P6 (gestionnaire d’erreurs), P7 (authentification / sessions / JWT) et P8 (inscription / consentement marketing / privacy technique) : **FERMÉS / COMPLETS**. Prochaine priorité d’audit : **P9** (consentements email / unsubscribe / webhooks et cycle de révocation).
+**Statut :** journal actif — chantiers P3 (checkout public), P4 (webhook Stripe / idempotence), P5 (fallback `order_items`), P6 (gestionnaire d’erreurs), P7 (authentification / sessions / JWT), P8 (inscription / consentement marketing / privacy technique) et P9 (consentements email / unsubscribe / webhooks et cycle de révocation) : **FERMÉS / COMPLETS**. Prochaine priorité d’audit : **P10** (secret unsubscribe / token hardening).
 
 Ce document complète `docs/compliance/TECHNICAL_SECURITY_AUDIT.md`.
 
@@ -1287,8 +1287,8 @@ P8 ne signifie pas que la couche privacy / légale est terminée. Restent notamm
 1. **Pages publiques réelles** — politique de confidentialité ; CGU / conditions ; éventuellement conditions de vente / retours / livraison selon décisions futures.
 2. **Contenu de ces pages** — à produire et à faire valider selon le processus approprié ; ne pas inventer depuis la documentation technique.
 3. **Cookies / gestion des préférences** — chantier séparé du consentement marketing.
-4. **P9** — endpoint public de consentement email ; unsubscribe ; webhooks liés aux emails ; cycle de révocation / preuve ; champs de preuve actuellement contrôlables par le client dans les chemins P9 existants, selon l’audit.
-5. **P10** — secret / token unsubscribe selon la nomenclature de l’audit.
+4. **P9** — historiquement : endpoint public de consentement email ; unsubscribe ; webhooks liés aux emails ; cycle de révocation / preuve ; champs de preuve contrôlables par le client. **Reporté à P9** lors de la clôture P8. **Traité sous P9** (section suivante). P8 reste historiquement fermé.
+5. **P10** — secret / token unsubscribe selon la nomenclature de l’audit. Hors P8 ; reste la prochaine priorité après P9.
 6. **`consents.purpose` production** reste limité à `marketing_email`. Ce n’est pas un registre générique de CGU.
 7. Les CGU ne sont actuellement ni demandées ni persistées au register, **intentionnellement**, jusqu’à ce qu’un document réel / versionné existe et qu’une décision technique / produit soit prise.
 
@@ -1311,7 +1311,106 @@ Au sens technique :
 
 Cela ne constitue **pas** une certification de conformité légale. Les pages légales publiques et leur validation restent un chantier distinct.
 
-La prochaine priorité d’audit est **P9** (consentements email / unsubscribe / webhooks et cycle de révocation).
+La prochaine priorité d’audit au moment de cette clôture était **P9** (consentements email / unsubscribe / webhooks et cycle de révocation). P9 a depuis été traité et fermé dans la section suivante.
+
+---
+
+## 17 août 2026 — Chantier P9 : consentements email, unsubscribe et webhooks (FERMÉ)
+
+Objectif : fermer ou durcir les surfaces publiques de consentement / désabonnement / webhooks email, rétablir la mise à jour de `is_subscribed`, rendre la révocation atomique (y compris `consents.revoked_at`), remplacer le GET mutateur par un parcours de confirmation, et limiter le POST public. Le constat d’audit initial (POST `/api/consents` public, preuves client, webhooks non authentifiés, `markCustomerSubscribed` sans `req`, GET unsubscribe mutateur, `revoked_at` non renseigné, lien frontend inopérant) reste figé dans `TECHNICAL_SECURITY_AUDIT.md`.
+
+P9 est **FERMÉ / VALIDÉ EN PRODUCTION** au sens d’une **remédiation technique** (correctifs ou confinement fail-closed). Ce n’est **pas** une certification de conformité légale (LCAP, Loi 25 ou autre).
+
+### P9-A — Confinement de l’ancien POST public `/api/consents`
+
+**Commit :** `4dc3381973187b297e95f5f2a902f50fecf19a87` — `fix(compliance): disable public consent endpoint`
+
+L’ancien endpoint permettait à un client non authentifié de fournir lui-même des champs de preuve marketing (`customer_id`, `text_snapshot`, `ip`, `user_agent`, etc.) dans la même table `consents` que le register P8. Aucun caller frontend / checkout actif n’a été trouvé. Le register P8 fournit déjà une preuve serveur contrôlée.
+
+Correction : retrait de la route publique `POST /api/consents`. Le handler `recordConsent` est **conservé** dans le contrôleur mais **n’est plus exposé**.
+
+**Validation production :** `POST /api/consents` → HTTP 404.
+
+### P9-B — Confinement des webhooks email non authentifiés
+
+**Commit :** `a8985eea7f8ed3e5dbbb8ff10b2457c270688456` — `fix(compliance): disable unauthenticated email webhooks`
+
+Aucune signature SendGrid / Mailgun / SES n’existait. Un payload public pouvait écrire `email_events` et, pour bounce / complaint / reject, `unsubscribes`.
+
+Correction : retrait de la route publique `POST /api/email-webhooks/:provider`. Le handler `emailWebhook` est **conservé** mais **non exposé**. Décision **fail-closed**. Le handler historique n’est **pas** présenté comme sécurisé. Toute réactivation future exigera une vérification d’authenticité réelle, spécifique au provider choisi, **avant** exposition publique. P9 **ne réactive aucun webhook**.
+
+**Validation production :** `POST /api/email-webhooks/sendgrid` → HTTP 404.
+
+### P9-C — Réparation de `markCustomerSubscribed`
+
+**Commit :** `982921a608a8a31f0fd274163929f32250afc2fb` — `fix(compliance): decouple subscription updates from request`
+
+Les callers unsubscribe appelaient `markCustomerSubscribed(email, true/false)` alors que la fonction exigeait `req.app.locals.db` → TypeError après certaines écritures. Signature corrigée : `markCustomerSubscribed(email, on)` via `getPool()`, sans `req`.
+
+**Validation production :** compte jetable opt-in ; avant : `customers.is_subscribed = 1` ; `POST /api/unsubscribe` → HTTP 200 ; après : `is_subscribed = 0`, ligne `unsubscribes` présente. Cette validation a aussi montré que `consents.revoked_at` restait NULL → P9-D. Compte test ensuite supprimé.
+
+### P9-D — Révocation unsubscribe atomique
+
+**Commit :** `703c29e74b36dafe70e5aa07b95df1d226420551` — `fix(compliance): make unsubscribe revocation atomic`
+
+Fonction interne `revokeMarketingForEmail(email)` : connexion dédiée (`getPool()` / `getConnection()`), `beginTransaction()`, commit, rollback sur erreur, `release()` dans `finally`. Une seule TX :
+
+1. UPSERT `unsubscribes` (`reason = 'user_click'`) ;
+2. `UPDATE customers SET is_subscribed = 0 WHERE email = ?` (0 row n’est pas une erreur) ;
+3. `UPDATE consents SET revoked_at = UTC_TIMESTAMP() WHERE email = ? AND purpose = 'marketing_email' AND revoked_at IS NULL`.
+
+Pas de JOIN email inter-table (collations production différentes observées).
+
+**Validation production :** avant : `is_subscribed = 1`, consent actif, `revoked_at` NULL. Après POST : HTTP 200 ; `is_subscribed = 0` ; `unsubscribes.reason = user_click` ; `consents.revoked_at` renseigné ; `unsubscribes.created_at` et `revoked_at` au même timestamp. Compte test ensuite supprimé.
+
+### P9-E — Parcours public : confirmation, plus de GET mutateur, plus d’email en clair
+
+**Commit :** `36a8c4284124e3a24b9c3a272c197f70f4a2a437` — `fix(compliance): require unsubscribe confirmation`
+
+Backend : `POST /api/unsubscribe` seule mutation ; succès `{ ok: true }` (plus d’email) ; `GET /api/unsubscribe` retiré ; `unsubscribeLanding` supprimé.
+
+Frontend : route React `/unsubscribe` ; paramètre `e` opaque ; aucun parse client ; aucun appel API au montage ; clic explicite « Me désabonner » ; `POST /api/unsubscribe` `{ token }` ; états confirm / loading / success / error / retry ; ni email ni token affichés.
+
+Email : `abandonedCartJob` générait déjà `${getFrontendUrl()}/unsubscribe?e=TOKEN`. Le lien était inopérant faute de route React. Le producteur n’a **pas** été modifié.
+
+**Validation production :** état initial `is_subscribed = 1`, `revoked_at` NULL, aucune ligne `unsubscribes`. Ouverture de `https://flippinmaple.com/unsubscribe?e=TOKEN` **sans clic** : aucune mutation. Clic « Me désabonner » : message générique ; `is_subscribed = 0` ; `revoked_at` renseigné ; `unsubscribes.reason = user_click`. Compte test ensuite supprimé.
+
+### P9-F — Rate limit du POST public unsubscribe
+
+**Commit :** `ec4626ff440316740bd4ec257b721598c17b7d93` — `fix(compliance): rate limit unsubscribe requests`
+
+`unsubscribeLimiter` (`express-rate-limit`) : `windowMs = 60 * 1000`, `max = 10`, `standardHeaders: true`, `legacyHeaders: false`. Uniquement `POST /api/unsubscribe`. HTTP 429 `{ error: 'Trop de tentatives de désabonnement. Réessaie dans quelques instants.', code: 'UNSUBSCRIBE_RATE_LIMITED' }`.
+
+**Validation production :** 11 POST successifs avec tokens volontairement invalides. Tentatives 1–10 : HTTP 400 `invalid token`. Tentative 11 : HTTP 429, `code = UNSUBSCRIBE_RATE_LIMITED`. Rejet avant la TX : aucune mutation DB.
+
+### Résidus / décisions — hors P9 ou fail-closed
+
+1. `recordConsent` existe encore comme code historique ; sa route publique est désactivée (P9-A).
+2. `emailWebhook` existe encore comme code historique ; sa route publique est désactivée (P9-B).
+3. Les webhooks email restent **fail-closed** jusqu’à une vérification authentique du provider. Ils ne sont ni sécurisés ni réactivés.
+4. P9 ne réactive aucun webhook.
+5. **P10** (hors P9) : secret unsubscribe ; fallback secret ; expiration / version du token ; `timingSafeEqual` ; validation stricte d’email ; format / cryptographie du token.
+6. Les paniers abandonnés, le job et le cron restent **P11 / P12** selon l’audit. P9 n’a corrigé que le lien / parcours unsubscribe consommé par ce job, pas le chantier abandoned cart.
+7. Les pages légales publiques, le gestionnaire de témoins et une validation juridique externe ne sont **pas** fournis par P9.
+
+### Statut final P9
+
+P9 est **FERMÉ / VALIDÉ EN PRODUCTION**.
+
+Au sens technique :
+
+- POST public `/api/consents` retiré ;
+- webhooks email publics non authentifiés retirés (fail-closed) ;
+- `markCustomerSubscribed` indépendant de `req` ;
+- révocation unsubscribe atomique, y compris `consents.revoked_at` ;
+- GET API mutateur retiré ; confirmation React ; plus d’email dans les réponses publiques de succès ;
+- rate limit du POST unsubscribe ;
+- production validée ;
+- comptes tests nettoyés.
+
+Cela ne constitue **pas** une certification de conformité légale.
+
+La prochaine priorité d’audit est **P10** (secret unsubscribe / token hardening).
 
 ---
 
