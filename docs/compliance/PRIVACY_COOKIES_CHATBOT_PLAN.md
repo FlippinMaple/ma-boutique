@@ -132,21 +132,21 @@ Liste factuelle préliminaire, basée sur l’état connu du projet :
 
 ## 5. Incohérence actuelle de l’inscription
 
-### Problème
+> **Note technique (16 août 2026).** Le chantier d’audit **P8** a corrigé, côté technique, le mélange `consentLoi25` / abonnement marketing, persisté une preuve d’opt-in marketing lorsque vrai, retiré l’acceptation CGU fantôme (`/cgu`) et durci le flux register. Détail : `docs/compliance/TECHNICAL_SECURITY_REMEDIATION_LOG.md`. Ce plan n’est pas réécrit. Les pages légales publiques, leur validation, les témoins et le chatbot restent des chantiers distincts. P8 n’est pas une certification de conformité.
 
-- le frontend utilise ou a utilisé le nom `consentLoi25`;
-- le backend transforme cette valeur en `is_subscribed`;
+### Problème (constat historique du plan)
+
+- le frontend utilisait le nom `consentLoi25`;
+- le backend transformait cette valeur en `is_subscribed`;
 - `is_subscribed` représente un **abonnement aux communications**;
 - ce champ ne constitue **pas**, à lui seul, une preuve générale de conformité à la Loi 25;
 - un abonnement marketing **ne doit pas** être présenté comme une acceptation obligatoire de la Loi 25;
-- les anciennes routes `/cgu` et `/politique-confidentialite` **n’existent pas** actuellement;
+- les routes `/cgu` et `/politique-confidentialite` **n’existent pas** actuellement;
 - aucun lien public ne doit pointer vers une page juridique inexistante.
 
 ### Décision temporaire
 
-- `Register.jsx` demeure dans son dernier état commité après restauration;
-- aucune nouvelle modification fonctionnelle de l’inscription ne doit être finalisée avant la définition du modèle de consentement;
-- la future inscription devra séparer :
+Historiquement : `Register.jsx` ne devait pas recevoir de nouvelle modification fonctionnelle avant définition du modèle de consentement. Le modèle marketing d’inscription a depuis été tranché et implanté sous P8 (case facultative, non précochée, preuve serveur si opt-in). Les conditions d’utilisation et la politique de confidentialité publiques **n’existent toujours pas** ; aucun lien vers une page juridique vide ne doit être réintroduit. La future inscription devra encore, lorsque des textes validés existeront, séparer :
   1. l’information nécessaire à la création du compte;
   2. les conditions d’utilisation réelles, si elles sont requises;
   3. la politique de confidentialité réelle;

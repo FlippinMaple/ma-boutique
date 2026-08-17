@@ -1,6 +1,6 @@
 # Journal des correctifs techniques et de sécurité
 
-**Statut :** journal actif — chantiers P3 (checkout public), P4 (webhook Stripe / idempotence), P5 (fallback `order_items`), P6 (gestionnaire d’erreurs) et P7 (authentification / sessions / JWT) : **FERMÉS / COMPLETS**. Prochaine priorité d’audit : **P8** (inscription / consentement marketing / privacy).
+**Statut :** journal actif — chantiers P3 (checkout public), P4 (webhook Stripe / idempotence), P5 (fallback `order_items`), P6 (gestionnaire d’erreurs), P7 (authentification / sessions / JWT) et P8 (inscription / consentement marketing / privacy technique) : **FERMÉS / COMPLETS**. Prochaine priorité d’audit : **P9** (consentements email / unsubscribe / webhooks et cycle de révocation).
 
 Ce document complète `docs/compliance/TECHNICAL_SECURITY_AUDIT.md`.
 
@@ -1153,13 +1153,165 @@ P7 n’épuise pas tout le durcissement auth. Résidus connus :
 1. **`issuer` / `audience`** — absents. **Reporté** à un hardening post-P7. Les ajouter immédiatement au `verify` invaliderait les refresh déjà émis. Une grace period serait nécessaire. Non bloquant pour clôturer P7.
 2. **`verifyToken` / whoami sans relecture DB** — email/role UI peuvent être stale jusqu’à ~15 min. Compensé : admin API (`requireRole`) relit `customers` ; checkout et refresh aussi. Risque faible/borné **accepté**. Ce n’est pas une faille admin active.
 3. **Wishlist** — identité JWT pendant le TTL access ; l’IDOR client connu est bloqué. Un compte supprimé pourrait conserver cet access ~15 min. **Accepté**, faible, non bloquant.
-4. **Register account enumeration** — 409 `Un compte existe déjà avec ce courriel.` **Reporté à P8** (inscription / privacy / consentement). Login conserve déjà une erreur générique.
+4. **Register account enumeration** — historiquement : 409 `Un compte existe déjà avec ce courriel.` **Reporté à P8** lors de la clôture P7. **Traité sous P8-C** (commit `5f405dfc7c93c4d99774ad933d96c3f1c4bb2c41`) : l’exposition explicite par statut HTTP, corps de réponse et cookies a été réduite. Une énumération théorique par timing n’est pas prétendue éliminée. P7 reste historiquement fermé. Login conserve déjà une erreur générique.
 5. **`authService.js` / `authModel.js`** — code historique **non branché** au runtime. Hors P7. Hygiène possible plus tard.
 6. **Lignes `refresh_tokens` expirées** — peuvent rester. Le registre actif exige `expires_at > NOW()`. Purge / family revoke : hardening ultérieur, non bloquant.
 
 ### Statut final P7
 
-P7 est **FERMÉ / COMPLET**. Le constat historique d’audit P7 a été traité par les correctifs et validations ci-dessus. La prochaine priorité d’audit est **P8** (inscription / consentement marketing / privacy).
+P7 est **FERMÉ / COMPLET**. Le constat historique d’audit P7 a été traité par les correctifs et validations ci-dessus. Au moment de cette clôture, la prochaine priorité d’audit était **P8** (inscription / consentement marketing / privacy). P8 a depuis été traité et fermé dans la section suivante.
+
+---
+
+## 16 août 2026 — Chantier P8 : inscription, consentement marketing et privacy technique (FERMÉ)
+
+Objectif : séparer l’opt-in marketing de toute sémantique « Loi 25 », persister une preuve serveur lorsque l’opt-in est vrai, réduire l’énumération explicite de comptes au register, retirer la session du register, durcir la validation serveur, et supprimer l’acceptation CGU fantôme. Le constat d’audit initial (mélange `consentLoi25` / `is_subscribed`, `acceptedCGU` non persisté, routes `/cgu` et `/politique-confidentialite` absentes, énumération 409) reste figé dans `TECHNICAL_SECURITY_AUDIT.md`.
+
+P8 est **FERMÉ / COMPLET / VALIDÉ EN PRODUCTION** au sens d’une **remédiation technique**. Ce n’est **pas** une certification de conformité légale. Aucune page publique de CGU, de politique de confidentialité ou de conditions de vente n’a été publiée ni validée juridiquement dans ce chantier.
+
+### P8-A — Séparation du consentement marketing
+
+**Commit :** `7b491ef5bdff39ad69f4db782639970b368e07a0` — `fix(register): separate marketing consent`
+
+- le mélange entre `consentLoi25` et l’abonnement marketing a été retiré ;
+- le frontend envoie `marketingConsent` ;
+- checkbox marketing **facultative**, **non précochée** ;
+- texte : « Je souhaite recevoir par courriel des nouvelles, nouveautés et offres de Flippin’ Maple. » ;
+- le backend exige un boolean strict lorsque le champ est fourni ;
+- `true` → `is_subscribed = 1` ;
+- `false` / absent → `is_subscribed = 0` ;
+- une chaîne comme `"false"` est rejetée HTTP 400 ;
+- `consentLoi25` et `raw.is_subscribed` n’ont pas été réintroduits.
+
+**Validation production :** boolean `false` accepté jusqu’au traitement normal ; boolean `true` accepté jusqu’au traitement normal ; string `"false"` rejetée HTTP 400 ; `/readiness` vert.
+
+### Correctif de rôle découvert durant P8
+
+**Commit :** `2292c45a7e4da37d652ceb8a440f33ae13cd8078` — `fix(register): use valid customer role`
+
+Schéma production confirmé : `role` `enum('user','admin')` DEFAULT `user`. Le register utilisait incorrectement `customer`. Corrigé vers `user`. Aucun changement de schéma.
+
+### P8-B — Preuve de consentement marketing
+
+**Commit :** `8f5c1f38391de1154c36dce60d8739862fda1d54` — `fix(register): persist marketing consent proof`
+
+Transaction dédiée : création du customer + preuve marketing. Si opt-in `true`, insertion dans `consents`. Aucune preuve créée si `false` / absent.
+
+Champs de preuve **contrôlés par le serveur** (non fournis par le client) :
+
+- `customer_id` = `userId`
+- `subject_type` = `user`
+- `subject_id` = `userId`
+- `email` = email normalisé
+- `purpose` = `marketing_email`
+- `basis` = `express`
+- `method` = `checkbox`
+- `text_snapshot` = texte serveur
+- `locale` = `fr-CA`
+- `source` = `register`
+- `ip` = `req.ip`
+- `user_agent` = User-Agent
+- `granted_at` = `UTC_TIMESTAMP()`
+
+Rollback transactionnel si une écriture échoue. Aucune migration : le schéma `consents` existant était compatible pour `marketing_email`.
+
+**Validation production contrôlée :** compte test créé avec opt-in `true`.
+
+Résultat DB confirmé :
+
+- `is_subscribed = 1` ;
+- `role = user` ;
+- consent lié au même customer ;
+- `subject_type = user` ;
+- `subject_id` cohérent ;
+- `purpose = marketing_email` ;
+- `basis = express` ;
+- `method = checkbox` ;
+- `locale = fr-CA` ;
+- `source = register` ;
+- IP enregistrée ;
+- User-Agent enregistré ;
+- `revoked_at` NULL ;
+- refresh actif **lors de cette validation P8-B** (avant P8-C, qui a ensuite retiré la session du register).
+
+Le compte test et ses données ont ensuite été complètement supprimés.
+
+### P8-C — Account enumeration / flux register
+
+**Commit :** `5f405dfc7c93c4d99774ad933d96c3f1c4bb2c41` — `fix(register): reduce account enumeration`
+
+- plus de SELECT préalable vérifiant l’existence d’un email ;
+- unicité confiée à l’index DB confirmé `uniq_customers_email` UNIQUE(`email`) ;
+- bcrypt demeure avant l’INSERT pour les payloads valides ;
+- duplicate MySQL : `ER_DUP_ENTRY` / errno 1062 ;
+- nouveau compte et duplicate retournent exactement HTTP 200 et `{ ok: true, message: 'Inscription traitée. Vous pouvez maintenant vous connecter.' }` ;
+- aucun `id` public ;
+- le register ne crée plus de session : aucun access token, aucun refresh token, aucun cookie ;
+- le login reste le point de création de session.
+
+**Validation production :** première inscription HTTP 200 ; deuxième inscription avec le même email HTTP 200 ; corps identiques ; aucun cookie `access` ni `refresh` dans les deux cas. DB : exactement 1 customer, `role` `user`, `is_subscribed` 0 pour le test sans marketing, 0 consent parasite, 0 refresh token. Compte test supprimé après validation.
+
+L’énumération explicite par statut / body / cookies a été réduite. Une possibilité théorique d’énumération par timing n’est pas prétendue éliminée.
+
+### P8-D — Validation serveur du register
+
+**Commit :** `c67c2a79037765057ccf9f8f38d3e5aec2c8e494` — `fix(register): enforce server validation`
+
+- plus de coercition arbitraire `.toString()` sur les champs register ;
+- types string requis pour les champs identité / auth utilisés ;
+- alias historiques conservés uniquement s’ils sont string ;
+- prénom obligatoire, max 50 ;
+- nom obligatoire, max 50 ;
+- email obligatoire, max 100, trim / lowercase, regex `/^[^\s@]+@[^\s@]+\.[^\s@]+$/` ;
+- password string obligatoire, règle `/^(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,16}$/` (8–16 caractères, majuscule, chiffre, caractère spécial) ;
+- `passwordConfirm` obligatoire ; mismatch → HTTP 422 ;
+- validations exécutées avant `getPool` / bcrypt / transaction pour un payload manifestement invalide ;
+- P8-A / P8-B / P8-C préservés.
+
+**Validation production :** `EMAIL_TYPE` → HTTP 400 ; `EMAIL_SYNTAX` → HTTP 400 ; `WEAK_PASSWORD` → HTTP 400 ; `MISSING_CONFIRM` → HTTP 400 ; `VALID` → HTTP 200. Cas valide : aucun cookie access, aucun cookie refresh ; DB : `role` `user`, `is_subscribed` 0, 0 consent, 0 refresh token. Compte test supprimé après validation.
+
+### P8-E1 — Retrait de l’acceptation CGU fantôme
+
+**Commit :** `780454cd3d3b96b451dd893abdab44fac1f28aad` — `fix(register): remove phantom terms acceptance`
+
+Constat préalable confirmé : aucune route `/cgu`, aucune page CGU, aucune page publique de politique de confidentialité ; `/cgu` tombait sur le wildcard React puis redirigeait vers `/` ; `acceptedCGU` était obligatoire uniquement côté frontend, n’était pas envoyé au backend et n’était pas persisté ; aucun texte juridique publiable / validé n’existe dans le dépôt.
+
+Correction dans `src/pages/Register.jsx` uniquement : suppression du state `acceptedCGU`, de sa validation obligatoire, de son reset, de la checkbox et du lien mort `/cgu`. Aucune checkbox, aucun texte légal, aucun lien temporaire, aucune page placeholder ni texte inventé n’a été substitué. Le consentement marketing demeure intact et séparé.
+
+**Validation production du bundle servi :** `CGU_LINK_PRESENT` False ; `CGU_REQUIRED_TEXT_PRESENT` False ; `CGU_LABEL_PRESENT` False ; `MARKETING_TEXT_PRESENT` True. `/readiness` : `ok` true.
+
+### Limites — hors P8
+
+P8 ne signifie pas que la couche privacy / légale est terminée. Restent notamment hors P8 ou reportés :
+
+1. **Pages publiques réelles** — politique de confidentialité ; CGU / conditions ; éventuellement conditions de vente / retours / livraison selon décisions futures.
+2. **Contenu de ces pages** — à produire et à faire valider selon le processus approprié ; ne pas inventer depuis la documentation technique.
+3. **Cookies / gestion des préférences** — chantier séparé du consentement marketing.
+4. **P9** — endpoint public de consentement email ; unsubscribe ; webhooks liés aux emails ; cycle de révocation / preuve ; champs de preuve actuellement contrôlables par le client dans les chemins P9 existants, selon l’audit.
+5. **P10** — secret / token unsubscribe selon la nomenclature de l’audit.
+6. **`consents.purpose` production** reste limité à `marketing_email`. Ce n’est pas un registre générique de CGU.
+7. Les CGU ne sont actuellement ni demandées ni persistées au register, **intentionnellement**, jusqu’à ce qu’un document réel / versionné existe et qu’une décision technique / produit soit prise.
+
+### Statut final P8
+
+P8 est **FERMÉ / COMPLET**.
+
+Au sens technique :
+
+- séparation marketing / privacy corrigée ;
+- opt-in marketing strict ;
+- preuve marketing persistée ;
+- rôle register corrigé ;
+- account enumeration explicite réduite ;
+- session supprimée du register ;
+- validation serveur renforcée ;
+- lien / acceptation CGU fantôme supprimé ;
+- production validée ;
+- comptes tests nettoyés.
+
+Cela ne constitue **pas** une certification de conformité légale. Les pages légales publiques et leur validation restent un chantier distinct.
+
+La prochaine priorité d’audit est **P9** (consentements email / unsubscribe / webhooks et cycle de révocation).
 
 ---
 
