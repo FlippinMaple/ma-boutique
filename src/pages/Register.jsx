@@ -13,7 +13,6 @@ const Register = () => {
   const [confirmEmail, setConfirmEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [acceptedCGU, setAcceptedCGU] = useState(false);
   const [marketingConsent, setMarketingConsent] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const navigate = useNavigate();
@@ -41,11 +40,6 @@ const Register = () => {
       toast.error(
         'Le mot de passe doit contenir 8 à 16 caractères, une majuscule, un chiffre et un caractère spécial, et être confirmé.'
       );
-      return false;
-    }
-
-    if (!acceptedCGU) {
-      toast('Vous devez accepter les CGU.', { icon: '📜' });
       return false;
     }
 
@@ -79,7 +73,6 @@ const Register = () => {
       setConfirmEmail('');
       setPassword('');
       setConfirmPassword('');
-      setAcceptedCGU(false);
       setMarketingConsent(false);
 
       setTimeout(() => {
@@ -200,19 +193,6 @@ const Register = () => {
             />
             {renderStatusIcon(passwordMatch, confirmPassword.length > 0)}
           </div>
-        </label>
-
-        <label className="checkbox-container">
-          <input
-            type="checkbox"
-            checked={acceptedCGU}
-            onChange={(e) => setAcceptedCGU(e.target.checked)}
-          />
-          J’accepte les&nbsp;
-          <a href="/cgu" target="_blank" rel="noopener noreferrer">
-            conditions générales d’utilisation
-          </a>
-          .
         </label>
 
         <label className="checkbox-container">
