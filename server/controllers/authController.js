@@ -35,6 +35,19 @@ const cookieOptsRefresh = {
 const MARKETING_CONSENT_TEXT =
   'Je souhaite recevoir par courriel des nouvelles, nouveautés et offres de Flippin’ Maple.';
 
+const REGISTER_EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const REGISTER_PASSWORD_RE = /^(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,16}$/;
+
+function pickStringField(raw, keys) {
+  for (const key of keys) {
+    if (raw[key] !== undefined) {
+      if (typeof raw[key] !== 'string') return { invalid: true };
+      return { value: raw[key] };
+    }
+  }
+  return { value: undefined };
+}
+
 function signAccess(payload) {
   return jwt.sign(payload, process.env.JWT_ACCESS_SECRET, {
     expiresIn: ACCESS_TTL,
@@ -285,29 +298,83 @@ export const register = async (req, res, next) => {
   try {
     const raw = req.body || {};
 
-    const firstName = (raw.first_name ?? raw.firstName ?? '').toString().trim();
-    const lastName = (raw.last_name ?? raw.lastName ?? '').toString().trim();
+    const firstNameField = pickStringField(raw, ['first_name', 'firstName']);
+    const lastNameField = pickStringField(raw, ['last_name', 'lastName']);
+    const fullNameField = pickStringField(raw, ['name']);
+    if (
+      firstNameField.invalid ||
+      lastNameField.invalid ||
+      fullNameField.invalid
+    ) {
+      return res.status(400).json({ message: 'Prénom ou nom invalide.' });
+    }
 
-    const fullName = (raw.name ?? '').toString().trim();
-    let f = firstName,
-      l = lastName;
+    let f = (firstNameField.value ?? '').trim();
+    let l = (lastNameField.value ?? '').trim();
+    const fullName = (fullNameField.value ?? '').trim();
     if ((!f || !l) && fullName) {
       const parts = fullName.split(/\s+/);
       f = f || parts.shift() || '';
       l = l || parts.join(' ') || '';
     }
 
-    const email = (raw.email ?? raw.userEmail ?? raw.mail ?? '')
-      .toString()
-      .trim()
-      .toLowerCase();
+    const emailField = pickStringField(raw, ['email', 'userEmail', 'mail']);
+    if (emailField.invalid) {
+      return res.status(400).json({ message: 'Adresse courriel invalide.' });
+    }
 
-    const password = (raw.password ?? raw.pass ?? raw.pwd ?? '').toString();
-    const passwordConfirm = (
-      raw.passwordConfirm ??
-      raw.confirmPassword ??
-      ''
-    ).toString();
+    const passwordField = pickStringField(raw, ['password', 'pass', 'pwd']);
+    if (passwordField.invalid) {
+      return res.status(400).json({
+        message:
+          'Le mot de passe doit contenir 8 à 16 caractères, une majuscule, un chiffre et un caractère spécial.'
+      });
+    }
+
+    const passwordConfirmField = pickStringField(raw, [
+      'passwordConfirm',
+      'confirmPassword'
+    ]);
+    if (passwordConfirmField.invalid) {
+      return res.status(400).json({
+        message: 'La confirmation du mot de passe est requise.'
+      });
+    }
+
+    if (!f || !l) {
+      return res.status(400).json({ message: 'Prénom et nom sont requis.' });
+    }
+    if (f.length > 50 || l.length > 50) {
+      return res.status(400).json({ message: 'Prénom ou nom invalide.' });
+    }
+
+    const email = (emailField.value ?? '').trim().toLowerCase();
+    if (!email || email.length > 100 || !REGISTER_EMAIL_RE.test(email)) {
+      return res.status(400).json({ message: 'Adresse courriel invalide.' });
+    }
+
+    const password = passwordField.value;
+    if (!password) {
+      return res.status(400).json({ message: 'Mot de passe requis.' });
+    }
+    if (!REGISTER_PASSWORD_RE.test(password)) {
+      return res.status(400).json({
+        message:
+          'Le mot de passe doit contenir 8 à 16 caractères, une majuscule, un chiffre et un caractère spécial.'
+      });
+    }
+
+    const passwordConfirm = passwordConfirmField.value;
+    if (!passwordConfirm) {
+      return res.status(400).json({
+        message: 'La confirmation du mot de passe est requise.'
+      });
+    }
+    if (password !== passwordConfirm) {
+      return res
+        .status(422)
+        .json({ message: 'Les mots de passe ne correspondent pas.' });
+    }
 
     let is_subscribed = 0;
     if (raw.marketingConsent !== undefined) {
@@ -317,27 +384,6 @@ export const register = async (req, res, next) => {
           .json({ message: 'Consentement marketing invalide.' });
       }
       is_subscribed = raw.marketingConsent ? 1 : 0;
-    }
-
-    if (!f || !l) {
-      return res.status(400).json({ message: 'Prénom et nom sont requis.' });
-    }
-    if (!email) {
-      return res.status(400).json({ message: 'Courriel requis.' });
-    }
-    if (!password) {
-      return res.status(400).json({ message: 'Mot de passe requis.' });
-    }
-
-    if (password.length < 8 || password.length > 16) {
-      return res
-        .status(400)
-        .json({ message: 'Mot de passe invalide (8–16 caractères requis).' });
-    }
-    if (passwordConfirm && password !== passwordConfirm) {
-      return res
-        .status(422)
-        .json({ message: 'Les mots de passe ne correspondent pas.' });
     }
 
     const pool = await getPool();
