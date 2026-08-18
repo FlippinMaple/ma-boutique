@@ -112,10 +112,48 @@ async function releaseEventIdempotence(db, eventId) {
   }
 }
 
+/** Stripe id: string/number, or expanded object with `.id`. */
+function stripeRefId(value) {
+  if (value == null || value === '') return null;
+  if (typeof value === 'string' || typeof value === 'number') {
+    const s = String(value).trim();
+    return s || null;
+  }
+  if (typeof value === 'object' && value.id != null && value.id !== '') {
+    return String(value.id);
+  }
+  return null;
+}
+
+/**
+ * Minimal stripe_events.payload for P13-B.
+ * Enough for reconcileStripeEvents; no PII / no raw event.
+ */
+function minimalStripeEventPayload(event) {
+  const type = String(event?.type || '');
+  const obj = event?.data?.object || {};
+
+  if (type.startsWith('checkout.session')) {
+    const objectId = stripeRefId(obj.id);
+    return objectId ? JSON.stringify({ object_id: objectId }) : null;
+  }
+  if (type.startsWith('payment_intent')) {
+    const objectId = stripeRefId(obj.id);
+    return objectId ? JSON.stringify({ object_id: objectId }) : null;
+  }
+  if (type.startsWith('charge')) {
+    const paymentIntentId = stripeRefId(obj.payment_intent);
+    return paymentIntentId
+      ? JSON.stringify({ payment_intent_id: paymentIntentId })
+      : null;
+  }
+  return null;
+}
+
 /** Upsert d'un événement Stripe dans stripe_events, en tentant de résoudre order_id */
 async function upsertStripeEvent(event, req, possibleOrderId = null) {
   const db = req.app.locals.db;
-  const payloadJson = JSON.stringify(event);
+  const payloadJson = minimalStripeEventPayload(event);
 
   let resolvedOrderId = possibleOrderId;
 
@@ -124,30 +162,32 @@ async function upsertStripeEvent(event, req, possibleOrderId = null) {
     try {
       const type = event.type || '';
       const obj = event.data?.object || {};
+      const objectId = stripeRefId(obj.id);
+      const paymentIntentId = stripeRefId(obj.payment_intent);
 
       // 1) checkout.session.* → via stripe_session_id
-      if (type.startsWith('checkout.session') && obj.id) {
+      if (type.startsWith('checkout.session') && objectId) {
         const [[row]] = await db.query(
           `SELECT id FROM orders WHERE stripe_session_id = ? LIMIT 1`,
-          [String(obj.id)]
+          [objectId]
         );
         if (row?.id) resolvedOrderId = row.id;
       }
 
       // 2) payment_intent.* → via stripe_payment_intent_id
-      if (!resolvedOrderId && type.startsWith('payment_intent') && obj.id) {
+      if (!resolvedOrderId && type.startsWith('payment_intent') && objectId) {
         const [[row]] = await db.query(
           `SELECT id FROM orders WHERE stripe_payment_intent_id = ? LIMIT 1`,
-          [String(obj.id)]
+          [objectId]
         );
         if (row?.id) resolvedOrderId = row.id;
       }
 
       // 3) charge.* → obj.payment_intent → via stripe_payment_intent_id
-      if (!resolvedOrderId && type.startsWith('charge') && obj.payment_intent) {
+      if (!resolvedOrderId && type.startsWith('charge') && paymentIntentId) {
         const [[row]] = await db.query(
           `SELECT id FROM orders WHERE stripe_payment_intent_id = ? LIMIT 1`,
-          [String(obj.payment_intent)]
+          [paymentIntentId]
         );
         if (row?.id) resolvedOrderId = row.id;
       }
@@ -348,43 +388,54 @@ async function reconcileStripeEvents({
   traceId
 }) {
   try {
-    // 1) payment_intent.*  → payload.data.object.id = PI
+    // 1) payment_intent.*  → P13-B object_id, or legacy data.object.id
     if (paymentIntentId) {
+      const pi = String(paymentIntentId);
       await db.execute(
         `
         UPDATE stripe_events
            SET order_id = ?
          WHERE order_id IS NULL
            AND event_type LIKE 'payment_intent.%'
-           AND JSON_EXTRACT(payload, '$.data.object.id') = ?
+           AND (
+                 JSON_EXTRACT(payload, '$.object_id') = ?
+              OR JSON_EXTRACT(payload, '$.data.object.id') = ?
+               )
         `,
-        [orderId, String(paymentIntentId)]
+        [orderId, pi, pi]
       );
 
-      // 2) charge.* → payload.data.object.payment_intent = PI
+      // 2) charge.* → P13-B payment_intent_id, or legacy data.object.payment_intent
       await db.execute(
         `
         UPDATE stripe_events
            SET order_id = ?
          WHERE order_id IS NULL
            AND event_type LIKE 'charge.%'
-           AND JSON_EXTRACT(payload, '$.data.object.payment_intent') = ?
+           AND (
+                 JSON_EXTRACT(payload, '$.payment_intent_id') = ?
+              OR JSON_EXTRACT(payload, '$.data.object.payment_intent') = ?
+               )
         `,
-        [orderId, String(paymentIntentId)]
+        [orderId, pi, pi]
       );
     }
 
-    // 3) checkout.session.* → payload.data.object.id = sessionId
+    // 3) checkout.session.* → P13-B object_id, or legacy data.object.id
     if (sessionId) {
+      const sid = String(sessionId);
       await db.execute(
         `
         UPDATE stripe_events
            SET order_id = ?
          WHERE order_id IS NULL
            AND event_type LIKE 'checkout.session.%'
-           AND JSON_EXTRACT(payload, '$.data.object.id') = ?
+           AND (
+                 JSON_EXTRACT(payload, '$.object_id') = ?
+              OR JSON_EXTRACT(payload, '$.data.object.id') = ?
+               )
         `,
-        [orderId, String(sessionId)]
+        [orderId, sid, sid]
       );
     }
   } catch (e) {
