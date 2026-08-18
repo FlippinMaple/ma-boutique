@@ -6,6 +6,7 @@ import {
 } from '../services/emailService.js';
 import { makeUnsubToken } from '../services/unsubscribeToken.js';
 import { getDb } from '../utils/db.js';
+import { logInfo, logError } from '../utils/logger.js';
 
 const RELANCE_INTERVAL_MIN = Number(process.env.RELANCE_INTERVAL_MIN || 15);
 const PROMO_LABEL = process.env.PROMO_LABEL || 'une petite remise';
@@ -277,12 +278,20 @@ export function startAbandonedCartCron() {
   setInterval(async () => {
     if (tickRunning) return;
     tickRunning = true;
+    const startedAt = Date.now();
 
     let lockConnection = null;
     let lockAcquired = false;
+    let txSelected = 0;
+    let txSent = 0;
+    let marketingSelected = 0;
+    let marketingSent = 0;
+    let phase = 'init';
     try {
+      phase = 'db';
       const db = await getDb();
       lockConnection = await db.getConnection();
+      phase = 'lock';
       const [lockRows] = await lockConnection.query(
         'SELECT GET_LOCK(?, 0) AS acquired',
         [ABANDON_CRON_LOCK_NAME]
@@ -290,12 +299,35 @@ export function startAbandonedCartCron() {
       lockAcquired = Number(lockRows?.[0]?.acquired) === 1;
       if (!lockAcquired) return;
 
+      phase = 'transactional-pick';
       const tx = await pickTransactional(200);
-      for (const ac of tx) await sendTransactional(ac);
+      txSelected = tx.length;
+      phase = 'transactional-send';
+      for (const ac of tx) {
+        const sent = await sendTransactional(ac);
+        if (sent === true) txSent += 1;
+      }
+      phase = 'marketing-pick';
       const mk = await pickMarketing(200);
-      for (const ac of mk) await sendMarketing(ac);
+      marketingSelected = mk.length;
+      phase = 'marketing-send';
+      for (const ac of mk) {
+        const sent = await sendMarketing(ac);
+        if (sent === true) marketingSent += 1;
+      }
+      phase = 'complete';
+      await logInfo(
+        `completed duration_ms=${Date.now() - startedAt} tx_selected=${txSelected} tx_sent=${txSent} tx_skipped=${txSelected - txSent} marketing_selected=${marketingSelected} marketing_sent=${marketingSent} marketing_skipped=${marketingSelected - marketingSent}`,
+        'abandoned-cart-cron'
+      );
     } catch (e) {
-      console.error('[cron] abandoned carts error', e);
+      const errorCode = String(e?.code || e?.name || 'UNKNOWN')
+        .replace(/[^A-Za-z0-9_.:-]/g, '_')
+        .slice(0, 80);
+      await logError(
+        `failed phase=${phase} code=${errorCode} duration_ms=${Date.now() - startedAt} tx_selected=${txSelected} tx_sent=${txSent} marketing_selected=${marketingSelected} marketing_sent=${marketingSent}`,
+        'abandoned-cart-cron'
+      );
     } finally {
       if (lockConnection && lockAcquired) {
         try {
