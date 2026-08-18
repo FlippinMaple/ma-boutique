@@ -128,17 +128,30 @@ router.post('/log-abandoned-cart', abandonedCartLimiter, express.text({ type: 't
 
     const cartJson = JSON.stringify(sanitizedCart);
 
-    // (Optionnel) anti-doublon très simple (10 minutes)
+    // Debounce 10 min : refresh le snapshot si une ligne non recovered est encore active
     const [recent] = await db.query(
       `SELECT id
          FROM abandoned_carts
         WHERE customer_email = ?
-          AND created_at >= NOW() - INTERVAL 10 MINUTE
-        ORDER BY created_at DESC
+          AND is_recovered = 0
+          AND COALESCE(last_activity, created_at) >= UTC_TIMESTAMP() - INTERVAL 10 MINUTE
+        ORDER BY COALESCE(last_activity, created_at) DESC
         LIMIT 1`,
       [email]
     );
-    if (recent.length) return res.sendStatus(204);
+    if (recent.length) {
+      await db.query(
+        `UPDATE abandoned_carts
+            SET cart_snapshot = ?,
+                cart_contents = ?,
+                source = ?,
+                last_activity = UTC_TIMESTAMP()
+          WHERE id = ?
+            AND is_recovered = 0`,
+        [cartJson, cartJson, source, recent[0].id]
+      );
+      return res.sendStatus(204);
+    }
 
     // ✅ IMPORTANT: ta BDD a cart_contents NOT NULL → on remplit les 2 colonnes
     await db.query(
