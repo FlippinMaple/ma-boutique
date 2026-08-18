@@ -11,6 +11,7 @@ const RELANCE_INTERVAL_MIN = Number(process.env.RELANCE_INTERVAL_MIN || 15);
 const PROMO_LABEL = process.env.PROMO_LABEL || 'une petite remise';
 const PROMO_CODE = process.env.PROMO_CODE || 'WELCOME10';
 const PROMO_EXPIRY = process.env.PROMO_EXPIRY || 'bientôt';
+const ABANDON_CRON_LOCK_NAME = 'flippinmaple:abandoned-cart-cron';
 
 async function hasExpressConsent(email) {
   const db = await getDb();
@@ -267,14 +268,43 @@ async function sendMarketing(ac) {
 
 export function startAbandonedCartCron() {
   const every = Math.max(5, RELANCE_INTERVAL_MIN) * 60 * 1000;
+  let tickRunning = false;
   setInterval(async () => {
+    if (tickRunning) return;
+    tickRunning = true;
+
+    let lockConnection = null;
+    let lockAcquired = false;
     try {
+      const db = await getDb();
+      lockConnection = await db.getConnection();
+      const [lockRows] = await lockConnection.query(
+        'SELECT GET_LOCK(?, 0) AS acquired',
+        [ABANDON_CRON_LOCK_NAME]
+      );
+      lockAcquired = Number(lockRows?.[0]?.acquired) === 1;
+      if (!lockAcquired) return;
+
       const tx = await pickTransactional(200);
       for (const ac of tx) await sendTransactional(ac);
       const mk = await pickMarketing(200);
       for (const ac of mk) await sendMarketing(ac);
     } catch (e) {
       console.error('[cron] abandoned carts error', e);
+    } finally {
+      if (lockConnection && lockAcquired) {
+        try {
+          await lockConnection.query('SELECT RELEASE_LOCK(?) AS released', [
+            ABANDON_CRON_LOCK_NAME
+          ]);
+        } catch {
+          /* keep releasing the connection */
+        }
+      }
+      if (lockConnection) {
+        lockConnection.release();
+      }
+      tickRunning = false;
     }
   }, every);
 }
