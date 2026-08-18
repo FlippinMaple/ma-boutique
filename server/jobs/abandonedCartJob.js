@@ -5,14 +5,15 @@ import {
   getSenderName
 } from '../services/emailService.js';
 import { makeUnsubToken } from '../services/unsubscribeToken.js';
+import { getDb } from '../utils/db.js';
 
 const RELANCE_INTERVAL_MIN = Number(process.env.RELANCE_INTERVAL_MIN || 15);
 const PROMO_LABEL = process.env.PROMO_LABEL || 'une petite remise';
 const PROMO_CODE = process.env.PROMO_CODE || 'WELCOME10';
 const PROMO_EXPIRY = process.env.PROMO_EXPIRY || 'bientôt';
 
-async function hasExpressConsent(email, req) {
-  const db = req.app.locals.db;
+async function hasExpressConsent(email) {
+  const db = await getDb();
 
   const [r] = await db.query(
     `SELECT 1
@@ -24,8 +25,8 @@ async function hasExpressConsent(email, req) {
   );
   return r.length > 0;
 }
-async function isSuppressed(email, req) {
-  const db = req.app.locals.db;
+async function isSuppressed(email) {
+  const db = await getDb();
 
   const [r] = await db.query(
     `SELECT 1 FROM (
@@ -37,8 +38,8 @@ async function isSuppressed(email, req) {
   );
   return r.length > 0;
 }
-async function hasOrder(email, sessionId, req) {
-  const db = req.app.locals.db;
+async function hasOrder(email, sessionId) {
+  const db = await getDb();
 
   const [r] = await db.query(
     `SELECT id FROM orders
@@ -92,8 +93,8 @@ async function resumeUrlFor(ac) {
   return `${getFrontendUrl()}/shop?resume=${encodeURIComponent(ac.id)}`;
 }
 
-async function pickTransactional(limit = 200, req) {
-  const db = req.app.locals.db;
+async function pickTransactional(limit = 200) {
+  const db = await getDb();
 
   const [rows] = await db.query(
     `SELECT ac.*
@@ -109,8 +110,8 @@ async function pickTransactional(limit = 200, req) {
   );
   return rows;
 }
-async function pickMarketing(limit = 200, req) {
-  const db = req.app.locals.db;
+async function pickMarketing(limit = 200) {
+  const db = await getDb();
 
   const [rows] = await db.query(
     `SELECT ac.*
@@ -134,8 +135,8 @@ async function pickMarketing(limit = 200, req) {
   return rows;
 }
 
-async function sendTransactional(ac, req) {
-  const db = req.app.locals.db;
+async function sendTransactional(ac) {
+  const db = await getDb();
 
   const email = String(ac.customer_email || '').toLowerCase();
   if (!email) return false;
@@ -162,8 +163,8 @@ async function sendTransactional(ac, req) {
   return true;
 }
 
-async function sendMarketing(ac, req) {
-  const db = req.app.locals.db;
+async function sendMarketing(ac) {
+  const db = await getDb();
 
   const email = String(ac.customer_email || '').toLowerCase();
   if (!email) return false;
