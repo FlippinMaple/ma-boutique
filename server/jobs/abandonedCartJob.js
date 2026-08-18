@@ -272,6 +272,24 @@ async function sendMarketing(ac) {
   return true;
 }
 
+async function purgeExpiredAbandonedCarts(limit = 500) {
+  const db = await getDb();
+  const [result] = await db.query(
+    `DELETE FROM abandoned_carts
+      WHERE GREATEST(
+              COALESCE(last_activity, created_at),
+              COALESCE(recovered_at, created_at)
+            ) < UTC_TIMESTAMP() - INTERVAL 30 DAY
+   ORDER BY GREATEST(
+              COALESCE(last_activity, created_at),
+              COALESCE(recovered_at, created_at)
+            ) ASC
+      LIMIT ?`,
+    [limit]
+  );
+  return Number(result?.affectedRows || 0);
+}
+
 export function startAbandonedCartCron() {
   const every = Math.max(5, RELANCE_INTERVAL_MIN) * 60 * 1000;
   let tickRunning = false;
@@ -286,6 +304,7 @@ export function startAbandonedCartCron() {
     let txSent = 0;
     let marketingSelected = 0;
     let marketingSent = 0;
+    let purged = 0;
     let phase = 'init';
     try {
       phase = 'db';
@@ -315,9 +334,11 @@ export function startAbandonedCartCron() {
         const sent = await sendMarketing(ac);
         if (sent === true) marketingSent += 1;
       }
+      phase = 'retention';
+      purged = await purgeExpiredAbandonedCarts(500);
       phase = 'complete';
       await logInfo(
-        `completed duration_ms=${Date.now() - startedAt} tx_selected=${txSelected} tx_sent=${txSent} tx_skipped=${txSelected - txSent} marketing_selected=${marketingSelected} marketing_sent=${marketingSent} marketing_skipped=${marketingSelected - marketingSent}`,
+        `completed duration_ms=${Date.now() - startedAt} tx_selected=${txSelected} tx_sent=${txSent} tx_skipped=${txSelected - txSent} marketing_selected=${marketingSelected} marketing_sent=${marketingSent} marketing_skipped=${marketingSelected - marketingSent} purged=${purged}`,
         'abandoned-cart-cron'
       );
     } catch (e) {
@@ -325,7 +346,7 @@ export function startAbandonedCartCron() {
         .replace(/[^A-Za-z0-9_.:-]/g, '_')
         .slice(0, 80);
       await logError(
-        `failed phase=${phase} code=${errorCode} duration_ms=${Date.now() - startedAt} tx_selected=${txSelected} tx_sent=${txSent} marketing_selected=${marketingSelected} marketing_sent=${marketingSent}`,
+        `failed phase=${phase} code=${errorCode} duration_ms=${Date.now() - startedAt} tx_selected=${txSelected} tx_sent=${txSent} marketing_selected=${marketingSelected} marketing_sent=${marketingSent} purged=${purged}`,
         'abandoned-cart-cron'
       );
     } finally {
