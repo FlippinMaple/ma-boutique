@@ -77,7 +77,7 @@ async function hasOrder(email, sessionId) {
   return r.length > 0;
 }
 
-function transactionalTemplate({ siteName, items, resumeUrl }) {
+function transactionalTemplate({ siteName, items, shopUrl }) {
   const lines = (items || [])
     .map((i) => `• ${i.name} × ${i.quantity}`)
     .join('<br/>');
@@ -85,12 +85,12 @@ function transactionalTemplate({ siteName, items, resumeUrl }) {
     .map((i) => `• ${i.name} × ${i.quantity}`)
     .join('\n');
   return {
-    subject: `Vous pouvez reprendre votre commande`,
-    html: `<div style="font-family:Arial"><p>Vous aviez commencé une commande sur <b>${siteName}</b>.</p><p>${lines}</p><p><a href="${resumeUrl}" style="background:#111;color:#fff;padding:10px 14px;border-radius:8px;text-decoration:none">Reprendre ma commande</a></p><hr/><p style="font-size:12px;color:#666">Message transactionnel.</p></div>`,
-    text: `Reprendre votre commande\n${textLines}\n${resumeUrl}\n(Message transactionnel)`
+    subject: `Votre sélection vous attend`,
+    html: `<div style="font-family:Arial"><p>Vous aviez commencé une commande sur <b>${siteName}</b>.</p><p>${lines}</p><p><a href="${shopUrl}" style="background:#111;color:#fff;padding:10px 14px;border-radius:8px;text-decoration:none">Retourner à la boutique</a></p><hr/><p style="font-size:12px;color:#666">Message transactionnel.</p></div>`,
+    text: `Retourner à la boutique\n${textLines}\n${shopUrl}\n(Message transactionnel)`
   };
 }
-function marketingTemplate({ siteName, items, resumeUrl, email }) {
+function marketingTemplate({ siteName, items, shopUrl, email }) {
   const lines = (items || [])
     .map((i) => `• ${i.name} × ${i.quantity}`)
     .join('<br/>');
@@ -102,8 +102,8 @@ function marketingTemplate({ siteName, items, resumeUrl, email }) {
   )}`;
   return {
     subject: `Il ne manque plus qu’un clic — et voici ${PROMO_LABEL}`,
-    html: `<div style="font-family:Arial"><p>Votre panier chez <b>${siteName}</b> est encore disponible.</p><p>Voici ${PROMO_LABEL} : <b>${PROMO_CODE}</b> (valide jusqu’au ${PROMO_EXPIRY}).</p><p>${lines}</p><p><a href="${resumeUrl}" style="background:#0a7;color:#fff;padding:10px 14px;border-radius:8px;text-decoration:none">Finaliser ma commande</a></p><hr/><p style="font-size:12px;color:#666"><a href="${unsubUrl}">Se désabonner</a></p></div>`,
-    text: `Panier ${siteName}\n${textLines}\nCode ${PROMO_CODE} (jusqu’au ${PROMO_EXPIRY})\n${resumeUrl}\nUnsub: ${unsubUrl}`
+    html: `<div style="font-family:Arial"><p>Vous aviez laissé quelques articles de côté chez <b>${siteName}</b>.</p><p>Voici ${PROMO_LABEL} : <b>${PROMO_CODE}</b> (valide jusqu’au ${PROMO_EXPIRY}).</p><p>${lines}</p><p><a href="${shopUrl}" style="background:#0a7;color:#fff;padding:10px 14px;border-radius:8px;text-decoration:none">Retourner à la boutique</a></p><hr/><p style="font-size:12px;color:#666"><a href="${unsubUrl}">Se désabonner</a></p></div>`,
+    text: `Panier ${siteName}\n${textLines}\nCode ${PROMO_CODE} (jusqu’au ${PROMO_EXPIRY})\n${shopUrl}\nUnsub: ${unsubUrl}`
   };
 }
 
@@ -116,8 +116,8 @@ async function getItemsPreview(ac) {
     return [];
   }
 }
-async function resumeUrlFor(ac) {
-  return `${getFrontendUrl()}/shop?resume=${encodeURIComponent(ac.id)}`;
+function shopUrl() {
+  return `${getFrontendUrl()}/shop`;
 }
 
 async function pickTransactional(limit = 200) {
@@ -220,12 +220,12 @@ async function sendTransactional(ac) {
   if (!email) return false;
   if (await isSuppressed(email)) return false;
   if (await hasOrder(email, ac.checkout_session_id)) return false;
-  const url = await resumeUrlFor(ac);
+  const url = shopUrl();
   const items = await getItemsPreview(ac);
   const tpl = transactionalTemplate({
     siteName: getSenderName(),
     items,
-    resumeUrl: url
+    shopUrl: url
   });
   await sendEmail({
     to: email,
@@ -249,12 +249,12 @@ async function sendMarketing(ac) {
   if (!(await hasExpressConsent(email))) return false;
   if (await isSuppressed(email)) return false;
   if (await hasOrder(email, ac.checkout_session_id)) return false;
-  const url = await resumeUrlFor(ac);
+  const url = shopUrl();
   const items = await getItemsPreview(ac);
   const tpl = marketingTemplate({
     siteName: getSenderName(),
     items,
-    resumeUrl: url,
+    shopUrl: url,
     email
   });
   await sendEmail({
