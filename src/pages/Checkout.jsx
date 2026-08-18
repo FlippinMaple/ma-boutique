@@ -156,17 +156,9 @@ const Checkout = () => {
     window.addEventListener('beforeunload', onBeforeUnload);
     window.addEventListener('pagehide', onPageHide);
 
-    // Optional manual debug hook
-    window.__abandonTest = sendAbandon;
-
     return () => {
       window.removeEventListener('beforeunload', onBeforeUnload);
       window.removeEventListener('pagehide', onPageHide);
-      try {
-        delete window.__abandonTest;
-      } catch {
-        /* empty */
-      }
     };
   }, [cart, userEmail, shouldSuppressAbandonedLog]);
 

@@ -18,7 +18,6 @@ import Checkout from './pages/Checkout';
 import Success from './pages/Success';
 import Cancel from './pages/Cancel';
 import ProductDetail from './pages/ProductDetail';
-import PreviewOrder from './pages/PreviewOrder';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
 import Login from './pages/Login';
@@ -135,7 +134,6 @@ function AppInner() {
         <Route path="/success" element={<Success />} />
         <Route path="/cancel" element={<Cancel />} />
         <Route path="/product/:id" element={<ProductDetail />} />
-        <Route path="/preview-order" element={<PreviewOrder />} />
         <Route path="/unsubscribe" element={<Unsubscribe />} />
         {adminRoutes}
         <Route path="*" element={<Navigate to="/" replace />} />

@@ -51,10 +51,6 @@ export const CartProvider = ({ children }) => {
     localStorage.setItem('cart', JSON.stringify(cart));
   }, [cart]);
 
-  useEffect(() => {
-    console.log('🧾 Panier mis à jour :', cart);
-  }, [cart]);
-
   const addToCart = (item) => {
     const existingItem = cart.find((i) => i.id === item.id);
 
@@ -86,7 +82,6 @@ export const CartProvider = ({ children }) => {
         );
         return;
       }
-      console.log('🛒 Ajout au panier:', item);
       addToCart(item);
       toast.success('Ajouté au panier ! 🛒', {
         duration: 1500,
