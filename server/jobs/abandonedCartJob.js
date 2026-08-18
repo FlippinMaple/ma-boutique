@@ -14,19 +14,39 @@ const PROMO_EXPIRY = process.env.PROMO_EXPIRY || 'bientôt';
 
 async function hasExpressConsent(email) {
   const db = await getDb();
+  const normalizedEmail = String(email || '').trim().toLowerCase();
+  if (!normalizedEmail) return false;
 
   const [r] = await db.query(
     `SELECT 1
-       FROM consents
-      WHERE (email = ? OR customer_id IN (SELECT id FROM customers WHERE email = ?))
-        AND purpose='marketing_email' AND basis='express' AND revoked_at IS NULL
+       FROM consents c
+      WHERE c.purpose = 'marketing_email'
+        AND c.basis = 'express'
+        AND c.revoked_at IS NULL
+        AND (c.expires_at IS NULL OR c.expires_at > UTC_TIMESTAMP())
+        AND (
+              BINARY LOWER(TRIM(IFNULL(c.email, ''))) = BINARY ?
+           OR c.customer_id IN (
+                SELECT cu.id
+                  FROM customers cu
+                 WHERE BINARY LOWER(TRIM(IFNULL(cu.email, ''))) = BINARY ?
+              )
+            )
+        AND NOT EXISTS (
+              SELECT 1
+                FROM customers cu
+               WHERE BINARY LOWER(TRIM(IFNULL(cu.email, ''))) = BINARY ?
+                 AND COALESCE(cu.is_subscribed, 0) <> 1
+            )
       LIMIT 1`,
-    [email, email]
+    [normalizedEmail, normalizedEmail, normalizedEmail]
   );
   return r.length > 0;
 }
 async function isSuppressed(email) {
   const db = await getDb();
+  const normalizedEmail = String(email || '').trim().toLowerCase();
+  if (!normalizedEmail) return false;
 
   const [r] = await db.query(
     `SELECT 1 FROM (
@@ -34,7 +54,7 @@ async function isSuppressed(email) {
        UNION
        SELECT email FROM email_events WHERE email = ? AND type IN ('bounce','complaint')
      ) t LIMIT 1`,
-    [email, email]
+    [normalizedEmail, normalizedEmail]
   );
   return r.length > 0;
 }
@@ -133,12 +153,6 @@ async function pickMarketing(limit = 200) {
   const [rows] = await db.query(
     `SELECT ac.*
        FROM abandoned_carts ac
-       JOIN consents c
-         ON c.email = ac.customer_email
-        AND c.purpose='marketing_email'
-        AND c.basis='express'
-        AND c.revoked_at IS NULL
-  LEFT JOIN unsubscribes u ON u.email = ac.customer_email
       WHERE ac.is_recovered = 0
         AND NOT EXISTS (
               SELECT 1
@@ -153,7 +167,37 @@ async function pickMarketing(limit = 200) {
                        = BINARY LOWER(TRIM(IFNULL(ac.customer_email, '')))
                      )
             )
-        AND u.email IS NULL
+        AND EXISTS (
+              SELECT 1
+                FROM consents c
+               WHERE c.purpose = 'marketing_email'
+                 AND c.basis = 'express'
+                 AND c.revoked_at IS NULL
+                 AND (c.expires_at IS NULL OR c.expires_at > UTC_TIMESTAMP())
+                 AND (
+                       BINARY LOWER(TRIM(IFNULL(c.email, '')))
+                         = BINARY LOWER(TRIM(IFNULL(ac.customer_email, '')))
+                    OR c.customer_id IN (
+                         SELECT cu.id
+                           FROM customers cu
+                          WHERE BINARY LOWER(TRIM(IFNULL(cu.email, '')))
+                              = BINARY LOWER(TRIM(IFNULL(ac.customer_email, '')))
+                       )
+                     )
+            )
+        AND NOT EXISTS (
+              SELECT 1
+                FROM unsubscribes u
+               WHERE BINARY LOWER(TRIM(IFNULL(u.email, '')))
+                   = BINARY LOWER(TRIM(IFNULL(ac.customer_email, '')))
+            )
+        AND NOT EXISTS (
+              SELECT 1
+                FROM customers cu
+               WHERE BINARY LOWER(TRIM(IFNULL(cu.email, '')))
+                   = BINARY LOWER(TRIM(IFNULL(ac.customer_email, '')))
+                 AND COALESCE(cu.is_subscribed, 0) <> 1
+            )
         AND ac.created_at < UTC_TIMESTAMP() - INTERVAL 24 HOUR
         AND (ac.last_email_sent_at IS NULL OR ac.last_email_sent_at < UTC_TIMESTAMP() - INTERVAL 24 HOUR)
    ORDER BY ac.created_at DESC
