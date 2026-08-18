@@ -217,21 +217,37 @@ async function upsertStripeEvent(event, req, possibleOrderId = null) {
 async function markAbandonedRecovered({ sessionId, email, req }) {
   const db = req.app.locals.db;
 
+  const [exact] = await db.query(
+    `
+    UPDATE abandoned_carts
+       SET is_recovered = 1,
+           recovered_at = UTC_TIMESTAMP(),
+           checkout_session_id = ?
+     WHERE is_recovered = 0
+       AND checkout_session_id = ?
+     ORDER BY COALESCE(last_activity, created_at) DESC
+     LIMIT 1
+    `,
+    [sessionId, sessionId]
+  );
+  if (exact.affectedRows > 0) return;
+
+  if (!email) return;
+
   await db.query(
     `
     UPDATE abandoned_carts
        SET is_recovered = 1,
            recovered_at = UTC_TIMESTAMP(),
-           checkout_session_id = COALESCE(checkout_session_id, ?)
+           checkout_session_id = ?
      WHERE is_recovered = 0
-       AND (
-             checkout_session_id = ?
-          OR (customer_email = ? AND created_at >= UTC_TIMESTAMP() - INTERVAL 30 DAY)
-           )
-     ORDER BY created_at DESC
+       AND checkout_session_id IS NULL
+       AND customer_email = ?
+       AND COALESCE(last_activity, created_at) >= UTC_TIMESTAMP() - INTERVAL 30 DAY
+     ORDER BY COALESCE(last_activity, created_at) DESC
      LIMIT 1
     `,
-    [sessionId, sessionId, email || null]
+    [sessionId, email]
   );
 }
 
@@ -665,12 +681,31 @@ async function handleStripeWebhook(req, res) {
       (shippingMeta && shippingMeta.email) ||
       null;
 
+    let recoveredEmail =
+      customer_email == null
+        ? null
+        : String(customer_email).trim().toLowerCase() || null;
+
     // C) Deja paid: pas de rewrite paid_at / history
     try {
       const [[curOrder]] = await db.query(
-        `SELECT status FROM orders WHERE id = ? LIMIT 1`,
+        `SELECT status, email_snapshot, customer_email
+           FROM orders
+          WHERE id = ?
+          LIMIT 1`,
         [orderId]
       );
+      if (curOrder) {
+        const snapshotEmail =
+          curOrder.email_snapshot == null
+            ? ''
+            : String(curOrder.email_snapshot).trim().toLowerCase();
+        const orderEmail =
+          curOrder.customer_email == null
+            ? ''
+            : String(curOrder.customer_email).trim().toLowerCase();
+        recoveredEmail = snapshotEmail || orderEmail || recoveredEmail;
+      }
       if (curOrder?.status === 'paid') {
         await upsertStripeEvent(event, req, orderId);
         await logInfo(
@@ -877,7 +912,7 @@ async function handleStripeWebhook(req, res) {
     try {
       await markAbandonedRecovered({
         sessionId: session.id,
-        email: customer_email,
+        email: recoveredEmail,
         req
       });
     } catch (e) {
