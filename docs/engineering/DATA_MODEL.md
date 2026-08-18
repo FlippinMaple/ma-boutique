@@ -419,6 +419,26 @@ customers via user_id
 Connexions logiques supplémentaires
 checkout_session_id est un pont vers Stripe, mais pas de FK interne (normal, Stripe vit hors DB).
 
+#### Runtime actuel confirmé après P11
+
+L’inventaire ci-dessus conserve le schéma / historique. Le runtime **actif** après P11 est distinct.
+
+**Collecte publique (P11)** — handler `server/routes/abandonedCartRoutes.js`. Colonnes réellement lues ou écrites : `id`, `customer_email`, `cart_snapshot`, `cart_contents`, `source`, `created_at`, `updated_at`, `last_activity`, `is_recovered`, `checkout_session_id` (non posé à l’INSERT public), `recovered_at` (non posé à l’INSERT ; écrit par le webhook). INSERT public : `(customer_email, cart_snapshot, cart_contents, source)` seulement ; timestamps / `is_recovered` via défauts colonne.
+
+**Recovered (P11-G)** — `webhookController.js`, après COMMIT paid. Colonnes : `is_recovered`, `recovered_at`, `checkout_session_id`, `customer_email`, `last_activity`, `created_at`.
+
+**P12 actuel (non remédié dans P11)** — `abandonedCartJob.js`. Colonnes : `id`, `customer_email`, `cart_snapshot` / `cart_contents`, `created_at`, `is_recovered`, `checkout_session_id`, `last_email_sent_at`, `campaign_id`. P12 ne lit pas `last_activity` ni `recovered_at`.
+
+`cart_id`, `user_id` et `anonymous_token` peuvent exister au schéma (index de production observés) ; l’INSERT public P11 **ne les renseigne pas**. `abandoned_at` et `notified` appartiennent à l’ancien chemin retiré en P11-H ; ils ne sont **pas** nécessaires au runtime P11 actuel.
+
+**Snapshot P11-C.** `cart_snapshot` et `cart_contents` reçoivent le même JSON sanitizé, champs uniquement : `id`, `name`, `quantity`, `price`, `variant_id`, `printful_variant_id`. `customer_email` est une colonne séparée. Le JSON ne doit pas contenir adresse, téléphone, token, secret, ni champs arbitraires supplémentaires. Sérialisation texte selon le schéma actuel (pas un type JSON MySQL natif revendiqué ici).
+
+**P11-F — debounce 10 minutes.** Ligne récente : même `customer_email`, `is_recovered = 0`, `COALESCE(last_activity, created_at) >= UTC_TIMESTAMP() - INTERVAL 10 MINUTE`. Si trouvée : UPDATE snapshot / contents / source / `last_activity` ; `created_at` conservé ; HTTP 204. Sinon INSERT → 201. Pas de UNIQUE logique ; race SELECT→INSERT acceptée.
+
+**P11-G — recovered.** Priorité stricte `checkout_session_id` exact (`is_recovered = 0`). Fallback email seulement si aucune ligne session : `checkout_session_id IS NULL`, fenêtre 30 jours sur `COALESCE(last_activity, created_at)`. Recovered **n’est pas** une preuve que le snapshot exact a été acheté. Le matching de la commande paid reste strict et n’utilise pas l’email.
+
+**Rétention.** Aucune purge automatique actuelle. Décision P11-I volontaire : pas de `DELETE` périodique tant que P12 et une politique produit / privacy n’ont pas défini un cutoff. Aucune durée finale n’est inscrite ici.
+
 ### wishlists ← inventaire §1.14
 
 Colonnes clés

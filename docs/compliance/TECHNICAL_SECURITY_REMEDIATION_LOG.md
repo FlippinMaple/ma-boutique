@@ -1,6 +1,6 @@
 # Journal des correctifs techniques et de sécurité
 
-**Statut :** journal actif — chantiers P3 (checkout public), P4 (webhook Stripe / idempotence), P5 (fallback `order_items`), P6 (gestionnaire d’erreurs), P7 (authentification / sessions / JWT), P8 (inscription / consentement marketing / privacy technique), P9 (consentements email / unsubscribe / webhooks et cycle de révocation) et P10 (secret unsubscribe / token hardening) : **FERMÉS / COMPLETS**. Prochaine priorité d’audit : **P11** (paniers abandonnés).
+**Statut :** journal actif — chantiers P3 (checkout public), P4 (webhook Stripe / idempotence), P5 (fallback `order_items`), P6 (gestionnaire d’erreurs), P7 (authentification / sessions / JWT), P8 (inscription / consentement marketing / privacy technique), P9 (consentements email / unsubscribe / webhooks et cycle de révocation), P10 (secret unsubscribe / token hardening) et P11 (paniers abandonnés) : **FERMÉS / COMPLETS**. Prochaine priorité d’audit : **P12** (job / cron des paniers abandonnés).
 
 Ce document complète `docs/compliance/TECHNICAL_SECURITY_AUDIT.md`.
 
@@ -1524,6 +1524,123 @@ Au sens technique :
 Cela ne constitue **pas** une certification de conformité légale.
 
 La prochaine priorité d’audit est **P11** (paniers abandonnés), selon la nomenclature du document d’audit gelé.
+
+---
+
+## 18 août 2026 — Chantier P11 : paniers abandonnés (FERMÉ)
+
+Le constat initial d’audit P11 reste figé dans `TECHNICAL_SECURITY_AUDIT.md`. Ce journal documente la remédiation technique.
+
+P11 traite : collecte publique, parsing sendBeacon, validation/sanitization du payload, rate limit, événements navigateur, debounce/refresh, matching recovered, retrait du debug/code mort, et la **décision** de rétention. **P12** (cron, emails de relance, consents, campaign, workers, locks) reste **séparé et non corrigé**. Aucune certification de conformité légale n’est revendiquée.
+
+Handler vivant de collecte : `server/routes/abandonedCartRoutes.js`. Recovered vivant : `markAbandonedRecovered` dans `server/controllers/webhookController.js`. Job P12 : `server/jobs/abandonedCartJob.js` (non modifié).
+
+### P11-A — Inspection
+
+Inspection read-only, **sans commit**.
+
+Constat alors en vigueur : panier `localStorage` ; tracking sur `Checkout.jsx` (`beforeunload` / `pagehide` / `visibilitychange`) ; `sendBeacon` `text/plain` ; `POST /api/log-abandoned-cart` public ; dédup email ~10 min (SELECT puis INSERT) ; recovered webhook email 30 jours `ORDER BY created_at` ; aucune rétention ; debug (`window.__abandonTest`, logs panier, `PreviewOrder`, `cartLogger`) et anciens controller/service non montés. Séparation explicite **P11** (collecte / recovered) vs **P12** (cron / emails).
+
+### P11-B — sendBeacon / text/plain
+
+**Commit :** `9b6a02e8c63d7d654af84b2b9a4b15cb3c5a032d` — `fix(abandoned-cart): parse sendBeacon payload`
+
+**Fichier :** `server/routes/abandonedCartRoutes.js` uniquement.
+
+`express.text({ type: 'text/plain', limit: '100kb' })` sur cette route. Si `req.body` est une string : `JSON.parse` ; JSON invalide / non-objet → HTTP 204. Le parser global `application/json` est inchangé (`app.js` non modifié).
+
+**Validation production :** POST `text/plain` valide → HTTP 201 `{ "ok": true }` ; ligne de test supprimée.
+
+### P11-C — Validation / sanitization
+
+**Commit :** `6f1ec13c2bc1bf6aa00fdfe4149b69811cd09e65` — `fix(abandoned-cart): validate collected payload`
+
+**Fichier :** `server/routes/abandonedCartRoutes.js` uniquement.
+
+Limites alignées sur le checkout (constantes locales, pas d’import du contrôleur) : `MAX_CART_LINES = 20`, `MAX_QUANTITY_PER_LINE = 20`, `MAX_EMAIL_LENGTH = 100`, regex email. Email string obligatoire, trim/lowercase. Snapshot : tableau non vide ≤ 20 lignes. Chaque item sanitizé aux seuls champs `{ id, name, quantity, price, variant_id, printful_variant_id }` ; item invalide → 204, pas d’écriture. `id` entier positif sûr ; `variant_id` / `printful_variant_id` optionnels (null si absents) ; quantité 1–20 ; prix fini ≥ 0. Source whitelist inchangée : `beforeunload` | `manual` | `inactivity`. Le même JSON sanitizé est persisté dans `cart_snapshot` et `cart_contents` (sérialisation texte selon le schéma actuel, **pas** un type JSON MySQL natif revendiqué ici).
+
+**Validation production :** payload valide + champs extra → 201 ; email invalide → 204 ; quantity 21 → 204 ; `JSON_CONTAINS_PATH` 0 pour `secret` / `address` / `hugeNestedObject` ; ligne de test supprimée.
+
+### P11-D — Rate limit
+
+**Commit :** `0edc2debe3a3b24631a2bdadcec9d58e0042d62f` — `fix(abandoned-cart): rate limit public collection`
+
+`abandonedCartLimiter` : `windowMs` 60 s, `max` 30, `standardHeaders: true`, `legacyHeaders: false`, HTTP 429 `{ error: 'Trop de tentatives. Réessaie dans quelques instants.', code: 'ABANDONED_CART_RATE_LIMITED' }`. Ordre : limiter **avant** `express.text`.
+
+**Validation production :** requêtes 1–30 HTTP 204 (payload volontairement non persistant) ; 31e HTTP 429.
+
+### P11-E — Faux abandons navigateur
+
+**Commit :** `8ad34727d3663f1dc3871d6635e508cf2c5a2d7b` — `fix(abandoned-cart): reduce false abandonment events`
+
+**Fichier :** `src/pages/Checkout.jsx` uniquement.
+
+Retrait de `visibilitychange`. `pagehide` ignoré si `event.persisted` (bfcache). `beforeunload` conservé. `sendAbandon`, payload, `reason: 'beforeunload'`, beacon, `sent`, `inCheckout` inchangés. Checkout Stripe non modifié.
+
+**Validation production :** changement d’onglet sur `/checkout` → aucune requête `log-abandoned-cart` ; `pagehide` synthétique `persisted:true` → aucune requête.
+
+Résidu : un beacon navigateur reste best-effort ; ce n’est pas un bug ouvert P11.
+
+### P11-F — Debounce / refresh
+
+**Commit :** `7538abd145db2e9b3fc38606f09252d68d6e75d0` — `fix(abandoned-cart): refresh recent abandoned cart`
+
+**Fichier :** `server/routes/abandonedCartRoutes.js` uniquement.
+
+Ligne récente : `customer_email = ?` AND `is_recovered = 0` AND `COALESCE(last_activity, created_at) >= UTC_TIMESTAMP() - INTERVAL 10 MINUTE`, `ORDER BY COALESCE(last_activity, created_at) DESC LIMIT 1`. Si trouvée : UPDATE `cart_snapshot`, `cart_contents`, `source`, `last_activity = UTC_TIMESTAMP()` ; `created_at` intact ; `updated_at` laissé à `ON UPDATE CURRENT_TIMESTAMP()` ; HTTP 204. Sinon : INSERT existant `(customer_email, cart_snapshot, cart_contents, source)` → 201. Debounce **glissant** 10 minutes. Pas de contrainte UNIQUE ; race SELECT→INSERT **acceptée** comme résidu proportionné. Aucune migration.
+
+**Validation production :** premier POST → 201 / INSERT ; second à +2 s → 204 ; une seule ligne, même `id` ; snapshot/`cart_contents`/source rafraîchis ; `created_at` inchangé ; `last_activity` et `updated_at` avancés ; ligne de test supprimée.
+
+### P11-G — Recovered matching
+
+**Commit :** `c8f779f2f5fd56025ee358a620d1e5e4cddbb6bc` — `fix(abandoned-cart): prioritize recovered matching`
+
+**Fichier :** `server/controllers/webhookController.js` uniquement.
+
+Deux UPDATE distincts. Étape 1 : `checkout_session_id` exact, `is_recovered = 0` ; si `affectedRows > 0`, stop. Étape 2 seulement si 0 : fallback email, `checkout_session_id IS NULL`, fenêtre 30 jours sur `COALESCE(last_activity, created_at)`, même `ORDER BY`, stamp `checkout_session_id` de la session courante. Email de recovery : `orders.email_snapshot`, puis `orders.customer_email`, puis email Stripe/session metadata ; trim/lowercase. Matching **commande paid** inchangé (`stripe_session_id` / `client_reference_id` / `metadata.order_id` ; l’email n’est **jamais** une autorité paid). Recovered = side effect **après COMMIT** ; échec best-effort, pas de rollback paiement ; chemins already-paid / replay non étendus.
+
+Sémantique : recovered **ne prouve pas** que le snapshot exact a été acheté. Sans `checkout_session_id` exact, le fallback signifie plutôt qu’une adresse ayant récemment abandonné a ensuite réalisé un achat.
+
+**Validation production** (transaction / `ROLLBACK`) : session exacte prioritaire vs ligne email plus récente ; fallback email limité aux lignes `checkout_session_id IS NULL`, ligne la plus récemment active ; ligne liée à une autre session intacte ; `p11g_test_rows_remaining = 0`.
+
+### P11-H — Debug / code mort
+
+**Commit :** `9cfb8e1130da8f65b27044208b6ca29821c9fb0c` — `chore(abandoned-cart): remove legacy debug code`
+
+Retraits : `window.__abandonTest` ; deux `console.log` panier production dans `CartContext.jsx` ; route `/preview-order` ; `PreviewOrder.jsx` / `PreviewOrder.css` ; `src/utils/cartLogger.js` ; `server/controllers/abandonedCartController.js` ; `server/services/abandonedCartService.js`. Handler vivant, webhook recovered et `abandonedCartJob` P12 conservés. Aucun comportement métier P11-B à P11-G modifié. Stub admin `/admin/abandoned-carts` non touché.
+
+### P11-I — Décision rétention (non-implémentation volontaire)
+
+Inspection read-only, **sans commit de purge**.
+
+**Aucune purge automatique** de `abandoned_carts` n’est ajoutée dans P11. Ce n’est **pas** un oubli.
+
+Constats techniques : P11-F n’a besoin que de 10 minutes ; P11-G fallback email, 30 jours ; une ligne `is_recovered = 1` n’est plus utilisée par P11-F, P11-G ni P12 ; une ligne non recovered inactive > 30 jours n’est plus utilisée par **P11**, mais le marketing P12 actuel n’a **aucun cutoff haut** (`created_at < 24 h` est un plancher). Le code seul ne permet pas de choisir honnêtement 30 / 60 / 90 jours. Hostinger / `startCronJobs` peut tourner dans plusieurs process sans lock global. Un `DELETE` périodique dans P11 imposerait une politique et une mécanique multi-worker **avant** P12.
+
+Décision : pas de purge auto, pas de `DELETE`/`TRUNCATE`, pas de migration, pas de cron de rétention, pas de mélange avec le job email P12. La politique sera réévaluée avec **P12** et les décisions produit / business / privacy appropriées. **Aucune durée finale** n’est inscrite ici.
+
+La conservation indéfinie des lignes `abandoned_carts` reste un **résidu technique connu** jusqu’à cette décision ultérieure. Aucune conformité légale n’est déclarée.
+
+### Statut final P11
+
+P11 est **FERMÉ / VALIDÉ TECHNIQUEMENT EN PRODUCTION** au sens de la remédiation technique.
+
+- ingestion beacon `text/plain` corrigée ;
+- payload strict / sanitizé ;
+- rate limit public ;
+- faux événements navigateur réduits ;
+- debounce / refresh 10 min ;
+- recovered matching priorisé (session exacte puis fallback email) ;
+- debug / code mort retiré ;
+- rétention analysée et **volontairement non automatisée** ;
+- données de test nettoyées ;
+- P12 explicitement séparé et non corrigé.
+
+Résidus : race SELECT→INSERT P11-F sans UNIQUE ; beacon navigateur best-effort ; fallback recovered email ≠ preuve d’identité du panier payé ; aucune rétention automatique tant que P12 / politique n’est pas définie. Aucune affirmation juridique.
+
+Cela ne constitue **pas** une certification de conformité légale.
+
+La prochaine priorité d’audit est **P12** — job / cron des paniers abandonnés.
 
 ---
 
