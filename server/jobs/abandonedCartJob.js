@@ -40,12 +40,18 @@ async function isSuppressed(email) {
 }
 async function hasOrder(email, sessionId) {
   const db = await getDb();
+  const normalizedEmail = String(email || '').trim().toLowerCase();
+  const sid = sessionId == null || sessionId === '' ? null : String(sessionId);
 
   const [r] = await db.query(
     `SELECT id FROM orders
-      WHERE (email = ? OR (checkout_session_id IS NOT NULL AND checkout_session_id = ?))
+      WHERE (
+              (? IS NOT NULL AND stripe_session_id = ?)
+           OR (? <> '' AND BINARY LOWER(TRIM(IFNULL(customer_email, ''))) = BINARY ?)
+           OR (? <> '' AND BINARY LOWER(TRIM(IFNULL(email_snapshot, ''))) = BINARY ?)
+            )
       LIMIT 1`,
-    [email, sessionId || null]
+    [sid, sid, normalizedEmail, normalizedEmail, normalizedEmail, normalizedEmail]
   );
   return r.length > 0;
 }
@@ -99,9 +105,20 @@ async function pickTransactional(limit = 200) {
   const [rows] = await db.query(
     `SELECT ac.*
        FROM abandoned_carts ac
-  LEFT JOIN orders o ON (o.checkout_session_id = ac.checkout_session_id OR o.email = ac.customer_email)
       WHERE ac.is_recovered = 0
-        AND o.id IS NULL
+        AND NOT EXISTS (
+              SELECT 1
+                FROM orders o
+               WHERE (
+                       (ac.checkout_session_id IS NOT NULL
+                        AND ac.checkout_session_id <> ''
+                        AND o.stripe_session_id = ac.checkout_session_id)
+                    OR BINARY LOWER(TRIM(IFNULL(o.customer_email, '')))
+                       = BINARY LOWER(TRIM(IFNULL(ac.customer_email, '')))
+                    OR BINARY LOWER(TRIM(IFNULL(o.email_snapshot, '')))
+                       = BINARY LOWER(TRIM(IFNULL(ac.customer_email, '')))
+                     )
+            )
         AND ac.created_at >= UTC_TIMESTAMP() - INTERVAL 24 HOUR
         AND (ac.last_email_sent_at IS NULL)
    ORDER BY ac.created_at DESC
@@ -121,10 +138,21 @@ async function pickMarketing(limit = 200) {
         AND c.purpose='marketing_email'
         AND c.basis='express'
         AND c.revoked_at IS NULL
-  LEFT JOIN orders o ON (o.checkout_session_id = ac.checkout_session_id OR o.email = ac.customer_email)
   LEFT JOIN unsubscribes u ON u.email = ac.customer_email
       WHERE ac.is_recovered = 0
-        AND o.id IS NULL
+        AND NOT EXISTS (
+              SELECT 1
+                FROM orders o
+               WHERE (
+                       (ac.checkout_session_id IS NOT NULL
+                        AND ac.checkout_session_id <> ''
+                        AND o.stripe_session_id = ac.checkout_session_id)
+                    OR BINARY LOWER(TRIM(IFNULL(o.customer_email, '')))
+                       = BINARY LOWER(TRIM(IFNULL(ac.customer_email, '')))
+                    OR BINARY LOWER(TRIM(IFNULL(o.email_snapshot, '')))
+                       = BINARY LOWER(TRIM(IFNULL(ac.customer_email, '')))
+                     )
+            )
         AND u.email IS NULL
         AND ac.created_at < UTC_TIMESTAMP() - INTERVAL 24 HOUR
         AND (ac.last_email_sent_at IS NULL OR ac.last_email_sent_at < UTC_TIMESTAMP() - INTERVAL 24 HOUR)
