@@ -68,7 +68,7 @@ async function hasOrder(email, sessionId) {
   const [r] = await db.query(
     `SELECT id FROM orders
       WHERE (
-              (? IS NOT NULL AND stripe_session_id = ?)
+              (? IS NOT NULL AND BINARY stripe_session_id = BINARY ?)
            OR (? <> '' AND BINARY LOWER(TRIM(IFNULL(customer_email, ''))) = BINARY ?)
            OR (? <> '' AND BINARY LOWER(TRIM(IFNULL(email_snapshot, ''))) = BINARY ?)
             )
@@ -134,7 +134,7 @@ async function pickTransactional(limit = 200) {
                WHERE (
                        (ac.checkout_session_id IS NOT NULL
                         AND ac.checkout_session_id <> ''
-                        AND o.stripe_session_id = ac.checkout_session_id)
+                        AND BINARY o.stripe_session_id = BINARY ac.checkout_session_id)
                     OR BINARY LOWER(TRIM(IFNULL(o.customer_email, '')))
                        = BINARY LOWER(TRIM(IFNULL(ac.customer_email, '')))
                     OR BINARY LOWER(TRIM(IFNULL(o.email_snapshot, '')))
@@ -163,7 +163,7 @@ async function pickMarketing(limit = 200) {
                WHERE (
                        (ac.checkout_session_id IS NOT NULL
                         AND ac.checkout_session_id <> ''
-                        AND o.stripe_session_id = ac.checkout_session_id)
+                        AND BINARY o.stripe_session_id = BINARY ac.checkout_session_id)
                     OR BINARY LOWER(TRIM(IFNULL(o.customer_email, '')))
                        = BINARY LOWER(TRIM(IFNULL(ac.customer_email, '')))
                     OR BINARY LOWER(TRIM(IFNULL(o.email_snapshot, '')))
