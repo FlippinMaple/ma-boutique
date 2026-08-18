@@ -140,7 +140,8 @@ async function pickTransactional(limit = 200) {
                        = BINARY LOWER(TRIM(IFNULL(ac.customer_email, '')))
                      )
             )
-        AND ac.created_at >= UTC_TIMESTAMP() - INTERVAL 24 HOUR
+        AND COALESCE(ac.last_activity, ac.created_at)
+            >= UTC_TIMESTAMP() - INTERVAL 24 HOUR
         AND (ac.last_email_sent_at IS NULL)
    ORDER BY ac.created_at DESC
       LIMIT ?`,
@@ -199,7 +200,11 @@ async function pickMarketing(limit = 200) {
                    = BINARY LOWER(TRIM(IFNULL(ac.customer_email, '')))
                  AND COALESCE(cu.is_subscribed, 0) <> 1
             )
-        AND ac.created_at < UTC_TIMESTAMP() - INTERVAL 24 HOUR
+        AND COALESCE(ac.last_activity, ac.created_at)
+            < UTC_TIMESTAMP() - INTERVAL 24 HOUR
+        AND COALESCE(ac.last_activity, ac.created_at)
+            >= UTC_TIMESTAMP() - INTERVAL 7 DAY
+        AND ac.campaign_id IS NULL
         AND (ac.last_email_sent_at IS NULL OR ac.last_email_sent_at < UTC_TIMESTAMP() - INTERVAL 24 HOUR)
    ORDER BY ac.created_at DESC
       LIMIT ?`,
