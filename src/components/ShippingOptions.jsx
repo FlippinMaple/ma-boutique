@@ -9,7 +9,7 @@ const currencyFormatter = new Intl.NumberFormat('fr-CA', {
 const formatCurrency = (value) =>
   currencyFormatter.format(Number(value) || 0);
 
-const RATES_DEBOUNCE_MS = 400;
+const RATES_DEBOUNCE_MS = 800;
 
 function isCanceledRequest(error) {
   return (
