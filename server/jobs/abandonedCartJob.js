@@ -60,20 +60,48 @@ async function isSuppressed(email) {
   );
   return r.length > 0;
 }
-async function hasOrder(email, sessionId) {
+// Conversion liée à CE panier : session Checkout payée, ou email + paid_at
+// au plus tôt à l'activité du panier (pas n'importe quelle ancienne commande).
+const CONVERTED_ORDER_FOR_CART_PREDICATE = `o.paid_at IS NOT NULL
+        AND (
+              (ac.checkout_session_id IS NOT NULL
+               AND ac.checkout_session_id <> ''
+               AND BINARY o.stripe_session_id = BINARY ac.checkout_session_id)
+           OR (
+                (
+                  BINARY LOWER(TRIM(IFNULL(o.customer_email, '')))
+                    = BINARY LOWER(TRIM(IFNULL(ac.customer_email, '')))
+               OR BINARY LOWER(TRIM(IFNULL(o.email_snapshot, '')))
+                    = BINARY LOWER(TRIM(IFNULL(ac.customer_email, '')))
+                )
+                AND o.paid_at >= COALESCE(ac.last_activity, ac.created_at)
+              )
+            )`;
+
+async function hasOrder(ac) {
   const db = await getDb();
-  const normalizedEmail = String(email || '').trim().toLowerCase();
-  const sid = sessionId == null || sessionId === '' ? null : String(sessionId);
+  const sid =
+    ac?.checkout_session_id == null || ac.checkout_session_id === ''
+      ? null
+      : String(ac.checkout_session_id);
 
   const [r] = await db.query(
-    `SELECT id FROM orders
-      WHERE (
-              (? IS NOT NULL AND BINARY stripe_session_id = BINARY ?)
-           OR (? <> '' AND BINARY LOWER(TRIM(IFNULL(customer_email, ''))) = BINARY ?)
-           OR (? <> '' AND BINARY LOWER(TRIM(IFNULL(email_snapshot, ''))) = BINARY ?)
-            )
+    `SELECT o.id
+       FROM orders o
+      INNER JOIN (
+             SELECT ? AS checkout_session_id,
+                    ? AS customer_email,
+                    ? AS last_activity,
+                    ? AS created_at
+           ) ac
+      WHERE ${CONVERTED_ORDER_FOR_CART_PREDICATE}
       LIMIT 1`,
-    [sid, sid, normalizedEmail, normalizedEmail, normalizedEmail, normalizedEmail]
+    [
+      sid,
+      ac?.customer_email ?? '',
+      ac?.last_activity ?? null,
+      ac?.created_at ?? null
+    ]
   );
   return r.length > 0;
 }
@@ -131,15 +159,7 @@ async function pickTransactional(limit = 200) {
         AND NOT EXISTS (
               SELECT 1
                 FROM orders o
-               WHERE (
-                       (ac.checkout_session_id IS NOT NULL
-                        AND ac.checkout_session_id <> ''
-                        AND BINARY o.stripe_session_id = BINARY ac.checkout_session_id)
-                    OR BINARY LOWER(TRIM(IFNULL(o.customer_email, '')))
-                       = BINARY LOWER(TRIM(IFNULL(ac.customer_email, '')))
-                    OR BINARY LOWER(TRIM(IFNULL(o.email_snapshot, '')))
-                       = BINARY LOWER(TRIM(IFNULL(ac.customer_email, '')))
-                     )
+               WHERE ${CONVERTED_ORDER_FOR_CART_PREDICATE}
             )
         AND COALESCE(ac.last_activity, ac.created_at)
             >= UTC_TIMESTAMP() - INTERVAL 24 HOUR
@@ -160,15 +180,7 @@ async function pickMarketing(limit = 200) {
         AND NOT EXISTS (
               SELECT 1
                 FROM orders o
-               WHERE (
-                       (ac.checkout_session_id IS NOT NULL
-                        AND ac.checkout_session_id <> ''
-                        AND BINARY o.stripe_session_id = BINARY ac.checkout_session_id)
-                    OR BINARY LOWER(TRIM(IFNULL(o.customer_email, '')))
-                       = BINARY LOWER(TRIM(IFNULL(ac.customer_email, '')))
-                    OR BINARY LOWER(TRIM(IFNULL(o.email_snapshot, '')))
-                       = BINARY LOWER(TRIM(IFNULL(ac.customer_email, '')))
-                     )
+               WHERE ${CONVERTED_ORDER_FOR_CART_PREDICATE}
             )
         AND EXISTS (
               SELECT 1
@@ -220,7 +232,7 @@ async function sendTransactional(ac) {
   const email = String(ac.customer_email || '').toLowerCase();
   if (!email) return false;
   if (await isSuppressed(email)) return false;
-  if (await hasOrder(email, ac.checkout_session_id)) return false;
+  if (await hasOrder(ac)) return false;
   const url = shopUrl();
   const items = await getItemsPreview(ac);
   const tpl = transactionalTemplate({
@@ -249,7 +261,7 @@ async function sendMarketing(ac) {
   if (!email) return false;
   if (!(await hasExpressConsent(email))) return false;
   if (await isSuppressed(email)) return false;
-  if (await hasOrder(email, ac.checkout_session_id)) return false;
+  if (await hasOrder(ac)) return false;
   const url = shopUrl();
   const items = await getItemsPreview(ac);
   const tpl = marketingTemplate({
