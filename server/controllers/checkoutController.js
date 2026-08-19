@@ -1047,27 +1047,6 @@ export const createCheckoutSession = async (req, res) => {
     }
 
     // 6) Création de la session Stripe
-    const metadataCartItems = normalizedLines.map((line) => ({
-      id: line.dbVariantId,
-      variant_id: line.bizVariantId,
-      printful_variant_id: line.printfulVariantId,
-      quantity: line.quantity,
-      unit_price_cents: line.unitPriceCents,
-      price: line.officialPrice,
-      sku: line.sku,
-      name: line.name
-    }));
-
-    const metadataShipping = {
-      name: shippingNormalized.name || '',
-      address1: shippingNormalized.address1 || '',
-      city: shippingNormalized.city || '',
-      state: shippingNormalized.state || '',
-      country: shippingNormalized.country || '',
-      zip: shippingNormalized.zip || '',
-      email: emailSnapshot || ''
-    };
-
     const session = await stripe.checkout.sessions.create(
       {
         mode: 'payment',
@@ -1100,9 +1079,7 @@ export const createCheckoutSession = async (req, res) => {
             id: selectedShippingRateId,
             name: shippingName,
             shipping_cents: shippingCents
-          }),
-          shipping: JSON.stringify(metadataShipping),
-          cart_items: JSON.stringify(metadataCartItems)
+          })
         }
       },
       { idempotencyKey }
