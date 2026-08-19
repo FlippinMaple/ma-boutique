@@ -4,6 +4,8 @@ import { useCart } from '../CartContext';
 import api from '../utils/api';
 import './styles/ProductDetail.css';
 
+const MAX_QUANTITY_PER_LINE = 20;
+
 const ProductDetail = () => {
   const { id } = useParams();
   const { validateStockBeforeAdd } = useCart(); // ✅ utilise validateStockBeforeAdd
@@ -11,7 +13,7 @@ const ProductDetail = () => {
   const [selectedColor, setSelectedColor] = useState('');
   const [selectedSize, setSelectedSize] = useState('');
   const [selectedVariant, setSelectedVariant] = useState(null);
-  const [availableStock, setAvailableStock] = useState(null);
+  const [isAvailable, setIsAvailable] = useState(null);
   const [quantity, setQuantity] = useState(1);
   const [loading, setLoading] = useState(false);
 
@@ -51,18 +53,18 @@ const ProductDetail = () => {
     const fetchAvailability = async () => {
       if (selectedVariant?.printful_variant_id) {
         setLoading(true);
+        setIsAvailable(null);
         try {
           const res = await api.get(
             `/inventory/printful-stock/${selectedVariant.printful_variant_id}`
           );
-          const stock = res.data.available ?? 0;
-          setAvailableStock(stock);
+          setIsAvailable(res.data.available === true);
         } catch {
-          setAvailableStock(0);
+          setIsAvailable(false);
         }
         setLoading(false);
       } else {
-        setAvailableStock(0);
+        setIsAvailable(false);
       }
     };
     fetchAvailability();
@@ -86,7 +88,11 @@ const ProductDetail = () => {
   ];
 
   const canAddToCart =
-    !!selectedVariant && availableStock >= quantity && quantity > 0;
+    !!selectedVariant &&
+    isAvailable === true &&
+    !loading &&
+    quantity >= 1 &&
+    quantity <= MAX_QUANTITY_PER_LINE;
 
   const productImage =
     selectedVariant?.image && selectedVariant.image !== ''
@@ -107,13 +113,11 @@ const ProductDetail = () => {
       : null;
 
   const stockStatusClass =
-    loading || availableStock === null
+    loading || isAvailable === null
       ? 'product-stock product-stock--checking'
-      : availableStock === 0
-        ? 'product-stock product-stock--unavailable'
-        : availableStock <= 10
-          ? 'product-stock product-stock--limited'
-          : 'product-stock product-stock--available';
+      : isAvailable === true
+        ? 'product-stock product-stock--available'
+        : 'product-stock product-stock--unavailable';
 
   return (
     <main className="product-page" id="main-content">
@@ -203,12 +207,15 @@ const ProductDetail = () => {
                   type="number"
                   value={quantity}
                   min={1}
-                  max={availableStock || 1}
+                  max={MAX_QUANTITY_PER_LINE}
                   onChange={(e) =>
                     setQuantity(
                       Math.max(
                         1,
-                        Math.min(Number(e.target.value), availableStock || 1)
+                        Math.min(
+                          Number(e.target.value) || 1,
+                          MAX_QUANTITY_PER_LINE
+                        )
                       )
                     )
                   }
@@ -218,15 +225,11 @@ const ProductDetail = () => {
               </label>
 
               <p className={stockStatusClass} aria-live="polite">
-                {loading || availableStock === null
+                {loading || isAvailable === null
                   ? 'Vérification de la disponibilité...'
-                  : availableStock === 0
-                    ? 'Indisponible'
-                    : availableStock <= 10
-                      ? `Stock limité : ${availableStock} disponible${
-                          availableStock > 1 ? 's' : ''
-                        }`
-                      : 'Disponible'}
+                  : isAvailable === true
+                    ? 'Disponible'
+                    : 'Indisponible'}
               </p>
             </div>
 
@@ -252,9 +255,9 @@ const ProductDetail = () => {
             >
               {loading
                 ? 'Vérification...'
-                : availableStock === 0
-                  ? 'Indisponible'
-                  : 'Ajouter au panier'}
+                : isAvailable === true
+                  ? 'Ajouter au panier'
+                  : 'Indisponible'}
             </button>
           </div>
         </article>

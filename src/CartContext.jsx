@@ -2,6 +2,8 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import api from './utils/api';
 
+const MAX_QUANTITY_PER_LINE = 20;
+
 const CartContext = createContext();
 
 export const CartProvider = ({ children }) => {
@@ -52,37 +54,75 @@ export const CartProvider = ({ children }) => {
   }, [cart]);
 
   const addToCart = (item) => {
+    const requestedQuantity = Number(item.quantity);
+    if (
+      !Number.isInteger(requestedQuantity) ||
+      requestedQuantity < 1 ||
+      requestedQuantity > MAX_QUANTITY_PER_LINE
+    ) {
+      toast.error('La quantité doit être comprise entre 1 et 20.');
+      return;
+    }
+
     const existingItem = cart.find((i) => i.id === item.id);
+    if (!existingItem) {
+      setCart([...cart, { ...item, quantity: requestedQuantity }]);
+      return;
+    }
 
-    const updatedCart = existingItem
-      ? cart.map((i) =>
-          i.id === item.id ? { ...i, quantity: i.quantity + item.quantity } : i
-        )
-      : [...cart, item];
+    const existingQuantity = Number(existingItem.quantity);
+    const currentQuantity = Number.isInteger(existingQuantity)
+      ? existingQuantity
+      : 0;
+    const totalQuantity = currentQuantity + requestedQuantity;
+    if (totalQuantity > MAX_QUANTITY_PER_LINE) {
+      toast.error('La quantité maximale est de 20 par article.');
+      return;
+    }
 
-    setCart(updatedCart);
+    setCart(
+      cart.map((i) =>
+        i.id === item.id ? { ...i, quantity: totalQuantity } : i
+      )
+    );
   };
 
   const validateStockBeforeAdd = async (item) => {
+    const requestedQuantity = Number(item.quantity);
+    if (
+      !Number.isInteger(requestedQuantity) ||
+      requestedQuantity < 1 ||
+      requestedQuantity > MAX_QUANTITY_PER_LINE
+    ) {
+      toast.error('La quantité doit être comprise entre 1 et 20.');
+      return;
+    }
+
     try {
       const res = await api.get(
         `/inventory/printful-stock/${item.printful_variant_id}`
       );
-      const data = res.data;
-      const stockAvailable = data.available ?? 99;
 
-      const existingItem = cart.find((i) => i.id === item.id);
-      const totalQuantity = existingItem
-        ? existingItem.quantity + item.quantity
-        : item.quantity;
-
-      if (totalQuantity > stockAvailable) {
-        toast.error(
-          `Désolé, il ne reste que ${stockAvailable} unités disponibles.`
-        );
+      if (res.data.available !== true) {
+        toast.error('Ce produit est actuellement indisponible.');
         return;
       }
-      addToCart(item);
+
+      const existingItem = cart.find((i) => i.id === item.id);
+      const existingQuantity = Number(existingItem?.quantity);
+      const currentQuantity = Number.isInteger(existingQuantity)
+        ? existingQuantity
+        : 0;
+      const totalQuantity = currentQuantity + requestedQuantity;
+
+      if (totalQuantity > MAX_QUANTITY_PER_LINE) {
+        toast.error('La quantité maximale est de 20 par article.');
+        return;
+      }
+      addToCart({
+        ...item,
+        quantity: requestedQuantity
+      });
       toast.success('Ajouté au panier ! 🛒', {
         duration: 1500,
         position: 'top-right',
@@ -103,13 +143,21 @@ export const CartProvider = ({ children }) => {
   };
 
   const updateQuantity = (id, quantity) => {
-    setCart((prev) => {
-      const q = Math.max(0, Number(quantity) || 0);
-      if (q <= 0) return prev.filter((item) => item.id !== id); // 0 → supprime
-      return prev.map((item) =>
-        item.id === id ? { ...item, quantity: q } : item
-      );
-    });
+    const q = Number(quantity);
+    if (q <= 0) {
+      setCart((prev) => prev.filter((item) => item.id !== id));
+      return;
+    }
+    if (!Number.isInteger(q)) {
+      return;
+    }
+    if (q > MAX_QUANTITY_PER_LINE) {
+      toast.error('La quantité maximale est de 20 par article.');
+      return;
+    }
+    setCart((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, quantity: q } : item))
+    );
   };
 
   const clearCart = () => {

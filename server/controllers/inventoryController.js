@@ -17,8 +17,8 @@ function parsePrintfulVariantIdParam(raw) {
 }
 
 /**
- * Renvoie un stock virtuel en fonction du statut de disponibilité Printful.
- * Les statuts "active" et "active-supplier" sont considérés comme disponibles (stock élevé).
+ * Renvoie une disponibilité Printful (booléen), pas un stock ni une quantité.
+ * Les statuts "active" et "active-supplier" sont considérés comme disponibles.
  */
 export async function getPrintfulStock(req, res) {
   const requestedId = parsePrintfulVariantIdParam(req.params.id);
@@ -52,10 +52,8 @@ export async function getPrintfulStock(req, res) {
     }
 
     const status = await getPrintfulVariantAvailability(printfulVariantId);
-    let available = 0;
-    if (status === 'active' || status === 'active-supplier') {
-      available = 999;
-    }
+    const available =
+      status === 'active' || status === 'active-supplier';
     return res.json({ available });
   } catch (err) {
     console.error('[printful-stock] id=', requestedId, err.message);
