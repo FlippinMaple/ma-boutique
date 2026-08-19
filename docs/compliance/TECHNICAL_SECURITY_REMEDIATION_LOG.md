@@ -1,6 +1,6 @@
 # Journal des correctifs techniques et de sécurité
 
-**Statut :** journal actif — chantiers P3 (checkout public), P4 (webhook Stripe / idempotence), P5 (fallback `order_items`), P6 (gestionnaire d’erreurs), P7 (authentification / sessions / JWT), P8 (inscription / consentement marketing / privacy technique), P9 (consentements email / unsubscribe / webhooks et cycle de révocation), P10 (secret unsubscribe / token hardening), P11 (paniers abandonnés) et P13 (données Stripe conservées / minimisation) : **FERMÉS / COMPLETS**. P12 (job / cron des paniers abandonnés) demeure un chantier **distinct** : sa clôture documentaire n’est pas faite ici ; une validation runtime finale y reste différée.
+**Statut :** journal actif — chantiers P3 (checkout public), P4 (webhook Stripe / idempotence), P5 (fallback `order_items`), P6 (gestionnaire d’erreurs), P7 (authentification / sessions / JWT), P8 (inscription / consentement marketing / privacy technique), P9 (consentements email / unsubscribe / webhooks et cycle de révocation), P10 (secret unsubscribe / token hardening), P11 (paniers abandonnés), P13 (données Stripe conservées / minimisation) et P14 (livraison Printful) : **FERMÉS / COMPLETS**. P12 (job / cron des paniers abandonnés) demeure un chantier **distinct** : sa clôture documentaire n’est pas faite ici ; une validation runtime finale y reste différée. Prochain chantier MODÉRÉ : **P15** (inventaire Printful).
 
 Ce document complète `docs/compliance/TECHNICAL_SECURITY_AUDIT.md`.
 
@@ -1764,6 +1764,103 @@ La remédiation technique est terminée :
 Backup `stripe_events_p13c_backup_20260818` : **conserver** jusqu’à stabilisation documentaire / décision explicite ultérieure. Aucune suppression dans P13.
 
 **P12 demeure un chantier distinct et n’est pas fermé dans cette section.**
+
+---
+
+## 19 août 2026 — Chantier P14 : livraison Printful (FERMÉ)
+
+Le constat initial d’audit P14 reste figé dans `TECHNICAL_SECURITY_AUDIT.md`. Ce journal documente la remédiation technique. Aucune certification de conformité légale n’est revendiquée.
+
+P14 traite la **surface de quote** `POST /api/shipping/rates` : abus / coût Printful, validation du payload, rattachement au catalogue, UX (debounce / abort / stale response). Ce n’est **pas** l’intégrité du montant Stripe : `createCheckoutSession` recalcule et revalide le tarif côté serveur (P1 / P3).
+
+La route reste **volontairement publique** : le checkout invité en dépend.
+
+P12 demeure un chantier distinct et n’est pas fermé dans cette section.
+
+### Constat initial
+
+Le constat P14 gelé concernait notamment :
+
+- `POST /api/shipping/rates` public ;
+- risque d’abus / coût d’appels Printful ;
+- 20 appels/min/IP déjà présents ;
+- requêtes déclenchées lors des modifications d’adresse ;
+- absence de debounce / annulation ;
+- risque de réponses périmées ;
+- payload adresse / items insuffisamment borné ;
+- possibilité de fournir un `variant_id` Printful court directement ;
+- quantités peu bornées ;
+- lookup variante insuffisamment lié au catalogue local ;
+- log complet de l’item via `JSON.stringify(it)` si variante introuvable.
+
+### P14-A — Protections préexistantes confirmées
+
+**Sans commit P14.** Ces éléments existaient déjà et n’ont pas été ajoutés par `5950200` / `92498fb` / `39670ec`.
+
+- Route : `POST /api/shipping/rates` (`server/routes/shippingRoutes.js`, montage `/api/shipping`).
+- `shippingLimiter` monté **avant** `getRates` : 20 appels / minute / IP (`server/middlewares/rateLimiters.js`).
+- Trust proxy production déjà traité sous P0 (fiabilité de `req.ip`).
+- Garde UI `isCurrent` déjà présente avant P14-D (stale response partiellement protégée).
+- Changement d’adresse : invalidation de la sélection shipping (`setShippingRate(null)` côté Checkout / reset dans `ShippingOptions`).
+- Aucune autre route publique identique ne contourne ce limiter. `POST /api/create-checkout-session` a son **propre** limiter (`checkoutLimiter`) et son **propre** recalcul Printful (intégrité P1/P3), ce n’est pas un clone de la quote.
+
+### P14-B/C — Durcissement backend
+
+**Commit :** `5950200` — `fix(shipping): harden Printful rate requests`
+
+**Fichier :** `server/controllers/shippingController.js`
+
+**Recipient** (strings uniquement, trim) : `name` requis max 100 ; `address1` requis max 200 ; `city` requis max 100 ; `state` ou `state_code` → exactement 2 lettres uppercase ; `country` ou `country_code` → `CA` ou `US` uniquement ; `zip` requis max 10. Email **non requis** et **non transmis** à Printful sur cette route.
+
+**Items :** tableau 1–20 lignes ; `printful_variant_id` entier positif sûr ; `quantity` entier 1–20 ; doublons `printful_variant_id` refusés ; une ligne invalide → HTTP 400 pour **toute** la requête (plus de `continue` silencieux). `items[].variant_id` client **n’est pas** une autorité (ignoré).
+
+**Catalogue :** une requête groupée `product_variants` JOIN `products` sur `printful_variant_id IN (...)` (paramètres bindés) ; `pv.is_active = 1` ; `p.is_visible = 1`. Le `variant_id` court envoyé à Printful vient de la DB. Variante inconnue, inactive, produit masqué, ou ID Printful ambigu → HTTP 400 **avant** tout appel Printful.
+
+**Appel Printful :** au plus un `POST https://api.printful.com/shipping/rates` après validation ; `timeout` local explicite 10 000 ms ; pas de retry ; pas de cache. Un cache de quotes **n’est pas** une condition de fermeture P14 (le cache de la phase 8 d’audit vise l’inventaire / **P15**).
+
+**Logs :** branche `JSON.stringify(it)` retirée. Le catch ne dump plus `err.response.data` complet. Réponse client d’erreur Printful / timeout : générique (`Impossible d’obtenir les options de livraison.`).
+
+### P14-D — Debounce / annulation frontend
+
+**Commits :**
+
+- `92498fb` — `fix(shipping): debounce and cancel stale rate requests`
+- `39670ec` — `tune(shipping): increase rate debounce`
+
+**Fichier :** `src/components/ShippingOptions.jsx`
+
+Debounce avant `POST /api/shipping/rates`. Valeur **finale production : 800 ms**. Un `AbortController` par exécution d’effet ; `signal` passé à Axios. Cleanup (adresse complète) : `isCurrent = false`, `clearTimeout`, `abort`. `isCurrent` reste une garde défensive. Annulation Axios ignorée silencieusement ; une vraie erreur réseau conserve le comportement d’erreur existant. La sélection shipping est invalidée **immédiatement** (`onShippingSelected(null)`) quand l’adresse / le panier change. Contrat API frontend inchangé : `{ recipient, items: [{ printful_variant_id, quantity }] }`.
+
+Le debounce évite les appels **avant envoi**. L’abort annule **côté client** les requêtes périmées encore annulables. `isCurrent` empêche une réponse obsolète d’écrire dans l’état React. Un abort client **ne garantit pas** qu’une requête déjà arrivée au serveur n’atteindra jamais Printful.
+
+### Validations production
+
+**Chemin légitime.** Checkout avec adresse canadienne valide ; tarif Printful affiché correctement ; aucune régression fonctionnelle observée.
+
+**Payload invalide.** `POST /api/shipping/rates` avec `country = XX` → HTTP 400 `{ error: 'Adresse de livraison invalide.' }`.
+
+**Variante hors catalogue.** `printful_variant_id` arbitraire → HTTP 400 `{ error: 'Variante indisponible.' }`.
+
+**Debounce.** Après hard refresh du bundle : saisie rapide de 6 caractères → 1 POST `shipping/rates` ; suppression rapide des mêmes 6 caractères → 1 POST ; debounce final = 800 ms.
+
+Une validation antérieure (debounce 400 ms) avait produit plusieurs requêtes, jusqu’à HTTP 429 du limiter, parce que les modifications étaient suffisamment **espacées** pour dépasser 400 ms. Ce n’est **ni** une boucle React **ni** un bug du limiter. Cela a mené à l’ajustement `39670ec` (800 ms).
+
+### Résidus acceptés (non bloquants)
+
+- route publique volontaire ;
+- nom et adresse envoyés à Printful pour obtenir le devis ;
+- pas de cache sur les quotes shipping ;
+- le limiter compte aussi les requêtes rejetées (HTTP 400) ;
+- second lookup Printful dans `createCheckoutSession`, **voulu** pour l’intégrité P1/P3 ;
+- un message d’erreur Printful minimal peut encore apparaître dans `logError` ; ce handler ne journalise pas l’item client complet, ni headers, ni config Axios, ni clé API.
+
+### Statut final P14
+
+P14 est **FERMÉ / COMPLET** au sens de la remédiation technique. Ce n’est **pas** une certification de conformité légale, et **pas** une garantie qu’aucun appel Printful abusif ne puisse jamais exister. La surface est raisonnablement bornée par validation, catalogue local, limiter et debounce.
+
+**P15** (inventaire Printful) demeure distinct et est le **prochain chantier MODÉRÉ**.
+
+**P12** demeure distinct : correctif déjà déployé ; validation runtime cron finale encore différée ; **non fermé** ici.
 
 ---
 

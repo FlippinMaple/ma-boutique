@@ -461,6 +461,15 @@ Webhook signé  POST /webhook/stripe
 | **Si violé** | Session Stripe ou commande avec prix absurdes. |
 | **Fichiers** | `server/controllers/checkoutController.js` |
 
+### Devis de livraison public borné et non autoritaire
+
+| | |
+|---|---|
+| **Description** | `POST /api/shipping/rates` est public pour le checkout invité, derrière `shippingLimiter` (20/min/IP). Recipient limité à CA/US, champs bornés (`name`/`address1`/`city`/`state`/`zip`) ; email non transmis. Items : 1–20 lignes ; `quantity` 1–20 ; seul `printful_variant_id` sert à la résolution ; le `variant_id` court Printful est lu en DB (`product_variants` JOIN `products`, `is_active` et `is_visible`). Aucun prix renvoyé par cette route n’est autoritaire pour le paiement : `createCheckoutSession` recalcule / revalide le tarif. Le frontend debounce 800 ms, abort les requêtes encore annulables, et `isCurrent` bloque une réponse obsolète dans l’état React. |
+| **Justification** | P14 (`getRates`, `ShippingOptions`) ; autorité du montant : P1/P3. |
+| **Si violé** | Amplification / abus Printful, quote hors catalogue, rafales frontend, tarif périmé à l’écran. Cela ne se confond pas avec l’autorité du montant final Stripe. |
+| **Fichiers** | `server/controllers/shippingController.js`, `server/routes/shippingRoutes.js`, `server/middlewares/rateLimiters.js`, `src/components/ShippingOptions.jsx`, `server/controllers/checkoutController.js` |
+
 ### Livraison serveur-authoritative
 
 | | |
