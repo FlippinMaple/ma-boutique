@@ -50,24 +50,43 @@ const ProductDetail = () => {
   }, [product, selectedColor, selectedSize]);
 
   useEffect(() => {
+    if (!selectedVariant?.printful_variant_id) {
+      setIsAvailable(false);
+      setLoading(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    let isCurrent = true;
+
     const fetchAvailability = async () => {
-      if (selectedVariant?.printful_variant_id) {
-        setLoading(true);
-        setIsAvailable(null);
-        try {
-          const res = await api.get(
-            `/inventory/printful-stock/${selectedVariant.printful_variant_id}`
-          );
+      setLoading(true);
+      setIsAvailable(null);
+      try {
+        const res = await api.get(
+          `/inventory/printful-stock/${selectedVariant.printful_variant_id}`,
+          { signal: controller.signal }
+        );
+        if (isCurrent) {
           setIsAvailable(res.data.available === true);
-        } catch {
+        }
+      } catch {
+        if (!controller.signal.aborted && isCurrent) {
           setIsAvailable(false);
         }
-        setLoading(false);
-      } else {
-        setIsAvailable(false);
+      } finally {
+        if (isCurrent) {
+          setLoading(false);
+        }
       }
     };
+
     fetchAvailability();
+
+    return () => {
+      isCurrent = false;
+      controller.abort();
+    };
   }, [selectedVariant]);
 
   if (!product) {
