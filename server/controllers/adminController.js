@@ -80,13 +80,31 @@ export async function getOrderDetail(req, res) {
     const id = Number(req.params.id);
     if (!Number.isFinite(id)) return res.status(400).json({ error: 'Bad id' });
 
-    const [[order]] = await db.query(`SELECT * FROM orders WHERE id = ?`, [id]);
+    const [[order]] = await db.query(
+      `
+      SELECT
+        id,
+        status,
+        total,
+        currency,
+        customer_email,
+        created_at,
+        paid_at,
+        stripe_session_id
+      FROM orders
+      WHERE id = ?
+      `,
+      [id]
+    );
     if (!order) return res.status(404).json({ error: 'Not found' });
 
     const [items] = await db.query(
       `
       SELECT
-        oi.*,
+        oi.id,
+        oi.printful_variant_id,
+        oi.quantity,
+        oi.price_at_purchase,
         pv.variant_id AS variant_business_id
       FROM order_items oi
       LEFT JOIN product_variants pv ON pv.id = oi.variant_id
