@@ -5,11 +5,39 @@ import { logError } from '../utils/logger.js';
 
 axios.defaults.timeout = 10000; // 10s
 
-// (existant)
-export const getPrintfulVariantAvailability = async (printful_variant_id) => {
+const PRINTFUL_AVAILABILITY_CACHE_TTL_MS = 60_000;
+const PRINTFUL_AVAILABILITY_CACHE_MAX_ENTRIES = 500;
+
+/** printful_variant_id → { status, cachedAt } */
+const availabilityCache = new Map();
+/** printful_variant_id → Promise en cours (dédup in-flight) */
+const availabilityInflight = new Map();
+
+function readCachedAvailability(key) {
+  const cached = availabilityCache.get(key);
+  if (!cached) return undefined;
+  if (Date.now() - cached.cachedAt >= PRINTFUL_AVAILABILITY_CACHE_TTL_MS) {
+    availabilityCache.delete(key);
+    return undefined;
+  }
+  return cached;
+}
+
+function writeCachedAvailability(key, status) {
+  if (
+    !availabilityCache.has(key) &&
+    availabilityCache.size >= PRINTFUL_AVAILABILITY_CACHE_MAX_ENTRIES
+  ) {
+    const oldestKey = availabilityCache.keys().next().value;
+    if (oldestKey !== undefined) availabilityCache.delete(oldestKey);
+  }
+  availabilityCache.set(key, { status, cachedAt: Date.now() });
+}
+
+async function fetchPrintfulAvailability(key) {
   try {
     const response = await axios.get(
-      `https://api.printful.com/sync/variant/${printful_variant_id}`,
+      `https://api.printful.com/sync/variant/${key}`,
       {
         headers: {
           Authorization: `Bearer ${process.env.PRINTFUL_API_KEY}`,
@@ -17,12 +45,30 @@ export const getPrintfulVariantAvailability = async (printful_variant_id) => {
         }
       }
     );
-    return response.data?.result?.sync_variant?.availability_status || null;
+    const status =
+      response.data?.result?.sync_variant?.availability_status || null;
+    writeCachedAvailability(key, status);
+    return status;
   } catch (error) {
     await logError('❌ Printful service error', 'printful', error);
-
     throw new Error('Erreur lors de la communication avec Printful');
   }
+}
+
+export const getPrintfulVariantAvailability = async (printful_variant_id) => {
+  const key = String(printful_variant_id);
+
+  const cached = readCachedAvailability(key);
+  if (cached) return cached.status;
+
+  const pending = availabilityInflight.get(key);
+  if (pending) return pending;
+
+  const request = fetchPrintfulAvailability(key).finally(() => {
+    availabilityInflight.delete(key);
+  });
+  availabilityInflight.set(key, request);
+  return request;
 };
 
 // 👇 nouveau: map du panier vers variantes Printful (réutilisable)
