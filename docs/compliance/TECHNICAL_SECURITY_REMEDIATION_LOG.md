@@ -1,6 +1,6 @@
 # Journal des correctifs techniques et de sécurité
 
-**Statut :** journal actif — chantiers P3 (checkout public), P4 (webhook Stripe / idempotence), P5 (fallback `order_items`), P6 (gestionnaire d’erreurs), P7 (authentification / sessions / JWT), P8 (inscription / consentement marketing / privacy technique), P9 (consentements email / unsubscribe / webhooks et cycle de révocation), P10 (secret unsubscribe / token hardening) et P11 (paniers abandonnés) : **FERMÉS / COMPLETS**. Prochaine priorité d’audit : **P12** (job / cron des paniers abandonnés).
+**Statut :** journal actif — chantiers P3 (checkout public), P4 (webhook Stripe / idempotence), P5 (fallback `order_items`), P6 (gestionnaire d’erreurs), P7 (authentification / sessions / JWT), P8 (inscription / consentement marketing / privacy technique), P9 (consentements email / unsubscribe / webhooks et cycle de révocation), P10 (secret unsubscribe / token hardening), P11 (paniers abandonnés) et P13 (données Stripe conservées / minimisation) : **FERMÉS / COMPLETS**. P12 (job / cron des paniers abandonnés) demeure un chantier **distinct** : sa clôture documentaire n’est pas faite ici ; une validation runtime finale y reste différée.
 
 Ce document complète `docs/compliance/TECHNICAL_SECURITY_AUDIT.md`.
 
@@ -1641,6 +1641,129 @@ Résidus : race SELECT→INSERT P11-F sans UNIQUE ; beacon navigateur best-effor
 Cela ne constitue **pas** une certification de conformité légale.
 
 La prochaine priorité d’audit est **P12** — job / cron des paniers abandonnés.
+
+---
+
+## 19 août 2026 — Chantier P13 : données Stripe conservées / minimisation (FERMÉ)
+
+Le constat initial d’audit P13 reste figé dans `TECHNICAL_SECURITY_AUDIT.md`. Ce journal documente la remédiation technique. Aucune certification de conformité légale n’est revendiquée.
+
+Objectif : cesser de conserver des événements Stripe complets dans `stripe_events.payload`, restreindre les projections admin order detail, et cesser de dupliquer adresse / lignes panier dans les metadata des **nouvelles** Checkout Sessions. P4 avait volontairement laissé hors scope la rétention / PII de `payload`.
+
+Constat historique (avant correction), non réécrit dans l’audit gelé :
+
+- `stripe_events.payload` conservait `JSON.stringify(event)`, donc des événements Stripe complets ;
+- certains payloads contenaient email, adresse, shipping, `payment_method`, `payment_method_details`, `last4`, `metadata` ;
+- le détail admin utilisait `SELECT *` / `oi.*` ;
+- Checkout metadata dupliquait `shipping` et `cart_items` ;
+- aucune preuve identifiée de stockage PAN / CVC / `client_secret` dans des colonnes DB dédiées.
+
+P12 demeure un chantier distinct et n’est pas fermé dans cette section.
+
+### P13-A — Diagnostic production
+
+Inspection / diagnostic uniquement, **sans commit**.
+
+Événements observés en production avant correction, avec PII dans `payload` selon le type :
+
+- `checkout.session.completed` : email / address / shipping ;
+- `charge.succeeded` : email / address / shipping / `payment_method` / `payment_method_details` / `last4` ;
+- `payment_intent.succeeded` : address / shipping / `payment_method` ;
+- `charge.updated` : email / address / shipping / `payment_method` / `payment_method_details` / `last4` ;
+- `payment_intent.created` : shipping / `payment_method` ;
+- `checkout.session.expired` : email / address / shipping ;
+- `balance.available` ;
+- `customer.updated` : email / address / shipping.
+
+Aussi observé : **85** anciennes rows avec `event_type` vide et `payload` NULL, timestamps historiques identiques entre elles, `event_id` uniques. Origine probable : migration historique du schéma `stripe_events`. Ces rows ont été **conservées** : elles restent des barrières d’idempotence (`event_id`) et ne contiennent pas de payload PII.
+
+### P13-B — Minimisation des futurs `stripe_events.payload`
+
+**Commit :** `dd9580d` — `fix(stripe): minimize persisted webhook payload`
+
+**Fichier :** `server/controllers/webhookController.js`
+
+Nouveau contrat d’écriture (`upsertStripeEvent`) :
+
+- `checkout.session.*` → `{"object_id":"cs_..."}` ;
+- `payment_intent.*` → `{"object_id":"pi_..."}` ;
+- `charge.*` → `{"payment_intent_id":"pi_..."}` ;
+- événement sans identifiant utile → SQL `NULL`.
+
+Jamais `{}` comme fallback (un objet vide n’est pas un NULL SQL). `reconcileStripeEvents` est **dual-format** : ancien JSON Stripe complet **et** nouveau format minimal. Les autres chemins webhook / idempotence (INSERT IGNORE `event_id`, replay métier P4) restent fonctionnels sans payload complet.
+
+**Validation :** code déployé en production ; compatibilité SQL / code vérifiée ; format minimal présent en base **après P13-C** (réécriture historique). **Aucun nouvel `upsertStripeEvent` live post-`dd9580d` n’a encore été observé.** Ce point est une **validation runtime différée**. Le writer live n’est **pas** déclaré validé en production.
+
+### P13-C — Neutralisation des payloads historiques
+
+Opération SQL production. **Aucun commit Git.**
+
+Backup créé **avant** mutation : table `stripe_events_p13c_backup_20260818`. 48 rows historiques contenant encore des payloads complets y ont été sauvegardées. Le backup est **conservé volontairement**. Aucun `DROP` dans cette clôture. Table hors schéma applicatif vivant : filet de rollback / preuve historique temporaire, pas une entité fonctionnelle.
+
+Transformation appliquée sur les payloads actifs :
+
+- `checkout.session.completed` → `object_id` ;
+- `payment_intent.created` → `object_id` ;
+- `payment_intent.succeeded` → `object_id` ;
+- `checkout.session.expired` → `object_id` ;
+- `charge.succeeded` → `payment_intent_id` ;
+- `charge.updated` → `payment_intent_id` ;
+- `balance.available` → `NULL` ;
+- `customer.updated` → `NULL`.
+
+**Validation finale production :**
+
+- `legacy_payloads_remaining` = 0 ;
+- `minimal_object_id` = 28 ;
+- `minimal_payment_intent_id` = 14 ;
+- `expected_null_payloads` = 6.
+
+Scan PII sur les payloads restant non NULL : `email` = 0, `address` = 0, `shipping` = 0, `payment_method` = 0, `payment_method_details` = 0, `last4` = 0, `metadata` = 0.
+
+### P13-D — Restriction des projections admin
+
+**Commit :** `820899b` — `fix(admin): restrict order detail projections`
+
+**Fichier :** `server/controllers/adminController.js`
+
+`GET` admin order detail n’utilise plus `SELECT *` / `oi.*`.
+
+Projection `orders` : `id`, `status`, `total`, `currency`, `customer_email`, `created_at`, `paid_at`, `stripe_session_id`.
+
+Projection items : `id`, `variant_business_id`, `printful_variant_id`, `quantity`, `price_at_purchase`.
+
+**Validation production :** Order #106 — affichage détail fonctionnel ; statut ; total / devise ; email ; dates ; session ; items ; historique fonctionnel.
+
+### P13-E — Minimisation Checkout metadata
+
+**Commit :** `f0cee56` — `fix(stripe): reduce checkout metadata`
+
+**Fichier :** `server/controllers/checkoutController.js`
+
+Nouvelles Checkout Sessions : metadata conservée `source`, `order_id`, `shipping_rate`. Metadata **non envoyée** : `shipping`, `cart_items`.
+
+Les lecteurs legacy de `session.metadata.shipping` / `cart_items` restent présents pour les **anciennes** sessions. Le webhook **ne recommence pas** à reconstruire `order_items` depuis `cart_items` (P5 inchangé). `order_id` / `client_reference_id` restent les mécanismes de résolution autoritaires existants. Aucune refonte du checkout.
+
+**Validation production :** création d’une nouvelle Checkout Session réussie ; Order #107 créée `pending` ; `stripe_session_id` `cs_test_...` présent ; **aucun paiement effectué** ; donc aucun webhook paid utilisé comme validation de cette tranche.
+
+### Statut final P13
+
+P13 est **FERMÉ / COMPLET** au sens de la remédiation technique. Ce n’est **pas** une validation en production de l’ensemble du chantier, et **pas** une certification de conformité légale.
+
+La remédiation technique est terminée :
+
+- futurs payloads limités par conception ;
+- payloads historiques actifs neutralisés ;
+- PII absente des payloads actifs vérifiés ;
+- projection admin réduite ;
+- metadata Checkout réduite ;
+- compatibilité legacy conservée.
+
+**Résidu explicite :** le premier upsert `stripe_events` produit par un webhook live post-`dd9580d` n’a pas encore été observé. À confirmer lors du prochain webhook naturel ou test. Ce résidu **ne bloque pas** la fermeture technique P13. Il ne doit **pas** être présenté comme déjà validé.
+
+Backup `stripe_events_p13c_backup_20260818` : **conserver** jusqu’à stabilisation documentaire / décision explicite ultérieure. Aucune suppression dans P13.
+
+**P12 demeure un chantier distinct et n’est pas fermé dans cette section.**
 
 ---
 

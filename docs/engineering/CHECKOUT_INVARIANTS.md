@@ -144,14 +144,14 @@ Webhook signé  POST /webhook/stripe
 | **Si violé** | Le webhook ne peut pas résoudre la commande de façon fiable. |
 | **Fichiers** | `server/controllers/checkoutController.js` |
 
-### Métadonnées panier et livraison embarquées
+### Métadonnées Checkout minimales
 
 | | |
 |---|---|
-| **Description** | Les **nouvelles** sessions portent en `metadata` : `cart_items` (lignes serveur normalisées), `shipping` (adresse saisie normalisée), `shipping_rate` (représentation serveur `{ id, name, shipping_cents }`), `source = 'flippin-maple'`, `order_id`. Elles n’envoient **pas** `cart_id`. Le webhook peut encore lire un `metadata.cart_id` historique s’il existe. `metadata.cart_items` reste un contexte Stripe / code historique Printful (P19) ; ce n’est **plus** une source permettant au webhook de créer des snapshots `order_items`. |
-| **Justification** | Objet `metadata` passé à `sessions.create` après P3-C ; P5-A/B. |
-| **Si violé** | Printful historique / abandon sans contexte session, ou metadata alimentées par des prix navigateur. |
-| **Fichiers** | `server/controllers/checkoutController.js` |
+| **Description** | Les **nouvelles** sessions portent en `metadata` uniquement : `source`, `order_id`, `shipping_rate` (représentation serveur `{ id, name, shipping_cents }`). Elles n’envoient **pas** `metadata.shipping`, **pas** `metadata.cart_items`, **pas** `cart_id`. `order_id` reste la référence principale posée à la création (avec `client_reference_id`) ; les fallbacks de résolution webhook existants sont inchangés. Les lecteurs legacy de `session.metadata.shipping` / `cart_items` / `cart_id` restent dans le webhook pour les **anciennes** sessions : compatibilité historique, pas le contrat des nouvelles sessions. `order_items` restent l’autorité locale (P5). Le webhook ne reconstruit pas `order_items` à partir de `metadata.cart_items`. |
+| **Justification** | Objet `metadata` passé à `sessions.create` après P13-E ; lecteurs legacy conservés ; P5-A/B. |
+| **Si violé** | Duplication d’adresse / lignes panier dans Stripe metadata, ou reconstruction d’items depuis metadata. |
+| **Fichiers** | `server/controllers/checkoutController.js`, `server/controllers/webhookController.js` |
 
 ### Montants Stripe issus des valeurs serveur
 
@@ -318,9 +318,9 @@ Webhook signé  POST /webhook/stripe
 
 | | |
 |---|---|
-| **Description** | Après traitement (ou pour les autres types), `upsertStripeEvent` enregistre / met à jour `event_type`, `payload`, et `order_id` si résolu. |
-| **Justification** | `upsertStripeEvent` + appels en fin de handler. |
-| **Si violé** | Perte de boîte noire Stripe pour audit. |
+| **Description** | Après traitement (ou pour les autres types), `upsertStripeEvent` enregistre / met à jour `event_type`, `payload` minimal, et `order_id` si résolu. `payload` n’est plus l’événement Stripe complet : `checkout.session.*` / `payment_intent.*` → `{"object_id":"..."}` ; `charge.*` → `{"payment_intent_id":"..."}` ; sinon SQL `NULL` (jamais `{}`). |
+| **Justification** | `upsertStripeEvent` + minimisation P13-B. |
+| **Si violé** | Réintroduction de PII Stripe dans `stripe_events.payload`, ou perte du lien `event_id` / `order_id`. |
 | **Fichiers** | `server/controllers/webhookController.js` |
 
 ### Le webhook n’écrit jamais d’order_items
@@ -599,8 +599,8 @@ Webhook signé  POST /webhook/stripe
 
 | | |
 |---|---|
-| **Description** | Après résolution, les events Stripe sont associés à `order_id` (upsert / reconcile sur payload JSON). |
-| **Justification** | `upsertStripeEvent`, `reconcileStripeEvents`. |
+| **Description** | Après résolution, les events Stripe sont associés à `order_id` (upsert / reconcile). `reconcileStripeEvents` est dual-path : ancien JSON Stripe complet **et** format minimal P13 (`object_id` / `payment_intent_id`). |
+| **Justification** | `upsertStripeEvent`, `reconcileStripeEvents` (compatibilité P13-B). |
 | **Si violé** | Audit chargeback / support sans lien event→commande. |
 | **Fichiers** | `server/controllers/webhookController.js` |
 

@@ -618,7 +618,21 @@ Rôle métier
 Table déjà provisionnée (plus de CREATE/ALTER runtime depuis P4-B). `event_id` réserve la réception d’un webhook (INSERT IGNORE). La présence d’une row **ne signifie pas** que le traitement métier est terminé : les duplicates métier (`expired`, `completed`, `async_payment_succeeded`) peuvent être rejoués ; les invariants de statut et la TX paid rendent le rejeu idempotent. Aucune colonne `processing` / `completed` / `failed`, aucun lease. P4 utilise un protocole logiciel (replay + gardes métier), pas une machine d’état supplémentaire. Aucune migration P4.
 
 Connexions logiques supplémentaires
-Pas de FK vers orders. `order_id` est renseigné à l’upsert quand la commande est connue. On peut aussi relier un event via `orders.stripe_session_id` / `orders.stripe_payment_intent_id` dans le payload.
+Pas de FK vers orders. `order_id` est renseigné à l’upsert quand la commande est connue. On peut aussi relier un event via `orders.stripe_session_id` / `orders.stripe_payment_intent_id`.
+
+#### Contrat runtime déployé après P13
+
+`payload` reste LONGTEXT **nullable**. Ce n’est **plus** l’événement Stripe complet par défaut.
+
+Contrat d’écriture P13-B :
+
+- `checkout.session.*` / `payment_intent.*` : `{"object_id":"..."}` ;
+- `charge.*` : `{"payment_intent_id":"..."}` ;
+- autres événements sans identifiant utile : SQL `NULL` (jamais `{}`).
+
+`reconcileStripeEvents` accepte encore les anciens payloads JSON Stripe complets **et** le nouveau format minimal. Le code runtime déployé après P13 n’utilise plus `payload` comme boîte noire PII ; la première écriture live post-`dd9580d` reste à confirmer lors d’un prochain webhook.
+
+**Note opérationnelle (hors modèle vivant).** Table `stripe_events_p13c_backup_20260818` : backup temporaire créé avant la neutralisation P13-C. Conservation volontaire. Ne pas `DROP` sans décision explicite. Ce n’est **pas** une entité fonctionnelle du modèle applicatif.
 
 ---
 
