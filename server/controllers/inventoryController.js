@@ -51,17 +51,19 @@ export async function getPrintfulStock(req, res) {
       return res.status(400).json({ error: 'Variante indisponible.' });
     }
 
-    const status = await getPrintfulVariantAvailability(printfulVariantId);
-    const available =
-      status === 'active' || status === 'active-supplier';
-    return res.json({ available });
+    try {
+      const status = await getPrintfulVariantAvailability(printfulVariantId);
+      const available =
+        status === 'active' || status === 'active-supplier';
+      return res.json({ available });
+    } catch {
+      return res.status(502).json({
+        error: 'PRINTFUL_AVAILABILITY_UNAVAILABLE'
+      });
+    }
   } catch (err) {
-    console.error('[printful-stock] id=', requestedId, err.message);
-    return res.status(500).json({
-      error: 'PRINTFUL_STOCK_FAILED',
-      message:
-        err.message || 'Erreur lors de la récupération du statut Printful',
-      hint: 'Assurez-vous que PRINTFUL_API_KEY et PRINTFUL_STORE_ID sont correctement configurés.'
-    });
+    const code = typeof err?.code === 'string' ? err.code.slice(0, 40) : null;
+    console.error('[printful-stock] lookup failed', code || 'unknown');
+    return res.status(500).json({ error: 'INVENTORY_LOOKUP_FAILED' });
   }
 }

@@ -50,8 +50,21 @@ async function fetchPrintfulAvailability(key) {
     writeCachedAvailability(key, status);
     return status;
   } catch (error) {
-    await logError('❌ Printful service error', 'printful', error);
-    throw new Error('Erreur lors de la communication avec Printful');
+    const httpStatus = error?.response?.status;
+    const axiosCode = error?.code;
+    const detail = [
+      'Printful availability request failed',
+      Number.isInteger(httpStatus) && httpStatus >= 100 && httpStatus <= 599
+        ? `status=${httpStatus}`
+        : null,
+      typeof axiosCode === 'string' && /^[A-Z0-9._-]{1,40}$/i.test(axiosCode)
+        ? `code=${axiosCode}`
+        : null
+    ]
+      .filter(Boolean)
+      .join(' ');
+    await logError(detail, 'printful');
+    throw new Error('PRINTFUL_AVAILABILITY_FAILED');
   }
 }
 
