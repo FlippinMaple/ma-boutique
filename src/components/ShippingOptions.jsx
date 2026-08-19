@@ -9,6 +9,16 @@ const currencyFormatter = new Intl.NumberFormat('fr-CA', {
 const formatCurrency = (value) =>
   currencyFormatter.format(Number(value) || 0);
 
+const RATES_DEBOUNCE_MS = 400;
+
+function isCanceledRequest(error) {
+  return (
+    error?.code === 'ERR_CANCELED' ||
+    error?.name === 'CanceledError' ||
+    error?.name === 'AbortError'
+  );
+}
+
 const ShippingOptions = ({ cartItems, shippingInfo, onShippingSelected }) => {
   const [rates, setRates] = useState([]);
   const [selectedRate, setSelectedRate] = useState(null);
@@ -17,38 +27,49 @@ const ShippingOptions = ({ cartItems, shippingInfo, onShippingSelected }) => {
 
   useEffect(() => {
     let isCurrent = true;
+    let timerId = null;
+    const controller = new AbortController();
 
-    const fetchRates = async () => {
-      if (
-        !shippingInfo.name ||
-        !shippingInfo.address1 ||
-        !shippingInfo.city ||
-        !shippingInfo.state ||
-        !shippingInfo.country ||
-        !shippingInfo.zip
-      ) {
-        setRates([]);
-        setSelectedRate(null);
-        setHasFetched(false);
-        setLoading(false);
-        onShippingSelected(null);
-        return;
-      }
+    const addressComplete = Boolean(
+      shippingInfo.name &&
+        shippingInfo.address1 &&
+        shippingInfo.city &&
+        shippingInfo.state &&
+        shippingInfo.country &&
+        shippingInfo.zip
+    );
 
-      setLoading(true);
-      setHasFetched(false);
+    if (!addressComplete) {
       setRates([]);
       setSelectedRate(null);
+      setHasFetched(false);
+      setLoading(false);
       onShippingSelected(null);
+      return () => {
+        isCurrent = false;
+        controller.abort();
+      };
+    }
 
+    setLoading(true);
+    setHasFetched(false);
+    setRates([]);
+    setSelectedRate(null);
+    onShippingSelected(null);
+
+    const fetchRates = async () => {
       try {
-        const response = await axios.post('/api/shipping/rates', {
-          recipient: shippingInfo,
-          items: cartItems.map((item) => ({
-            printful_variant_id: item.printful_variant_id, // ← LONG ID
-            quantity: item.quantity
-          }))
-        });
+        const response = await axios.post(
+          '/api/shipping/rates',
+          {
+            recipient: shippingInfo,
+            items: cartItems.map((item) => ({
+              printful_variant_id: item.printful_variant_id,
+              quantity: item.quantity
+            }))
+          },
+          { signal: controller.signal }
+        );
 
         if (!isCurrent) return;
 
@@ -83,8 +104,8 @@ const ShippingOptions = ({ cartItems, shippingInfo, onShippingSelected }) => {
           onShippingSelected(null);
         }
       } catch (error) {
+        if (!isCurrent || isCanceledRequest(error)) return;
         console.error('Erreur lors de la récupération des tarifs :', error);
-        if (!isCurrent) return;
         setRates([]);
         setSelectedRate(null);
         setHasFetched(true);
@@ -96,10 +117,12 @@ const ShippingOptions = ({ cartItems, shippingInfo, onShippingSelected }) => {
       }
     };
 
-    fetchRates();
+    timerId = window.setTimeout(fetchRates, RATES_DEBOUNCE_MS);
 
     return () => {
       isCurrent = false;
+      window.clearTimeout(timerId);
+      controller.abort();
     };
   }, [cartItems, shippingInfo, onShippingSelected]);
 
