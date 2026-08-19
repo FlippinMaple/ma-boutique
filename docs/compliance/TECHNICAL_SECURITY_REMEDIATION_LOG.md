@@ -1,6 +1,6 @@
 # Journal des correctifs techniques et de sécurité
 
-**Statut :** journal actif — chantiers P3 (checkout public), P4 (webhook Stripe / idempotence), P5 (fallback `order_items`), P6 (gestionnaire d’erreurs), P7 (authentification / sessions / JWT), P8 (inscription / consentement marketing / privacy technique), P9 (consentements email / unsubscribe / webhooks et cycle de révocation), P10 (secret unsubscribe / token hardening), P11 (paniers abandonnés), P13 (données Stripe conservées / minimisation) et P14 (livraison Printful) : **FERMÉS / COMPLETS**. P12 (job / cron des paniers abandonnés) demeure un chantier **distinct** : sa clôture documentaire n’est pas faite ici ; une validation runtime finale y reste différée. Prochain chantier MODÉRÉ : **P15** (inventaire Printful).
+**Statut :** journal actif — chantiers P3 (checkout public), P4 (webhook Stripe / idempotence), P5 (fallback `order_items`), P6 (gestionnaire d’erreurs), P7 (authentification / sessions / JWT), P8 (inscription / consentement marketing / privacy technique), P9 (consentements email / unsubscribe / webhooks et cycle de révocation), P10 (secret unsubscribe / token hardening), P11 (paniers abandonnés), P13 (données Stripe conservées / minimisation), P14 (livraison Printful) et P15 (inventaire Printful) : **FERMÉS / COMPLETS**. P15 est **VALIDÉ EN PRODUCTION**. P12 (job / cron des paniers abandonnés) demeure un chantier **distinct** : sa clôture documentaire n’est pas faite ici ; une validation runtime finale y reste différée. Prochain chantier MODÉRÉ : **P16** (page de succès).
 
 Ce document complète `docs/compliance/TECHNICAL_SECURITY_AUDIT.md`.
 
@@ -1861,6 +1861,170 @@ P14 est **FERMÉ / COMPLET** au sens de la remédiation technique. Ce n’est **
 **P15** (inventaire Printful) demeure distinct et est le **prochain chantier MODÉRÉ**.
 
 **P12** demeure distinct : correctif déjà déployé ; validation runtime cron finale encore différée ; **non fermé** ici.
+
+---
+
+## 19 août 2026 — Chantier P15 : inventaire Printful (FERMÉ)
+
+Le constat initial d’audit P15 reste figé dans `TECHNICAL_SECURITY_AUDIT.md`. Ce journal documente la remédiation technique. Aucune certification de conformité légale n’est revendiquée.
+
+P15 traite la **surface de disponibilité** `GET /api/inventory/printful-stock/:id` : proxy Printful, validation d’identifiant, rattachement au catalogue, sémantique `available`, cache court, logs, stale response UI. Ce n’est **pas** l’autorité du checkout (P1 / P3), **pas** P14 (quotes shipping), **pas** P17 (produits publics), **pas** P19 (Printful automatique du webhook).
+
+La route reste **publique**, derrière `inventoryLimiter`.
+
+P12, P17 et P19 demeurent des chantiers distincts et ne sont pas fermés dans cette section.
+
+### Constat initial
+
+Le constat P15 gelé concernait notamment :
+
+- `GET /api/inventory/printful-stock/:id` public ;
+- `inventoryLimiter` 60/min/IP existant, mais décrit comme non monté dans l’audit figé (constat historique ; le code vivant le monte — voir ci-dessous) ;
+- `:id` interpolé directement dans `GET https://api.printful.com/sync/variant/:id` ;
+- aucune validation stricte de l’ID ;
+- aucun gate catalogue local actif / visible avant Printful ;
+- possibilité d’itérer des IDs Printful arbitraires dans la limite du limiter ;
+- un GET client = un appel Printful ; pas de cache ; pas de déduplication in-flight ;
+- `ProductDetail` rappelait la disponibilité à l’affichage / changement de variante ;
+- `CartContext.validateStockBeforeAdd` refaisait un GET avant ajout panier ;
+- absence de protection stale-response dans `ProductDetail` ;
+- faux stock : `active` / `active-supplier` → `available = 999`, sinon `0` ;
+- fallback frontend historique `?? 99` ;
+- `999` n’était **pas** un stock réel Printful (le service ne lit que `availability_status`) ;
+- erreurs publiques trop détaillées, hint mentionnant `PRINTFUL_API_KEY` / `PRINTFUL_STORE_ID` ;
+- `logError(..., ..., error)` alors que `logError` n’accepte que deux arguments : l’objet Axios était ignoré.
+
+### Limiter (préexistant, confirmé vivant)
+
+Route : `GET /api/inventory/printful-stock/:id` (`server/routes/inventoryRoutes.js`, montage `/api/inventory`).
+
+`inventoryLimiter` est monté **avant** `getPrintfulStock` : 60 requêtes / minute / IP (`server/middlewares/rateLimiters.js`). Store **mémoire par process** (non distribué). Le constat d’audit « nulle part importé » est **obsolète dans le code vivant** ; l’audit gelé n’est pas réécrit.
+
+Le montage du limiter antérieur (`a183038`) **ne fermait pas** P15.
+
+### P15-B/C/G — Validation et gate catalogue
+
+**Commit :** `ae08fca` — `fix(inventory): restrict Printful stock lookups`
+
+**Fichier :** `server/controllers/inventoryController.js`
+
+`:id` : string, trim, représentation décimale canonique positive (`/^[1-9]\d{0,18}$/`), maximum BIGINT signé `9223372036854775807` (comparaison lexicale, **sans** `Number`). ID invalide → HTTP 400 `{ error: 'Identifiant de variante invalide.' }` **avant** lookup et **avant** Printful.
+
+Lookup paramétré : `product_variants` INNER JOIN `products` sur `pv.printful_variant_id = ?`, `pv.is_active = 1`, `p.is_visible = 1`, `LIMIT 2`. `printful_variant_id` n’est **pas** UNIQUE dans le schéma actuel : 0 ou ≥2 lignes → HTTP 400 `{ error: 'Variante indisponible.' }`. Seul le `printful_variant_id` **relu depuis la DB** est transmis à `getPrintfulVariantAvailability`. Pas de conversion vers `variant_id` court (endpoint Printful `GET /sync/variant/:id` attend le sync ID long).
+
+La route n’est plus un proxy arbitraire vers Printful.
+
+**Validations production :**
+
+- variante réelle visible de la boutique : fonctionnement normal ;
+- `/api/inventory/printful-stock/abc` → HTTP 400 `{ error: 'Identifiant de variante invalide.' }` ;
+- `/api/inventory/printful-stock/1` → HTTP 400 `{ error: 'Variante indisponible.' }`.
+
+### P15-F/J — Contrat booléen et quantité métier
+
+**Commit :** `f82f7b4` — `fix(inventory): use boolean Printful availability`
+
+**Fichiers :** `server/controllers/inventoryController.js`, `src/pages/ProductDetail.jsx`, `src/CartContext.jsx`
+
+Contrat public : `{ available: true }` ou `{ available: false }`. `true` seulement si `availability_status === 'active'` ou `'active-supplier'`. Le endpoint exprime une **disponibilité**, pas une quantité Printful.
+
+Supprimé : `available = 999` / `0` comme stock ; fallback `?? 99` ; « Stock limité : N » ; `max={availableStock}` ; comparaison de quantité contre un faux stock Printful.
+
+Frontend : `true` → « Disponible » ; `false` → « Indisponible » ; quantité UI 1–20. `CartContext` : `addToCart`, `validateStockBeforeAdd` et `updateQuantity` imposent 1–20 ; quantités acceptées normalisées en `Number` ; **pas** de clamp silencieux ; `> 20` refusé. Le bouton `+` du checkout (`addToCart({ ...item, quantity: 1 })`) est bloqué à 20 par `addToCart`.
+
+**Validations production :**
+
+- API réelle : HTTP 200 `{ available: true }` ;
+- après chargement du nouveau bundle frontend : affichage « Disponible » ;
+- quantité 20 : ajout panier accepté ;
+- checkout, ligne déjà à 20 + clic `+` : quantité reste 20 ; toast `La quantité maximale est de 20 par article.`
+
+Un ancien bundle avait brièvement affiché `Stock limité : true disponible` **avant** hard refresh. Après chargement du nouveau bundle, le comportement final était correct. Ce n’est **pas** l’état final.
+
+**Résidu :** un panier `localStorage` historique déjà `> 20` n’est pas migré / clampé. Les nouvelles opérations frontend empêchent le dépassement. Le checkout backend reste autoritaire et refuse `> 20`.
+
+### P15-E — Cache Printful
+
+**Commit :** `5a3a1fb` — `perf(inventory): cache Printful availability`
+
+**Fichier :** `server/services/printfulService.js`
+
+Cache mémoire process-local `availabilityCache` : clé = `printful_variant_id` en `String` ; valeur `{ status, cachedAt }`. TTL **60 s**. Maximum **500** entrées. Éviction FIFO (`Map`) : insertion d’une nouvelle clé si taille ≥ 500 → suppression de la plus ancienne. Entrée expirée supprimée **à la lecture**, puis nouvel appel Printful. Pas de `setInterval`, pas de timer permanent.
+
+Les erreurs (timeout, 404, 429, 5xx, Axios) **ne sont pas** écrites dans le cache. Une réponse Printful **réussie** avec `availability_status` `null` peut être cachée pendant le TTL ; le contrôleur l’interprète ensuite comme indisponible.
+
+In-flight : `availabilityInflight` — même ID déjà en cours → même `Promise` ; un seul Axios par ID et par process ; retrait dans `finally` ; une erreur ne reste pas dans cette Map.
+
+Contrat public `{ available: boolean }` inchangé.
+
+**Validation production :** après déploiement du cache, une fiche produit réelle a continué à afficher « Disponible » (absence de régression nominale). **Aucun cache hit n’a été empiriquement observé en production** : le serveur n’a pas été instrumenté à cette fin. La logique cache / in-flight est validée **statiquement** par le code.
+
+**Résidus :** cache par process, non distribué, reset au redémarrage ; disponibilité pouvant rester périmée jusqu’à 60 s.
+
+### P15-I — Erreurs et logs
+
+**Commit :** `f5e22ef` — `fix(inventory): sanitize Printful availability errors`
+
+**Fichiers :** `server/services/printfulService.js`, `server/controllers/inventoryController.js`
+
+Catch séparé :
+
+- lookup DB interne → HTTP 500 `{ error: 'INVENTORY_LOOKUP_FAILED' }` ;
+- dépendance Printful → HTTP 502 `{ error: 'PRINTFUL_AVAILABILITY_UNAVAILABLE' }`.
+
+Les 400 métier restent : `Identifiant de variante invalide.` / `Variante indisponible.`
+
+Plus exposés au client : `err.message`, `hint`, `PRINTFUL_API_KEY`, `PRINTFUL_STORE_ID`, détails Axios, `response.data` brut.
+
+Log serveur Printful : message borné `Printful availability request failed` + `status=` (HTTP 100–599) et/ou `code=` (token Axios filtré). Pas d’Authorization, headers, clé API, store ID, config Axios, body, ni objet Axios complet. L’appel historique `logError(..., ..., error)` (3ᵉ argument ignoré) est retiré. Throw interne `PRINTFUL_AVAILABILITY_FAILED` : **non** exposé au client.
+
+Cache P15-E inchangé : aucune erreur mise en cache.
+
+**Validation production :** après déploiement, disponibilité nominale d’une variante réelle toujours fonctionnelle. **Aucune panne DB ou Printful n’a été provoquée en production** pour obtenir 500 / 502. La séparation et les payloads d’erreur sont validés **statiquement** par inspection du code ; le smoke test nominal est validé en production.
+
+### P15-H — Stale response / AbortController
+
+**Commit :** `6661061` — `fix(inventory): prevent stale availability updates`
+
+**Fichier :** `src/pages/ProductDetail.jsx`
+
+`AbortController` par requête de disponibilité ; `signal` passé à Axios. Cleanup : `isCurrent = false` puis `controller.abort()`. Garde `isCurrent` : une ancienne requête ne peut plus modifier `isAvailable` ni `loading`. Une annulation cleanup ne transforme pas la nouvelle variante en « Indisponible ». Le `finally` d’une ancienne requête ne met pas `loading = false` pendant que la nouvelle charge. Sans `printful_variant_id` : aucun GET inventory ; `isAvailable = false` ; `loading = false`. **Pas** de debounce (le cache serveur + in-flight suffisent pour le coût ; une variante nouvellement sélectionnée doit être vérifiée immédiatement).
+
+Un abort navigateur **ne garantit pas** l’arrêt d’un appel Printful déjà arrivé au serveur. Bénéfice garanti : annulation HTTP cliente lorsque possible ; aucune mise à jour React obsolète.
+
+**Validation production :** DevTools Network, throttling 3G, changements rapides de variante : requêtes précédentes en `(canceled)` ; capture finale : quatre requêtes annulées ; seule la dernière disponibilité en HTTP 200 ; comportement de la dernière sélection conservé. Cela ferme le risque stale-response de `ProductDetail`.
+
+### Résidus acceptés (non bloquants)
+
+- route publique volontaire, derrière limiter 60/min/IP (store mémoire par process) ;
+- cache disponibilité par process, TTL 60 s, non distribué ;
+- IDs Printful encore exposés par les APIs produit (P17, distinct) ;
+- panier `localStorage` historique `> 20` non migré ;
+- Printful n’est pas autoritaire pour le paiement (checkout recalcule côté serveur).
+
+### Statut final P15
+
+P15 est **FERMÉ / COMPLET / VALIDÉ EN PRODUCTION**. Ce n’est **pas** une certification de conformité légale.
+
+Fermeture technique et smoke tests production :
+
+- proxy d’ID Printful arbitraire supprimé ;
+- validation ID stricte (BIGINT signé, sans `Number`) ;
+- gate catalogue `is_active` / `is_visible` ;
+- disponibilité booléenne honnête ; faux stock `999` / `99` supprimé ;
+- limite quantité 1–20 cohérente (UI, panier, checkout backend autoritaire) ;
+- cache court borné + in-flight dedup (logique code ; hit cache non observé en prod) ;
+- erreurs publiques minimales ; logs serveur bornés (500 / 502 non déclenchés volontairement en prod) ;
+- stale responses `ProductDetail` neutralisées (throttling 3G) ;
+- smoke tests production réussis.
+
+**P16** (page de succès), sévérité **MODÉRÉ**, est le **prochain chantier**.
+
+**P12** demeure distinct : correctif déjà déployé ; validation runtime cron finale encore différée ; **non fermé** ici.
+
+**P17** (produits publics) demeure distinct : l’exposition d’identifiants internes / Printful par les APIs produit n’est **pas** fermée ici.
+
+**P19** (Printful automatique du webhook) demeure distinct et **non fermé** ici.
 
 ---
 
