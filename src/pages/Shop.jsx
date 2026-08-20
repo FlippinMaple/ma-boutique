@@ -19,25 +19,28 @@ const Shop = () => {
 
   const highlightId = new URLSearchParams(location.search).get('highlight');
 
-  // ✅ Affiche le toast "Merci" si présent, puis nettoie l'URL
   useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    const flash = params.get('flash');
-
-    if (flash === 'merci' && !flashShownRef.current) {
-      flashShownRef.current = true;
-      toast.success('🎉 Merci pour ton achat !', { id: 'purchase-thanks' }); // ✅ id fixe
-
-      params.delete('flash');
-      navigate(
-        {
-          pathname: location.pathname,
-          search: params.toString() ? `?${params.toString()}` : ''
-        },
-        { replace: true }
-      );
+    if (location.state?.purchaseSuccess !== true || flashShownRef.current) {
+      return;
     }
-  }, [location.pathname, location.search, navigate]);
+
+    flashShownRef.current = true;
+    toast.success('🎉 Merci pour ton achat !', { id: 'purchase-thanks' });
+
+    const nextState = { ...(location.state || {}) };
+    delete nextState.purchaseSuccess;
+
+    navigate(
+      {
+        pathname: location.pathname,
+        search: location.search
+      },
+      {
+        replace: true,
+        state: Object.keys(nextState).length > 0 ? nextState : null
+      }
+    );
+  }, [location.pathname, location.search, location.state, navigate]);
 
   const handleSearchSubmit = (e) => {
     e.preventDefault();

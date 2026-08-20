@@ -264,16 +264,36 @@ const Checkout = () => {
         withCredentials: true
       });
 
-      if (response.data?.url) {
-        toast.success('Redirection vers Stripe...');
-        // Mark checkout-in-progress before Stripe redirect
-        setInCheckoutFlag();
-
-        // Do not clearCart here
-        window.location.href = response.data.url;
-      } else {
+      const checkoutUrl = response.data?.url;
+      const checkoutSessionId = response.data?.id;
+      if (
+        typeof checkoutUrl !== 'string' ||
+        !checkoutUrl.trim() ||
+        typeof checkoutSessionId !== 'string' ||
+        !checkoutSessionId.trim()
+      ) {
         toast.error('Erreur : aucune URL de paiement reçue.');
+        return;
       }
+
+      try {
+        sessionStorage.setItem(
+          'flippinMapleCheckoutSessionId',
+          checkoutSessionId.trim()
+        );
+      } catch {
+        toast.error(
+          'Impossible de sécuriser le retour de paiement. Réessaie.'
+        );
+        return;
+      }
+
+      toast.success('Redirection vers Stripe...');
+      // Mark checkout-in-progress before Stripe redirect
+      setInCheckoutFlag();
+
+      // Do not clearCart here
+      window.location.href = checkoutUrl;
     } catch (err) {
       console.error(
         'Stripe checkout error:',
