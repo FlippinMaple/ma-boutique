@@ -1,6 +1,6 @@
 # Journal des correctifs techniques et de sécurité
 
-**Statut :** journal actif — chantiers P3 (checkout public), P4 (webhook Stripe / idempotence), P5 (fallback `order_items`), P6 (gestionnaire d’erreurs), P7 (authentification / sessions / JWT), P8 (inscription / consentement marketing / privacy technique), P9 (consentements email / unsubscribe / webhooks et cycle de révocation), P10 (secret unsubscribe / token hardening), P11 (paniers abandonnés), P13 (données Stripe conservées / minimisation), P14 (livraison Printful), P15 (inventaire Printful) et P16 (page de succès) : **FERMÉS / COMPLETS**. P15 et P16 sont **VALIDÉS EN PRODUCTION**. P12 (job / cron des paniers abandonnés) demeure un chantier **distinct** : sa clôture documentaire n’est pas faite ici ; une validation runtime finale y reste différée. Prochain chantier MODÉRÉ : **P17** (produits publics).
+**Statut :** journal actif — chantiers P3 (checkout public), P4 (webhook Stripe / idempotence), P5 (fallback `order_items`), P6 (gestionnaire d’erreurs), P7 (authentification / sessions / JWT), P8 (inscription / consentement marketing / privacy technique), P9 (consentements email / unsubscribe / webhooks et cycle de révocation), P10 (secret unsubscribe / token hardening), P11 (paniers abandonnés), P13 (données Stripe conservées / minimisation), P14 (livraison Printful), P15 (inventaire Printful), P16 (page de succès) et P17 (produits publics) : **FERMÉS / COMPLETS**. P15, P16 et P17 sont **VALIDÉS EN PRODUCTION**. P12 (job / cron des paniers abandonnés) demeure un chantier **distinct** : sa clôture documentaire n’est pas faite ici ; une validation runtime finale y reste différée. Prochain chantier MODÉRÉ : **P18** (wishlist).
 
 Ce document complète `docs/compliance/TECHNICAL_SECURITY_AUDIT.md`.
 
@@ -2160,6 +2160,121 @@ Fermeture technique et smoke tests production :
 **P12** demeure distinct : correctif déjà déployé ; validation runtime cron finale encore différée ; **non fermé** ici.
 
 **P19** (Printful automatique du webhook) demeure distinct et **non fermé** ici.
+
+**P23** (API de vérification du paiement) demeure distinct et **non fermé** ici.
+
+---
+
+## 20 août 2026 — Chantier P17 : produits publics (FERMÉ)
+
+Le constat initial d’audit P17 reste figé dans `TECHNICAL_SECURITY_AUDIT.md`. Ce journal documente l’état vivant et la fermeture. Aucune certification de conformité légale n’est revendiquée.
+
+P17 traite la **surface publique catalogue** : listes, featured, détail, recherche/tri, validation d’identifiant, variants exposés. Ce n’est **pas** l’autorité du checkout (P1 / P3), **pas** P15 (inventaire Printful), **pas** P18 (wishlist), **pas** P19 (Printful automatique du webhook).
+
+**Aucun correctif de code n’a été ajouté pour fermer P17.** Les remédiations nécessaires existaient déjà dans le code vivant, réalisées **avant** l’ouverture formelle de ce chantier. Cette section rattache P17 à ces commits historiques et aux validations production du 20 août 2026.
+
+P12, P18, P19, P20 et P23 demeurent des chantiers distincts et ne sont pas fermés dans cette section.
+
+### Constat initial
+
+Le constat P17 gelé concernait notamment :
+
+- les listes visible et featured filtrent `is_visible=1` ;
+- les requêtes utilisent des paramètres ;
+- les colonnes sont explicites ;
+- aucun appel Printful ;
+- `getProductDetails` ne filtrait pas `is_visible` ;
+- un produit masqué restait accessible par son ID ;
+- toutes ses variantes étaient alors retournées ;
+- `productId` vérifiait seulement `Number.isNaN` (entier positif fini non imposé) ;
+- la recherche `q` utilise `LIKE` avec wildcard initial ;
+- longueur de `q` non limitée ;
+- le frontend pouvait déclencher une requête à chaque frappe ;
+- `printful_variant_id` est public dans le catalogue (pas un secret, mais cela facilitait l’appel automatisé de l’inventaire).
+
+### Remédiations déjà existantes (antérieures à l’ouverture formelle P17)
+
+**Fichier principal :** `server/controllers/productsController.js`
+
+- `12fd1e2` — `fix(products): hide non-visible product details` : `getProductDetails` exige `WHERE id = ? AND is_visible = 1`.
+- `d06d4af` — `fix(products): validate product ids strictly` : identifiant string digits only (`/^\d+$/`), `Number`, `Number.isSafeInteger`, `> 0`.
+- `cc0aea3` — `fix(products): limit search query length` : `q` refusé au-delà de 100 caractères.
+- `74d36c8` — `fix(products): hide inactive variants publicly` : variantes publiques limitées à `is_active = 1`.
+
+Recherche frontend (soumission explicite, plus de fetch à chaque frappe), commits historiques confirmés :
+
+- `51747b8` — `fix(shop): limit search input length`
+- `79876d4` — `feat(shop): submit product search explicitly`
+- `b2ff863` — `fix(shop): restore catalogue when search is cleared`
+
+Ces commits étaient déjà déployés. P17 n’en crée pas de nouveau.
+
+### État vivant
+
+Routes publiques (`server/routes/productsRoutes.js`, montage `/api/products`) :
+
+- `GET /api/products` — catalogue visible, `q` / `sort` optionnels ;
+- `GET /api/products/featured` — jusqu’à 4 produits `is_featured = 1` et visibles ;
+- `GET /api/products/:id` — détail ;
+- `GET /api/products/details/:id` — alias rétro-compatible du détail.
+
+Listes : `products.is_visible = 1`. Détail : `WHERE id = ? AND is_visible = 1`. Produit masqué ou inexistant : HTTP 404 `{"error":"Produit non trouvé"}`.
+
+Variantes publiques : `is_active = 1`. Un produit masqué n’atteint pas la requête variantes. JSON variante public : `{ id, variant_id, printful_variant_id, price, size, color, image }`. Pas de SKU, pas de `is_active`, pas de `is_visible`, pas de secret.
+
+Validation `productId` : `/^\d+$/` ; `Number` ; `Number.isSafeInteger` ; `> 0`. Invalide → HTTP 400 `{"error":"ID de produit invalide"}`.
+
+Recherche : `q` trim ; maximum 100 caractères ; maximum 8 termes distincts ; `sort` whitelist (`relevance`, `price_asc`, `price_desc`, `newest`, `name_asc`) ; SQL paramétré ; `ORDER BY` issu d’une whitelist interne ; **wildcard initial `LIKE '%…%'` toujours présent** ; champs name / description / brand / category / color / size (variantes actives). Frontend : `searchInput` / `submittedSearch` ; pas de requête réseau à chaque frappe (confirmé par inspection du code vivant, **non** re-mesuré dans Network lors de cette fermeture).
+
+Les prix et identifiants publics n’ont **pas** d’autorité au checkout : le serveur relit variante, prix, visibilité et activité dans sa propre DB.
+
+### Validations production (20 août 2026)
+
+Lecture seule. Aucune modification DB.
+
+Produit masqué contrôlé : `id = 33`, name = Tourbillon, `is_visible = 0`.
+
+- `GET /api/products/33` → `{"error":"Produit non trouvé"}`
+- `GET /api/products/details/33` → `{"error":"Produit non trouvé"}`
+
+Les deux routes détail appliquent la protection.
+
+Validation ID :
+
+- `GET /api/products/abc` → `{"error":"ID de produit invalide"}`
+- `GET /api/products/1.5` → `{"error":"ID de produit invalide"}`
+- `GET /api/products/0` → `{"error":"ID de produit invalide"}`
+
+Recherche :
+
+- `q` de 101 caractères → `{"error":"Recherche trop longue."}`
+- `q` de 100 caractères → `[]` (HTTP 200, requête acceptée)
+
+### Décisions / résidus acceptés (non bloquants)
+
+`printful_variant_id` **demeure public**. Ce n’est pas un secret. Il reste techniquement requis par le frontend vivant (notamment `ProductDetail.jsx` / `CartContext` pour `GET /api/inventory/printful-stock/:id`). Le supprimer casserait ce contrat sans refonte de l’API inventory. P15 a déjà validé l’ID, exigé variante active + produit visible, ajouté limiter et cache, et retiré le proxy Printful arbitraire. L’exposition restante est un identifiant technique du **catalogue vendable déjà public**. **Résidu accepté. P15 n’est pas rouvert.**
+
+Autres résidus non bloquants, réévaluables si le catalogue grandit :
+
+1. `LIKE '%…%'` avec wildcard initial (toujours présent ; petit catalogue actuel) ;
+2. absence de limiter spécifique `/api/products` (disponibilité / scraping d’un catalogue déjà public, **pas** une fuite de produits masqués) — aucun limiter créé dans P17 ;
+3. `printful_variant_id` public (ci-dessus) ;
+4. payload variantes relativement complet dans liste / featured (Shop / Home n’en consomment qu’une partie) ;
+5. IDs produits séquentiels ; masqué et inexistant produisent le même 404 ; le catalogue visible est déjà listé publiquement.
+
+### Statut final P17
+
+P17 est **FERMÉ / COMPLET / VALIDÉ EN PRODUCTION**. Ce n’est **pas** une certification de conformité légale.
+
+Fermeture **sans nouveau correctif technique** : les remédiations nécessaires existaient déjà ; les smoke tests production du 20 août 2026 confirment l’état vivant.
+
+**P18** (wishlist), sévérité **MODÉRÉ**, est le **prochain chantier**.
+
+**P12** demeure distinct : correctif déjà déployé ; validation runtime cron finale encore différée ; **non fermé** ici.
+
+**P19** (Printful automatique du webhook) demeure distinct et **non fermé** ici.
+
+**P20** (base de données et migrations) demeure distinct et **non fermé** ici.
 
 **P23** (API de vérification du paiement) demeure distinct et **non fermé** ici.
 
