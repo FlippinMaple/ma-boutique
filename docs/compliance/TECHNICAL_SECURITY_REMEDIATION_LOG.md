@@ -1,6 +1,6 @@
 # Journal des correctifs techniques et de sécurité
 
-**Statut :** journal actif — chantiers P3 (checkout public), P4 (webhook Stripe / idempotence), P5 (fallback `order_items`), P6 (gestionnaire d’erreurs), P7 (authentification / sessions / JWT), P8 (inscription / consentement marketing / privacy technique), P9 (consentements email / unsubscribe / webhooks et cycle de révocation), P10 (secret unsubscribe / token hardening), P11 (paniers abandonnés), P13 (données Stripe conservées / minimisation), P14 (livraison Printful) et P15 (inventaire Printful) : **FERMÉS / COMPLETS**. P15 est **VALIDÉ EN PRODUCTION**. P12 (job / cron des paniers abandonnés) demeure un chantier **distinct** : sa clôture documentaire n’est pas faite ici ; une validation runtime finale y reste différée. Prochain chantier MODÉRÉ : **P16** (page de succès).
+**Statut :** journal actif — chantiers P3 (checkout public), P4 (webhook Stripe / idempotence), P5 (fallback `order_items`), P6 (gestionnaire d’erreurs), P7 (authentification / sessions / JWT), P8 (inscription / consentement marketing / privacy technique), P9 (consentements email / unsubscribe / webhooks et cycle de révocation), P10 (secret unsubscribe / token hardening), P11 (paniers abandonnés), P13 (données Stripe conservées / minimisation), P14 (livraison Printful), P15 (inventaire Printful) et P16 (page de succès) : **FERMÉS / COMPLETS**. P15 et P16 sont **VALIDÉS EN PRODUCTION**. P12 (job / cron des paniers abandonnés) demeure un chantier **distinct** : sa clôture documentaire n’est pas faite ici ; une validation runtime finale y reste différée. Prochain chantier MODÉRÉ : **P17** (produits publics).
 
 Ce document complète `docs/compliance/TECHNICAL_SECURITY_AUDIT.md`.
 
@@ -2025,6 +2025,143 @@ Fermeture technique et smoke tests production :
 **P17** (produits publics) demeure distinct : l’exposition d’identifiants internes / Printful par les APIs produit n’est **pas** fermée ici.
 
 **P19** (Printful automatique du webhook) demeure distinct et **non fermé** ici.
+
+---
+
+## 20 août 2026 — Chantier P16 : page de succès (FERMÉ)
+
+Le constat initial d’audit P16 reste figé dans `TECHNICAL_SECURITY_AUDIT.md`. Ce journal documente la remédiation technique. Aucune certification de conformité légale n’est revendiquée.
+
+P16 traite la **page de succès checkout** : faux succès UX, corrélation du retour Stripe avec le checkout de cet onglet, race webhook / redirect, et suppression de `/shop?flash=merci` comme autorité du toast. Ce n’est **pas** l’autorité du paiement (webhook Stripe signé), **pas** P23 (durcissement de `/payments/verify`), **pas** P17 (produits publics), **pas** P19 (Printful automatique du webhook).
+
+Aucun backend n’a été modifié dans ce chantier.
+
+P12, P17, P19 et P23 demeurent des chantiers distincts et ne sont pas fermés dans cette section.
+
+### Constat initial
+
+Le constat P16 gelé concernait notamment :
+
+- `Success.jsx` lit `session_id` et appelle `/payments/verify` **une seule fois** ;
+- le backend verify lit seulement MySQL, pas Stripe directement ;
+- `paid` n’est vrai que lorsque le webhook a déjà mis la commande à `paid` ;
+- le panier n’était vidé que si `paid === true` (correct) ;
+- aucune nouvelle tentative : si le webhook est retardé, le panier n’était pas vidé ;
+- `Success.jsx` redirigeait **toujours** vers `/shop?flash=merci` : même sans `session_id`, même si la session est introuvable, même si la vérification échoue ;
+- `Shop.jsx` affichait « Merci pour ton achat » uniquement selon `flash=merci` ;
+- un faux message de réussite était donc possible ;
+- `window.location.replace` retirait `session_id` de l’URL courante ;
+- `Shop.jsx` nettoyait `flash` avec `replace`.
+
+Complément vivant documenté lors de la remédiation (hors mot-à-mot de l’audit) : le backend retournait déjà `{ id: session.id, url: session.url }` (éventuellement `reused: true`), mais Checkout.jsx **ne mémorisait pas** `id` avant `window.location.href = url`. Un `session_id` Stripe payé copié depuis ailleurs pouvait donc, dans le navigateur courant, vider le panier local après un verify `paid`.
+
+### Correctif
+
+**Commit :** `b783383` — `fix(checkout): harden payment success flow`
+
+**Fichiers :** `src/pages/Checkout.jsx`, `src/pages/Success.jsx`, `src/pages/Shop.jsx`
+
+Aucun backend, aucune route paiement, aucun webhook, aucune DB.
+
+#### Corrélation du checkout
+
+Avant redirection Stripe, `Checkout.jsx` mémorise le vrai `response.data.id` dans `sessionStorage` sous la clé `flippinMapleCheckoutSessionId`.
+
+Le redirect n’a lieu que si `response.data.url` et `response.data.id` sont des strings non vides **et** que `sessionStorage.setItem` réussit. Si `sessionStorage` échoue : pas de redirect Stripe ; message d’erreur ; **aucun** fallback `localStorage`.
+
+`sessionStorage` n’est **pas** une preuve de paiement. Il sert seulement à corréler le retour Stripe avec le checkout lancé dans cet onglet.
+
+#### Success.jsx — corrélation avant verify
+
+Égalité stricte exigée **avant** tout effet de succès :
+
+`session_id` URL === `sessionStorage.flippinMapleCheckoutSessionId`
+
+Si `session_id` absent, session attendue absente, ou IDs différents : aucun `GET /payments/verify` ; aucun `clearCart` ; aucun merci ; aucun `clearInCheckoutFlag` ; le marqueur attendu n’est **pas** consommé (il peut appartenir à un vrai checkout en cours) ; redirect vers `/shop` sans signal de succès.
+
+Une URL success étrangère ne peut plus agir sur le panier local.
+
+#### Vérification paid
+
+`/payments/verify` reste un reflet MySQL. La source de vérité du paiement demeure :
+
+webhook Stripe signé → `orders.status = 'paid'` → verify reflète cet état.
+
+Success.jsx ne considère le paiement confirmé que si `found === true` **et** `paid === true`. Le frontend ne marque jamais une commande `paid`. Success.jsx n’interroge pas Stripe.
+
+#### Race webhook
+
+Pour absorber le retour Stripe pouvant arriver avant `checkout.session.completed` :
+
+- 8 tentatives maximum ;
+- première immédiatement ;
+- environ 1 seconde entre les tentatives ;
+- timeout Axios **local** de 5000 ms par requête (`VERIFY_REQUEST_TIMEOUT_MS` dans Success.jsx) ;
+- erreurs réseau / timeout retryables dans cette limite ;
+- `AbortController` + garde `cancelled` au démontage ;
+- aucun polling infini ; aucun `setInterval` permanent.
+
+`src/utils/api.js` n’a pas été modifié.
+
+Après épuisement sans `paid` : panier conservé ; aucun merci ; session attendue **consommée** (un ancien `session_id` ne doit plus pouvoir vider un nouveau panier plus tard) ; retour `/shop`. `inCheckout` n’est nettoyé que si `paid` est confirmé.
+
+#### Effets après paid confirmé
+
+Seulement après corrélation **et** `found === true` **et** `paid === true` : `clearCart` ; `clearInCheckoutFlag` ; retrait de la session attendue ; navigation `/shop` avec React Router `state: { purchaseSuccess: true }`.
+
+React Router `state` n’est **pas** une preuve de paiement : c’est un transport UX après une décision déjà prise par Success.jsx.
+
+#### Suppression de `flash=merci`
+
+`/shop?flash=merci` ne déclenche plus le toast achat. `Shop.jsx` affiche « Merci pour ton achat ! » seulement si `location.state?.purchaseSuccess === true`, puis consomme ce flag par `replace` en conservant `location.search` et donc les query params réellement présents, notamment `highlight`.
+
+### Validations statiques / build
+
+- lint ciblé des trois fichiers P16 : OK ;
+- `git diff --check` : OK ;
+- build production Vite : OK ;
+- 1747 modules transformed ;
+- build terminé avec succès.
+
+### Validations production
+
+1. URL directe `https://flippinmaple.com/shop?flash=merci` : boutique affichée ; **aucun** toast « Merci pour ton achat ! ». Le query param seul ne fabrique plus un succès.
+2. URL directe `https://flippinmaple.com/checkout/success` sans `session_id` : retour vers `/shop` ; aucun toast succès.
+3. URL avec faux `session_id` (`/checkout/success?session_id=cs_fake_test`) : retour vers `/shop` ; aucun toast succès ; aucun effet indésirable observé.
+4. Vrai checkout Stripe en production (environnement / test prévu) : flow réussi au retour ; toast « Merci pour ton achat ! » ; panier vidé ; aucune boucle / page bloquée.
+5. État navigateur après le retour payé : `sessionId: null`, `inCheckout: null`, `cart: '[]'` — session attendue consommée ; flag checkout nettoyé ; panier vidé.
+
+Aucune race webhook supérieure à la fenêtre de retry (~7 s hors réseau) n’a été artificiellement démontrée. Aucune panne réseau prolongée n’a été testée.
+
+### Résidus acceptés (non bloquants)
+
+- si le webhook prend plus longtemps que la fenêtre de retry, l’UX reste silencieuse et le panier demeure présent (préférable à un faux succès) ;
+- `sessionStorage` indisponible → pas de redirect Stripe depuis Checkout (fail-safe) ;
+- `sessionStorage` n’authentifie pas un paiement ;
+- React Router `state` n’authentifie pas un paiement ;
+- `/payments/verify` demeure public (P23, distinct) : limiter, `orderId` retourné, validation serveur du format `session_id`, auth — **non traités** ici.
+
+### Statut final P16
+
+P16 est **FERMÉ / COMPLET / VALIDÉ EN PRODUCTION**. Ce n’est **pas** une certification de conformité légale.
+
+Fermeture technique et smoke tests production :
+
+- faux succès `flash=merci` retiré ;
+- corrélation onglet exigée avant verify / `clearCart` / merci ;
+- `clearCart` seulement si corrélation + `found === true` + `paid === true` ;
+- retry borné de verify pour la race webhook normale ;
+- timeout local 5 s par requête verify ;
+- vrai toast via React Router `state` consommé après affichage ;
+- checkout Stripe réel validé en production.
+
+**P17** (produits publics), sévérité **MODÉRÉ**, est le **prochain chantier**.
+
+**P12** demeure distinct : correctif déjà déployé ; validation runtime cron finale encore différée ; **non fermé** ici.
+
+**P19** (Printful automatique du webhook) demeure distinct et **non fermé** ici.
+
+**P23** (API de vérification du paiement) demeure distinct et **non fermé** ici.
 
 ---
 
