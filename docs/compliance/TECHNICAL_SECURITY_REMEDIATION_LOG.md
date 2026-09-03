@@ -1,6 +1,6 @@
 # Journal des correctifs techniques et de sécurité
 
-**Statut :** journal actif — chantiers P3 (checkout public), P4 (webhook Stripe / idempotence), P5 (fallback `order_items`), P6 (gestionnaire d’erreurs), P7 (authentification / sessions / JWT), P8 (inscription / consentement marketing / privacy technique), P9 (consentements email / unsubscribe / webhooks et cycle de révocation), P10 (secret unsubscribe / token hardening), P11 (paniers abandonnés), P13 (données Stripe conservées / minimisation), P14 (livraison Printful), P15 (inventaire Printful), P16 (page de succès), P17 (produits publics), P18 (wishlist) et P19 (Printful automatique du webhook) : **FERMÉS / COMPLETS**. P15, P16, P17, P18 et P19 sont **VALIDÉS EN PRODUCTION**. P12 (job / cron des paniers abandonnés) demeure un chantier **distinct** : sa clôture documentaire n’est pas faite ici ; une validation runtime finale y reste différée. Prochain chantier MODÉRÉ : **P20** (base de données et migrations).
+**Statut :** journal actif — chantiers P3 (checkout public), P4 (webhook Stripe / idempotence), P5 (fallback `order_items`), P6 (gestionnaire d’erreurs), P7 (authentification / sessions / JWT), P8 (inscription / consentement marketing / privacy technique), P9 (consentements email / unsubscribe / webhooks et cycle de révocation), P10 (secret unsubscribe / token hardening), P11 (paniers abandonnés), P13 (données Stripe conservées / minimisation), P14 (livraison Printful), P15 (inventaire Printful), P16 (page de succès), P17 (produits publics), P18 (wishlist) et P19 (Printful automatique du webhook) : **FERMÉS / COMPLETS**. P15, P16, P17, P18 et P19 sont **VALIDÉS EN PRODUCTION**. P12 (job / cron des paniers abandonnés) demeure un chantier **distinct** : sa clôture documentaire n’est pas faite ici ; une validation runtime finale y reste différée. **P20** (base de données et migrations) est **EN COURS** : P20-A (inventaire production read-only) et P20-B (runner de migrations) sont terminés ; P20-C et les étapes suivantes restent à faire. P20 n’est **ni fermé ni validé en production**.
 
 Ce document complète `docs/compliance/TECHNICAL_SECURITY_AUDIT.md`.
 
@@ -837,7 +837,7 @@ Fermé.
 
 Le chantier P3 est **FERMÉ / COMPLET** et validé en production. Au moment de cette clôture, P4 (idempotence générale des events Stripe) et le runner `scripts/run-migrations.js` (non fiable : importe `{ pool }` alors que `server/db.js` exporte `getPool()`) restaient hors de ce chantier.
 
-P4 a depuis été traité et fermé dans la section suivante. Le runner de migrations n’a pas été corrigé.
+P4 a depuis été traité et fermé dans la section suivante. Le runner a depuis été corrigé dans P20-B ; cette correction ne faisait pas partie de P3.
 
 ---
 
@@ -2454,6 +2454,134 @@ P19 est **FERMÉ / COMPLET / VALIDÉ EN PRODUCTION** (validation **non destructi
 **P12** demeure distinct : correctif déjà déployé ; validation runtime cron finale encore différée ; **non fermé** ici.
 
 **P23** (API de vérification du paiement) demeure distinct et **non fermé** ici.
+
+---
+
+## 3 septembre 2026 — Chantier P20 : base de données et migrations (EN COURS)
+
+Le constat initial d’audit P20 reste figé dans `TECHNICAL_SECURITY_AUDIT.md`. Ce journal documente le diagnostic, l’inventaire production read-only et la réparation du runner. Aucune certification de conformité légale n’est revendiquée.
+
+P20 traite la **base de données et les migrations**. Sévérité audit : **MODÉRÉ**. Risque d’implémentation : **ÉLEVÉ** (schéma MySQL production, contraintes, index, données existantes, historique). Ce n’est **pas** P12, **pas** P18 applicatif (wishlist déjà désactivée), **pas** P19 (Printful webhook déjà retiré), **pas** P23.
+
+P12 et P23 demeurent des chantiers distincts et ne sont pas fermés dans cette section. P3–P11 et P13–P19 ne sont pas rouverts.
+
+**P20 n’est pas fermé. P20 n’est pas validé en production.**
+
+### Portée / statut
+
+| Étape | Objet | Statut |
+| --- | --- | --- |
+| P20-A | Inventaire production READ-ONLY | **Terminé** (aucune mutation) |
+| P20-B | Runner de migrations sécurisé | **Terminé techniquement** (`77e0d86`) |
+| P20-C | Création + baseline explicite de `schema_migrations` | **À faire** — après backup/restauration vérifiés et autorisation |
+| P20-D+ | Divergences ciblées de schéma, résidus, documentation DATA_MODEL | **À faire** — aucune décision de mutation prise ici |
+
+`DATA_MODEL.md` n’est pas mis à jour dans cette entrée : les décisions de schéma P20-C / P20-D ne sont pas encore prises.
+
+### Stratégie retenue
+
+1. Ne jamais rejouer aveuglément les migrations historiques Git sur la production existante.
+2. P20-A — inventaire réel production, lectures seules.
+3. P20-B — runner sécurisé, sans créer `schema_migrations` et sans exécuter `npm run migrate`.
+4. P20-C — baseline explicite de `schema_migrations`, seulement après backup/restauration vérifiés et autorisation. Les deux fichiers historiques doivent être **marqués comme déjà absorbés**, jamais rejoués.
+5. Ensuite seulement, traiter les divergences ciblées de schéma.
+6. Nettoyer les résidus uniquement après preuve de non-utilisation et décision explicite.
+7. Documenter et valider chaque mutation séparément.
+
+### P20-A — Inventaire production read-only
+
+Aucune mutation DB, aucune migration, aucun `ALTER` / `CREATE` / `DROP` / `DELETE`. Aucun `npm run migrate`.
+
+**Base production observée :** `u601077843_flippinmaple`.
+
+**Constats :**
+
+- 27 tables, toutes InnoDB ;
+- aucune table `schema_migrations` ;
+- collations mixtes : `utf8mb4_general_ci`, `utf8mb4_unicode_ci`, `utf8mb4_uca1400_ai_ci` ;
+- le schéma production a évolué **au-delà** des deux fichiers historiques sous `db/migrations/`.
+
+**Migrations Git historiques :**
+
+- `2025-10-18_stripe_events.sql` — mélange `CREATE` et upgrades historiques non idempotents ; plusieurs statements ; `ALTER` susceptibles d’échouer si rejoués ; **ne représente plus** le schéma production actuel de `stripe_events` (`received_at`, `order_id`, etc.). **Ne doit pas être rejoué** sur la prod actuelle.
+- `2026-08-15_checkout_idempotency.sql` — correspond fonctionnellement à la table actuelle, mais la table **existe déjà** en production. À intégrer au futur baseline, pas à rejouer aveuglément.
+
+**Dérives / résidus observés, non corrigés :**
+
+- `order_items.order_id` : deux FK vers `orders.id` avec règles DELETE contradictoires (`RESTRICT` et `CASCADE`) ;
+- `order_items.variant_id` : deux FK équivalentes vers `product_variants.id` ;
+- `order_status_history.order_id` : deux FK équivalentes vers `orders.id` ;
+- `orders.stripe_session_id` et `orders.stripe_payment_intent_id` : index **NON UNIQUE** ; les contrôles read-only n’ont trouvé aucun doublon non vide au moment de P20-A ;
+- `carts` : `UNIQUE(user_id, status)` — unicité par statut, pas seulement pour `open` ;
+- table résiduelle `wishlists` encore présente après désactivation de l’API P18 ;
+- `logs` encore créée au runtime (`CREATE TABLE IF NOT EXISTS`) ;
+- collations mixtes ;
+- d’autres tables / relations portent une dérive historique à examiner séparément.
+
+Aucune de ces dérives n’a été corrigée pendant P20-A. Aucune normalisation de collation. Aucune table résiduelle supprimée. Aucune FK modifiée.
+
+Ces sujets restent des **constats / travaux P20 futurs**. Ils ne sont **pas** fermés ici : FKs `order_items`, FKs `order_status_history`, `wishlists`, collations, DDL runtime `logs`, unique `carts`, index Stripe non-unique.
+
+### P20-B — Runner de migrations
+
+**Commit :** `77e0d86` — `fix(db): harden migration runner`
+
+**Fichier :** `scripts/run-migrations.js`
+
+**Ancien problème :** import `{ pool }` depuis `server/db.js` (export inexistant) ; exécution de chaque fichier SQL complet via le pool ; continue-on-error ; aucun suivi ; aucun checksum ; aucun verrou. Un simple « fix d’import » suivi d’un `npm run migrate` sur une DB existante aurait pu rejouer les SQL historiques.
+
+**Nouveau comportement :**
+
+- `import 'dotenv/config'` ;
+- utilise `resolveDbConfig()` ;
+- connexion MySQL dédiée `mysql2/promise` — **pas** le pool global applicatif ;
+- `multipleStatements: true` **uniquement** sur cette connexion dédiée ; `server/dbConfig.js` **non modifié** ;
+- verrou advisory `GET_LOCK` (timeout 10 s) ; `RELEASE_LOCK` dans le `finally` ;
+- exige que `schema_migrations` existe déjà ; **ne la crée pas** ;
+- si absente : `Migration baseline missing: schema_migrations does not exist. Refusing to run migrations.` puis code de sortie non zéro ;
+- fichiers `.sql` sous `db/migrations/` triés lexicalement ;
+- SHA-256 du contenu exact UTF-8 ;
+- compare filename + checksum aux lignes enregistrées ;
+- checksum divergent → abort immédiat, aucune SQL pending exécutée ;
+- déjà appliquée + checksum identique → skip ;
+- pending → exécute le SQL, puis `INSERT` `(filename, checksum)` **seulement après succès** ;
+- première erreur SQL → abort ; plus de continue-on-error ;
+- connexion fermée dans le `finally` ;
+- aucune transaction présentée comme rollback atomique du DDL.
+
+**Contrat futur attendu pour P20-C (`schema_migrations`) :**
+
+- `filename VARCHAR(255) PRIMARY KEY`
+- `checksum CHAR(64) NOT NULL`
+- `applied_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP`
+
+**P20-B n’a créé aucune table. P20-B n’a exécuté aucune migration. `npm run migrate` n’a pas été exécuté. La production n’a subi aucune mutation.**
+
+### Validations P20-B
+
+- `node --check scripts/run-migrations.js` : OK
+- `npx eslint .\scripts\run-migrations.js` : code 0
+- avertissement npm `Unknown env config "devdir"` observé, hors scope
+- `git diff --check` : OK
+- diff audité
+- workspace propre après commit
+- aucune connexion DB / aucun SQL / aucune migration exécutée pendant les validations
+
+### Limites connues
+
+Le DDL MySQL peut provoquer des commits implicites. Le runner **ne peut pas** garantir une atomicité complète entre l’exécution d’une migration DDL et l’enregistrement dans `schema_migrations`. Les futures migrations doivent être versionnées, contrôlées, aussi idempotentes / récupérables que possible, et appliquées avec un backup approprié.
+
+`schema_migrations` n’existe **pas** encore en production. Tant que P20-C n’est pas autorisé et exécuté, `npm run migrate` **ne doit pas** être lancé sur la prod actuelle. Les deux migrations historiques doivent être **baselinées comme déjà absorbées**, jamais rejouées.
+
+Les contraintes Hostinger (ALTER souvent 1044) restent valides. P20-B n’accorde aucun nouveau droit DDL.
+
+### Prochaines étapes / statut courant
+
+**P20-C** (étape suivante, distincte, **non autorisée ici**) : créer `schema_migrations` et y enregistrer les deux fichiers historiques comme déjà appliqués, seulement après backup/restauration vérifiés et autorisation explicite.
+
+Ensuite : divergences ciblées, résidus (`wishlists`, FKs dupliquées, collations, `logs` runtime, unique `carts`, index Stripe), documentation `DATA_MODEL.md`, validation. Chaque mutation reste un sous-chantier séparé.
+
+**Statut courant P20 :** **EN COURS**. P20-A terminé (read-only). P20-B terminé techniquement. P20-C et la suite : à faire. **Non fermé. Non validé en production.**
 
 ---
 
