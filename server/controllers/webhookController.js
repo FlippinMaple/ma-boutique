@@ -2,10 +2,6 @@
 
 import { getStripe } from '../services/stripeService.js';
 import { logInfo, logWarn, logError } from '../utils/logger.js';
-import {
-  mapCartToPrintfulVariants,
-  createPrintfulOrder
-} from '../services/printfulService.js';
 import { centsToFloat } from '../utils/currency.js';
 
 /*
@@ -48,52 +44,6 @@ function parsePositiveSafeInteger(value) {
     return n;
   }
   return null;
-}
-
-/**
- * Snapshot checkout (nouveau format serveur uniquement).
- * Aucun fallback vers price / unit_price / unitPrice / qty / identifiants ambiguës.
- */
-function normalizeMetaCartItem(it) {
-  if (!it || typeof it !== 'object' || Array.isArray(it)) {
-    throw new Error('INVALID_META_CART_ITEM');
-  }
-
-  const dbVariantId = parsePositiveSafeInteger(it.id);
-  const bizVariantId = parsePositiveSafeInteger(it.variant_id);
-  const quantity = parsePositiveSafeInteger(it.quantity);
-  const unitPriceCents = parsePositiveSafeInteger(it.unit_price_cents);
-
-  if (
-    dbVariantId == null ||
-    bizVariantId == null ||
-    quantity == null ||
-    unitPriceCents == null
-  ) {
-    throw new Error('INVALID_META_CART_ITEM');
-  }
-
-  let printfulVariantId = null;
-  const rawPrintfulId = it.printful_variant_id;
-  const printfulProvided =
-    rawPrintfulId != null &&
-    !(typeof rawPrintfulId === 'string' && rawPrintfulId.trim() === '');
-  if (printfulProvided) {
-    printfulVariantId = parsePositiveSafeInteger(rawPrintfulId);
-    if (printfulVariantId == null) {
-      throw new Error('INVALID_META_CART_ITEM');
-    }
-  }
-
-  return {
-    dbVariantId,
-    bizVariantId,
-    printfulVariantId,
-    quantity,
-    unitPriceCents,
-    name: it.name ?? null,
-    sku: it.sku ?? null
-  };
 }
 
 async function orderHasItems(db, orderId) {
@@ -716,7 +666,7 @@ async function handleStripeWebhook(req, res) {
       shipping_cost = Number(prevShippingCost);
     }
 
-    // shippingMeta pour Printful + email fallback
+    // shippingMeta legacy : fallback email pour anciennes sessions
     let shippingMeta = null;
     try {
       if (session.metadata?.shipping) {
@@ -773,17 +723,7 @@ async function handleStripeWebhook(req, res) {
     }
 
     // D) Vérifier des order_items avant tout passage a paid (P5: plus de fallback metadata)
-    let cart_items = [];
-    try {
-      if (session.metadata?.cart_items) {
-        cart_items = JSON.parse(session.metadata.cart_items) || [];
-      }
-    } catch {
-      /* ignore */
-    }
-
     let hasItems = false;
-    const usedFallbackItems = false;
     try {
       hasItems = await orderHasItems(db, orderId);
     } catch (e) {
@@ -973,77 +913,7 @@ async function handleStripeWebhook(req, res) {
       );
     }
 
-    // J) Printful automatique (optionnel; meme perimetre qu'avant: apres fallback items)
-    if (
-      usedFallbackItems &&
-      process.env.PRINTFUL_AUTOMATIC_ORDER === 'true' &&
-      shippingMeta &&
-      cart_items.length > 0
-    ) {
-      try {
-        const pfSource = cart_items.map((it) => {
-          const n = normalizeMetaCartItem(it);
-          return {
-            variant_id: n.bizVariantId || undefined,
-            printful_variant_id: n.printfulVariantId || undefined,
-            quantity: n.quantity,
-            unit_price_cents: n.unitPriceCents
-          };
-        });
-        const pfItems = await mapCartToPrintfulVariants(pfSource);
-        if (pfItems && pfItems.length > 0) {
-          const recipient = {
-            name: shippingMeta.name,
-            address1: shippingMeta.address1,
-            city: shippingMeta.city,
-            state_code: shippingMeta.state,
-            country_code: shippingMeta.country,
-            zip: shippingMeta.zip,
-            email: customer_email
-          };
-
-          const result = await createPrintfulOrder({
-            recipient,
-            items: pfItems,
-            confirm: false
-          });
-
-          if (result?.id) {
-            await db.execute(
-              `
-              UPDATE orders
-                 SET printful_order_id = ?
-               WHERE id = ?
-              `,
-              [result.id, orderId]
-            );
-            await logInfo(
-              `[${traceId}] Printful order lie: ${result.id}`,
-              'webhook'
-            );
-          } else {
-            await logWarn(
-              `[${traceId}] Reponse Printful sans id: ${JSON.stringify(result)}`,
-              'webhook'
-            );
-          }
-        } else {
-          await logWarn(
-            `[${traceId}] mapCartToPrintfulVariants → 0 item`,
-            'webhook'
-          );
-        }
-      } catch (err) {
-        await logError(
-          `[${traceId}] Erreur envoi Printful: ${
-            err?.response?.data || err?.message || String(err)
-          }`,
-          'webhook'
-        );
-      }
-    }
-
-    // K) Log final + upsert stripe_events
+    // J) Log final + upsert stripe_events
     await upsertStripeEvent(event, req, orderId);
 
     await logInfo(

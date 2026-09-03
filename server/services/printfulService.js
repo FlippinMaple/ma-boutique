@@ -1,6 +1,5 @@
 // server/services/printfulService.js
 import axios from 'axios';
-import { getDb } from '../utils/db.js';
 import { logError } from '../utils/logger.js';
 
 axios.defaults.timeout = 10000; // 10s
@@ -82,35 +81,4 @@ export const getPrintfulVariantAvailability = async (printful_variant_id) => {
   });
   availabilityInflight.set(key, request);
   return request;
-};
-
-// 👇 nouveau: map du panier vers variantes Printful (réutilisable)
-export const mapCartToPrintfulVariants = async (cart_items) => {
-  if (!cart_items || cart_items.length === 0) return [];
-  const variantIds = cart_items.map((item) => item.id);
-  const [variants] = await getDb.query(
-    `SELECT id, printful_variant_id
-       FROM product_variants
-      WHERE id IN (${variantIds.map(() => '?').join(',')})`,
-    variantIds
-  );
-  return cart_items.map((item) => {
-    const v = variants.find((row) => row.id === item.id);
-    if (!v) throw new Error(`Aucune variante trouvée pour l'id ${item.id}`);
-    return { variant_id: v.printful_variant_id, quantity: item.quantity };
-  });
-};
-
-// 👇 nouveau: création de commande Printful (on centralise l’appel)
-export const createPrintfulOrder = async ({
-  recipient,
-  items,
-  confirm = false
-}) => {
-  const resp = await axios.post(
-    'https://api.printful.com/orders',
-    { recipient, items, confirm },
-    { headers: { Authorization: `Bearer ${process.env.PRINTFUL_API_KEY}` } }
-  );
-  return resp.data.result; // ex: { id, status, ... }
 };
