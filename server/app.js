@@ -122,7 +122,6 @@ const [
   { default: abandonedCartRoutes },
   { default: authRoutes },
   { default: productsRoutes },
-  { default: wishlistRoutes },
   { default: checkoutRoutes },
   { default: adminRoutes },
   { default: inventoryRoutes },
@@ -135,7 +134,6 @@ const [
   import('./routes/abandonedCartRoutes.js'),
   import('./routes/authRoutes.js'),
   import('./routes/productsRoutes.js'),
-  import('./routes/wishlistRoutes.js'),
   import('./routes/checkoutRoutes.js'),
   import('./routes/adminRoutes.js'),
   import('./routes/inventoryRoutes.js'),
@@ -154,7 +152,6 @@ app.use('/webhook', webhookRoutes);
 // API
 app.use('/api/auth', authRoutes);
 app.use('/api/products', productsRoutes);
-app.use('/api/wishlist', wishlistRoutes);
 app.use('/api/create-checkout-session', checkoutRoutes);
 app.use('/api/inventory', inventoryRoutes);
 app.use('/api/shipping', shippingRoutes);
