@@ -1,6 +1,6 @@
 # Journal des correctifs techniques et de sécurité
 
-**Statut :** journal actif — chantiers P3 (checkout public), P4 (webhook Stripe / idempotence), P5 (fallback `order_items`), P6 (gestionnaire d’erreurs), P7 (authentification / sessions / JWT), P8 (inscription / consentement marketing / privacy technique), P9 (consentements email / unsubscribe / webhooks et cycle de révocation), P10 (secret unsubscribe / token hardening), P11 (paniers abandonnés), P13 (données Stripe conservées / minimisation), P14 (livraison Printful), P15 (inventaire Printful), P16 (page de succès) et P17 (produits publics) : **FERMÉS / COMPLETS**. P15, P16 et P17 sont **VALIDÉS EN PRODUCTION**. P12 (job / cron des paniers abandonnés) demeure un chantier **distinct** : sa clôture documentaire n’est pas faite ici ; une validation runtime finale y reste différée. Prochain chantier MODÉRÉ : **P18** (wishlist).
+**Statut :** journal actif — chantiers P3 (checkout public), P4 (webhook Stripe / idempotence), P5 (fallback `order_items`), P6 (gestionnaire d’erreurs), P7 (authentification / sessions / JWT), P8 (inscription / consentement marketing / privacy technique), P9 (consentements email / unsubscribe / webhooks et cycle de révocation), P10 (secret unsubscribe / token hardening), P11 (paniers abandonnés), P13 (données Stripe conservées / minimisation), P14 (livraison Printful), P15 (inventaire Printful), P16 (page de succès), P17 (produits publics) et P18 (wishlist) : **FERMÉS / COMPLETS**. P15, P16, P17 et P18 sont **VALIDÉS EN PRODUCTION**. P12 (job / cron des paniers abandonnés) demeure un chantier **distinct** : sa clôture documentaire n’est pas faite ici ; une validation runtime finale y reste différée. Prochain chantier MODÉRÉ : **P19** (Printful automatique du webhook).
 
 Ce document complète `docs/compliance/TECHNICAL_SECURITY_AUDIT.md`.
 
@@ -2275,6 +2275,99 @@ Fermeture **sans nouveau correctif technique** : les remédiations nécessaires 
 **P19** (Printful automatique du webhook) demeure distinct et **non fermé** ici.
 
 **P20** (base de données et migrations) demeure distinct et **non fermé** ici.
+
+**P23** (API de vérification du paiement) demeure distinct et **non fermé** ici.
+
+---
+
+## 2 septembre 2026 — Chantier P18 : wishlist (FERMÉ)
+
+Le constat initial d’audit P18 reste figé dans `TECHNICAL_SECURITY_AUDIT.md`. Ce journal documente le diagnostic, la décision et la remédiation. Aucune certification de conformité légale n’est revendiquée.
+
+P18 traite la **surface wishlist orpheline** : routes encore montées, auth présente, exécution cassée, aucune UI. Ce n’est **pas** une nouvelle feature favoris, **pas** P20 (schéma / migrations), **pas** P19 (Printful automatique du webhook).
+
+P12, P19, P20 et P23 demeurent des chantiers distincts et ne sont pas fermés dans cette section.
+
+### Constat initial
+
+Le constat P18 gelé concernait notamment :
+
+- les routes protégées par `verifyToken` ;
+- le contrôleur comparait correctement le `customerId` demandé à `req.user.id` ;
+- un utilisateur ne pouvait pas simplement accéder à la wishlist d’un autre ;
+- le service travaillait au niveau produit seulement ;
+- `variant_id` et `printful_variant_id` étaient ignorés ;
+- le toggle n’était pas atomique ;
+- le modèle attendait `req` pour `req.app.locals.db` ;
+- le service n’envoyait jamais `req` ;
+- les endpoints échouaient donc probablement avec une erreur 500 ;
+- aucun appel wishlist dans `src` ni dans `dist` ;
+- fonctionnalité orpheline et cassée ;
+- correction future proposée : réparer et réintégrer, **ou** désactiver explicitement.
+
+### Diagnostic vivant
+
+La wishlist n’était pas une fonctionnalité vivante du produit :
+
+- aucune UI wishlist active ;
+- aucun appel frontend dans `src` ;
+- aucune route React wishlist ;
+- aucun besoin produit court terme trouvé dans la documentation canonique pertinente.
+
+Les routes restaient montées :
+
+- `GET /api/wishlist/:customerId`
+- `POST /api/wishlist/toggle`
+
+derrière `verifyToken`. L’autorisation contrôleur bloquait l’accès à la wishlist d’un autre utilisateur (`customerId` demandé === `req.user.id`). Pas d’IDOR simple confirmé. Le chemin **autorisé** (propre wishlist du propriétaire) était cassé : `wishlistService` appelait le modèle sans `req`, alors que le modèle faisait `req.app.locals.db` avec `req === undefined`. Cette conclusion 500 est **statique** (diagnostic) ; ce 500 **n’a pas été observé** comme test production lors de la fermeture.
+
+Écarts supplémentaires constatés au diagnostic (devenus sans surface runtime après désactivation) : granularité code = produit vs DATA_MODEL = variante ; toggle non atomique ; validation IDs faible (`Number` / `isNaN`) ; possibilité théorique d’ajouter un produit masqué si la feature avait été réparée naïvement. Ce ne sont **pas** des vulnérabilités actives accessibles une fois l’API retirée.
+
+### Décision
+
+**DÉSACTIVER EXPLICITEMENT.** Ne pas réparer ni réintégrer une feature inutilisée. Ne pas transformer P18 en nouvelle feature.
+
+### Correctif
+
+**Commit :** `d550fee` (`d550feed9cd2c191500a8c45468eeccd702e9727`) — `fix(wishlist): disable orphaned wishlist API`
+
+**Fichiers :**
+
+- `server/app.js` : retrait de `{ default: wishlistRoutes }` et de `import('./routes/wishlistRoutes.js')` du `Promise.all` dynamique (alignement conservé) ; retrait de `app.use('/api/wishlist', wishlistRoutes)`.
+- Suppressions : `server/routes/wishlistRoutes.js`, `server/controllers/wishlistController.js`, `server/services/wishlistService.js`, `server/models/wishlistModel.js`.
+
+Aucun 410 spécifique. Aucun placeholder. Les requêtes `/api/wishlist/...` tombent dans le handler global existant `app.use(notFound)`.
+
+**Non modifié :** DB ; table `wishlist` / `wishlists` ; migrations ; frontend ; auth / `verifyToken` ; checkout ; Printful ; inventory ; DATA_MODEL ; audit figé. Le nettoyage éventuel de la table appartient à **P20** ou à une décision produit future. P20 n’est pas fermé ici.
+
+### Validations techniques avant commit
+
+- aucun consommateur wishlist externe dans `server` / `src` ;
+- aucune référence runtime wishlist restante après suppression ;
+- `node --check server/app.js` : OK ;
+- `npm run build` : OK, 1747 modules transformed ;
+- `git diff --check` : OK ;
+- `Promise.all` dynamique resté correctement aligné ;
+- seuls `server/app.js` et les quatre fichiers wishlist ont changé.
+
+### Validations production
+
+Après déploiement :
+
+- `GET /api/wishlist/1` → HTTP 404 `{"error":"Not Found","path":"/api/wishlist/1","method":"GET"}`
+- `POST /api/wishlist/toggle` avec body `{}` → HTTP 404 `{"error":"Not Found","path":"/api/wishlist/toggle","method":"POST"}`
+
+GET et POST sont désactivés. Le handler 404 global est l’autorité. Aucun traitement wishlist. Aucun accès DB wishlist.
+
+### Statut final P18
+
+P18 est **FERMÉ / COMPLET / VALIDÉ EN PRODUCTION**. Remédiation : **désactivation explicite**, pas réparation / réintégration. Ce n’est **pas** une certification de conformité légale.
+
+**P19** (Printful automatique du webhook), sévérité **MODÉRÉ**, est le **prochain chantier**.
+
+**P12** demeure distinct : correctif déjà déployé ; validation runtime cron finale encore différée ; **non fermé** ici.
+
+**P20** (base de données et migrations) demeure distinct : la table wishlist / wishlists n’a pas été supprimée ; toute décision de conservation, migration ou nettoyage du schéma **n’est pas** prise ici.
 
 **P23** (API de vérification du paiement) demeure distinct et **non fermé** ici.
 
