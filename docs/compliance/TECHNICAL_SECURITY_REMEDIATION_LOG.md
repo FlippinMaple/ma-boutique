@@ -1,6 +1,6 @@
 # Journal des correctifs techniques et de sécurité
 
-**Statut :** journal actif — chantiers P3 (checkout public), P4 (webhook Stripe / idempotence), P5 (fallback `order_items`), P6 (gestionnaire d’erreurs), P7 (authentification / sessions / JWT), P8 (inscription / consentement marketing / privacy technique), P9 (consentements email / unsubscribe / webhooks et cycle de révocation), P10 (secret unsubscribe / token hardening), P11 (paniers abandonnés), P13 (données Stripe conservées / minimisation), P14 (livraison Printful), P15 (inventaire Printful), P16 (page de succès), P17 (produits publics) et P18 (wishlist) : **FERMÉS / COMPLETS**. P15, P16, P17 et P18 sont **VALIDÉS EN PRODUCTION**. P12 (job / cron des paniers abandonnés) demeure un chantier **distinct** : sa clôture documentaire n’est pas faite ici ; une validation runtime finale y reste différée. Prochain chantier MODÉRÉ : **P19** (Printful automatique du webhook).
+**Statut :** journal actif — chantiers P3 (checkout public), P4 (webhook Stripe / idempotence), P5 (fallback `order_items`), P6 (gestionnaire d’erreurs), P7 (authentification / sessions / JWT), P8 (inscription / consentement marketing / privacy technique), P9 (consentements email / unsubscribe / webhooks et cycle de révocation), P10 (secret unsubscribe / token hardening), P11 (paniers abandonnés), P13 (données Stripe conservées / minimisation), P14 (livraison Printful), P15 (inventaire Printful), P16 (page de succès), P17 (produits publics), P18 (wishlist) et P19 (Printful automatique du webhook) : **FERMÉS / COMPLETS**. P15, P16, P17, P18 et P19 sont **VALIDÉS EN PRODUCTION**. P12 (job / cron des paniers abandonnés) demeure un chantier **distinct** : sa clôture documentaire n’est pas faite ici ; une validation runtime finale y reste différée. Prochain chantier MODÉRÉ : **P20** (base de données et migrations).
 
 Ce document complète `docs/compliance/TECHNICAL_SECURITY_AUDIT.md`.
 
@@ -2368,6 +2368,90 @@ P18 est **FERMÉ / COMPLET / VALIDÉ EN PRODUCTION**. Remédiation : **désactiv
 **P12** demeure distinct : correctif déjà déployé ; validation runtime cron finale encore différée ; **non fermé** ici.
 
 **P20** (base de données et migrations) demeure distinct : la table wishlist / wishlists n’a pas été supprimée ; toute décision de conservation, migration ou nettoyage du schéma **n’est pas** prise ici.
+
+**P23** (API de vérification du paiement) demeure distinct et **non fermé** ici.
+
+---
+
+## 2 septembre 2026 — Chantier P19 : Printful automatique du webhook (FERMÉ)
+
+Le constat initial d’audit P19 reste figé dans `TECHNICAL_SECURITY_AUDIT.md`. Ce journal documente le diagnostic, la décision et la remédiation. Aucune certification de conformité légale n’est revendiquée.
+
+P19 traite l’**automatisation Printful après paiement Stripe** dans le webhook. Sévérité audit : **MODÉRÉ**. Risque d’implémentation traité comme **ÉLEVÉ** (effet externe potentiellement coûteux). Ce n’est **pas** une nouvelle architecture de fulfillment, **pas** P14 (shipping), **pas** P15 (inventaire), **pas** P20 (migrations / schéma).
+
+P12, P20 et P23 demeurent des chantiers distincts et ne sont pas fermés dans cette section. P3, P4, P5, P13, P14, P15, P16, P17 et P18 ne sont pas rouverts.
+
+### Constat initial
+
+Le constat P19 gelé concernait notamment :
+
+- le bloc ne s’exécutait que si `usedFallbackItems === true` ;
+- il ne s’exécutait pas pour une commande normale ayant déjà ses `order_items` ;
+- `PRINTFUL_AUTOMATIC_ORDER` était désactivé ;
+- `mapCartToPrintfulVariants` cherchait `item.id` ;
+- `mapCartToPrintfulVariants` utilisait incorrectement `getDb.query` alors que `getDb` est une fonction ;
+- `createPrintfulOrder` centralisé n’envoyait pas `X-PF-Store-Id` ;
+- le chemin échouerait probablement s’il était activé ;
+- `confirm:false` montrait l’intention d’un brouillon Printful ;
+- décision historique : ne pas activer avant correction et validation.
+
+### Diagnostic vivant
+
+Les remédiations précédentes avaient rendu ce chemin encore plus clairement obsolète.
+
+**P5 :** plus de reconstruction `order_items` depuis les metadata ; `usedFallbackItems` fixé à `false` ; une commande sans vrais `order_items` ne peut pas devenir `paid`.
+
+**P13 :** les nouvelles Checkout Sessions n’envoient plus `metadata.shipping` ni `metadata.cart_items`. Le bloc P19 en dépendait encore.
+
+Le bloc était donc **inatteignable** sur le chemin normal et s’appuyait sur des contrats qui n’étaient plus autoritaires. Les vrais `order_items` portent déjà `printful_variant_id`. Le recipient autoritaire est le snapshot de commande, pas les metadata Stripe.
+
+Diagnostic supplémentaire (sans surface active une fois le bloc retiré) : pas d’`external_id` déterministe ; pas d’idempotence Printful robuste ; pas de retry contrôlé ; timeout ambigu possible ; crash après POST avant persistance = draft orphelin théorique ; `confirm:false` sans chemin de confirmation ; pas de vraie visibilité admin fulfillment ; logs du bloc potentiellement riches (réponse Printful) ; coupler cet effet externe au webhook n’était pas justifié par une exigence produit actuelle.
+
+Le risque réel était un **code mort dangereux à réactiver** (flag env / changement de `usedFallbackItems`), pas une automatisation vivante.
+
+### Décision
+
+**GARDER DÉSACTIVÉ ET RETIRER.** Ne pas réparer l’automatisation dans le webhook. Ne pas créer une nouvelle architecture de fulfillment. Ne créer aucune commande Printful.
+
+### Correctif
+
+**Commit :** `3dc825d` (`3dc825d209cb3a44a5f2315e2469eb24e5b0da6b`) — `fix(webhook): remove dead Printful order automation`
+
+**Fichiers :** `server/controllers/webhookController.js`, `server/services/printfulService.js`
+
+`webhookController.js` : retrait de l’import `mapCartToPrintfulVariants` / `createPrintfulOrder` ; suppression de `normalizeMetaCartItem`, du parsing mort `metadata.cart_items`, de `usedFallbackItems`, et du bloc Printful automatique (flag `PRINTFUL_AUTOMATIC_ORDER`, `pfSource`, recipient, `createPrintfulOrder`, `confirm:false`, `UPDATE printful_order_id`, logs associés). `shippingMeta` **conservé** (fallback email legacy). Lecteur `metadata.cart_id` **conservé** (verrouillage panier).
+
+`printfulService.js` : suppression de `mapCartToPrintfulVariants` et `createPrintfulOrder` ; retrait de l’import `getDb` devenu inutilisé. Cache / in-flight / `getPrintfulVariantAvailability` / `X-PF-Store-Id` inventory (**P15**) **intacts**. Shipping Printful (**P14**) **non touché**.
+
+**Invariants Stripe / paiement non modifiés :** `constructEvent` ; signature ; `INSERT IGNORE` / idempotence `stripe_events` ; résolution order ; gate `orderHasItems` ; `WEBHOOK_ORDER_ITEMS_MISSING` ; transaction ; `beginTransaction` ; `FOR UPDATE` ; `pending → paid` ; `paid_at` ; `order_status_history` ; reconciliation ; panier `ordered` ; `markAbandonedRecovered` ; `upsertStripeEvent` ; réponses webhook. Le comportement **PAYMENT** reste identique.
+
+**Non modifié :** DB ; `orders.printful_order_id` ; migrations ; `.env` ; checkout ; auth ; routes ; inventory P15 ; shipping P14. Aucun `POST /orders` Printful pendant les validations.
+
+### Validations techniques avant commit
+
+Workspace initial propre. Aucun consommateur inattendu. Runtime : plus de `PRINTFUL_AUTOMATIC_ORDER`, `mapCartToPrintfulVariants`, `normalizeMetaCartItem`, `usedFallbackItems`. Export service `createPrintfulOrder` retiré. `node --check` webhook et printfulService : OK. `npm run build` : OK, 1747 modules transformed. Aucun test mock webhook dans `package.json`. `git diff --check` : OK.
+
+### Validations production (non destructives)
+
+1. **Déploiement Hostinger :** le commit déployé est `3dc825d` — `fix(webhook): remove dead Printful order automation`. Le retrait P19 est la version en production.
+
+2. **Smoke test non destructif :** `POST https://flippinmaple.com/webhook/stripe` sans header `stripe-signature` → HTTP 400 `Webhook Error: No stripe-signature header value was provided.` La route webhook est vivante ; la signature reste exigée **avant** tout traitement métier ; aucun paiement modifié ; **aucune commande Printful créée**. Ce test **n’exécute pas** le chemin `paid`.
+
+### Résidus hors scope
+
+1. `ordersController.createPrintfulOrder(req, res)` : handler homonyme **non monté** dans `ordersRoutes.js`. Non touché dans P19. **Pas** une surface publique active.
+
+2. `printfulSync` / mapping de statuts Printful → `orders.status` : non modifié.
+
+3. Architecture fulfillment future (si le produit l’exige un jour) : workflow explicite / job / admin **hors webhook**, items autoritaires, snapshot shipping, `external_id` déterministe, `printful_order_id`, état fulfillment séparé de `orders.status`, retry contrôlé, crash recovery, logs sans PII, aucun appel réseau dans une TX MySQL. Peut dépendre de **P20**. Non implémentée ici.
+
+### Statut final P19
+
+P19 est **FERMÉ / COMPLET / VALIDÉ EN PRODUCTION** (validation **non destructive**). Remédiation : **garder désactivé et retirer**. Le webhook Stripe ne contient plus aucun chemin de création automatique de commande Printful. Ce n’est **pas** une certification de conformité légale.
+
+**P20** (base de données et migrations), sévérité **MODÉRÉ**, est le **prochain chantier**.
+
+**P12** demeure distinct : correctif déjà déployé ; validation runtime cron finale encore différée ; **non fermé** ici.
 
 **P23** (API de vérification du paiement) demeure distinct et **non fermé** ici.
 
