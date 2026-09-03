@@ -41,7 +41,9 @@ Les TODO, décisions ouvertes et dettes techniques restent dans `docs/INVENTAIRE
    - [shipping_logs](#shipping_logs--inventaire-18)
 6. [Paiement — événements Stripe](#paiement--evenements-stripe)
    - [stripe_events](#stripe_events--inventaire-120)
-7. [Observabilité](#observabilite)
+7. [Gestion du schéma — migrations](#gestion-du-schema--migrations)
+   - [schema_migrations](#schema_migrations)
+8. [Observabilité](#observabilite)
    - [cron_logs](#cron_logs--inventaire-121)
    - [logs](#logs--inventaire-121)
 
@@ -633,6 +635,35 @@ Contrat d’écriture P13-B :
 `reconcileStripeEvents` accepte encore les anciens payloads JSON Stripe complets **et** le nouveau format minimal. Le code runtime déployé après P13 n’utilise plus `payload` comme boîte noire PII ; la première écriture live post-`dd9580d` reste à confirmer lors d’un prochain webhook.
 
 **Note opérationnelle (hors modèle vivant).** Table `stripe_events_p13c_backup_20260818` : backup temporaire créé avant la neutralisation P13-C. Conservation volontaire. Ne pas `DROP` sans décision explicite. Ce n’est **pas** une entité fonctionnelle du modèle applicatif.
+
+---
+
+## Gestion du schéma — migrations
+
+### schema_migrations
+
+Colonnes clés
+filename varchar(255) NOT NULL
+checksum char(64) NOT NULL
+applied_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP
+
+PK / Index
+PK(filename)
+
+Engine / charset
+InnoDB, utf8mb4
+
+Rôle
+Registre technique des migrations SQL versionnées sous `db/migrations/`. `filename` identifie le fichier. `checksum` est le SHA-256 du contenu UTF-8 exact. Le runner refuse un checksum différent pour une migration déjà appliquée. Une migration pending n’est enregistrée qu’après réussite SQL. **Ce n’est pas une entité métier.** Aucune FK. Aucune relation métier.
+
+État initial P20-C
+Table créée et baselinée en production avec les deux migrations historiques existantes : `2025-10-18_stripe_events.sql` et `2026-08-15_checkout_idempotency.sql`. Cela **ne signifie pas** que leurs SQL ont été rejoués : elles ont été enregistrées comme déjà absorbées par le schéma production existant. Les checksums exacts sont dans le journal P20. P20-D n’est pas terminé.
+
+Connecté à
+Aucune FK.
+
+Connexions logiques supplémentaires
+Aucune. Le runner lit cette table ; l’application métier ne s’en sert pas.
 
 ---
 
