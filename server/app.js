@@ -6,6 +6,7 @@ import helmet from 'helmet';
 import compression from 'compression';
 import bodyParser from 'body-parser';
 import cookieParser from 'cookie-parser';
+import { timingSafeEqual } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -35,6 +36,73 @@ app.use(
   })
 );
 app.use(compression());
+
+/* Temporary site-wide Basic Auth. /health, /readiness and /webhook* stay open. */
+function timingSafeEqualString(left, right) {
+  const a = Buffer.from(String(left), 'utf8');
+  const b = Buffer.from(String(right), 'utf8');
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(a, b);
+}
+
+function isBasicAuthExemptPath(pathname) {
+  return (
+    pathname === '/health' ||
+    pathname === '/readiness' ||
+    pathname === '/webhook' ||
+    pathname.startsWith('/webhook/')
+  );
+}
+
+app.use((req, res, next) => {
+  const enabled =
+    String(process.env.SITE_BASIC_AUTH_ENABLED || '')
+      .trim()
+      .toLowerCase() === 'true';
+  if (!enabled) return next();
+
+  const pathname = req.path || '';
+  if (isBasicAuthExemptPath(pathname)) return next();
+
+  const username = String(process.env.SITE_BASIC_AUTH_USERNAME || '');
+  const password = String(process.env.SITE_BASIC_AUTH_PASSWORD || '');
+  if (!username || !password) {
+    console.error('[site-basic-auth] enabled but credentials are missing');
+    return res.status(503).type('text/plain').send('Service unavailable');
+  }
+
+  const header = req.get('authorization') || '';
+  const match = /^Basic\s+(\S+)$/i.exec(header.trim());
+  if (!match) {
+    res.set('WWW-Authenticate', 'Basic realm="Flippin Maple Private"');
+    return res.status(401).type('text/plain').send('Authentication required');
+  }
+
+  let decoded = '';
+  try {
+    decoded = Buffer.from(match[1], 'base64').toString('utf8');
+  } catch {
+    res.set('WWW-Authenticate', 'Basic realm="Flippin Maple Private"');
+    return res.status(401).type('text/plain').send('Authentication required');
+  }
+
+  const colon = decoded.indexOf(':');
+  if (colon < 0) {
+    res.set('WWW-Authenticate', 'Basic realm="Flippin Maple Private"');
+    return res.status(401).type('text/plain').send('Authentication required');
+  }
+
+  const providedUser = decoded.slice(0, colon);
+  const providedPass = decoded.slice(colon + 1);
+  const userOk = timingSafeEqualString(providedUser, username);
+  const passOk = timingSafeEqualString(providedPass, password);
+  if (!userOk || !passOk) {
+    res.set('WWW-Authenticate', 'Basic realm="Flippin Maple Private"');
+    return res.status(401).type('text/plain').send('Authentication required');
+  }
+
+  return next();
+});
 
 /* ------- Hook de debug (TLA en ESM Node ≥ 20) ------- */
 if (!isProd) {
