@@ -1,6 +1,6 @@
 # Journal des correctifs techniques et de sécurité
 
-**Statut :** journal actif — chantiers P3 (checkout public), P4 (webhook Stripe / idempotence), P5 (fallback `order_items`), P6 (gestionnaire d’erreurs), P7 (authentification / sessions / JWT), P8 (inscription / consentement marketing / privacy technique), P9 (consentements email / unsubscribe / webhooks et cycle de révocation), P10 (secret unsubscribe / token hardening), P11 (paniers abandonnés), P13 (données Stripe conservées / minimisation), P14 (livraison Printful), P15 (inventaire Printful), P16 (page de succès), P17 (produits publics), P18 (wishlist) et P19 (Printful automatique du webhook) : **FERMÉS / COMPLETS**. P15, P16, P17, P18 et P19 sont **VALIDÉS EN PRODUCTION**. P12 (job / cron des paniers abandonnés) demeure un chantier **distinct** : sa clôture documentaire n’est pas faite ici ; une validation runtime finale y reste différée. **P20** (base de données et migrations) est **EN COURS** : P20-A (inventaire production read-only) et P20-B (runner de migrations) sont terminés ; **P20-C** (baseline `schema_migrations`) est **terminé et validé en production** ; P20-D et les étapes suivantes restent à faire. P20 n’est **pas fermé**.
+**Statut :** journal actif — chantiers P3 (checkout public), P4 (webhook Stripe / idempotence), P5 (fallback `order_items`), P6 (gestionnaire d’erreurs), P7 (authentification / sessions / JWT), P8 (inscription / consentement marketing / privacy technique), P9 (consentements email / unsubscribe / webhooks et cycle de révocation), P10 (secret unsubscribe / token hardening), P11 (paniers abandonnés), P13 (données Stripe conservées / minimisation), P14 (livraison Printful), P15 (inventaire Printful), P16 (page de succès), P17 (produits publics), P18 (wishlist) et P19 (Printful automatique du webhook) : **FERMÉS / COMPLETS**. P15, P16, P17, P18 et P19 sont **VALIDÉS EN PRODUCTION**. P12 (job / cron des paniers abandonnés) demeure un chantier **distinct** : sa clôture documentaire n’est pas faite ici ; une validation runtime finale y reste différée. **P20** (base de données et migrations) est **EN COURS** : P20-A (inventaire production read-only) et P20-B (runner de migrations) sont terminés ; **P20-C** (baseline `schema_migrations`) est **terminé et validé en production** ; **P20-D1** (FK `order_items.order_id`) est **terminé et validé en production** ; P20-D2 et les étapes suivantes restent à faire. P20 n’est **pas fermé**.
 
 Ce document complète `docs/compliance/TECHNICAL_SECURITY_AUDIT.md`.
 
@@ -2465,7 +2465,7 @@ P20 traite la **base de données et les migrations**. Sévérité audit : **MOD�
 
 P12 et P23 demeurent des chantiers distincts et ne sont pas fermés dans cette section. P3–P11 et P13–P19 ne sont pas rouverts.
 
-**P20 n’est pas fermé.** P20-C est **validé en production**. Le chantier global P20 n’est pas clos.
+**P20 n’est pas fermé.** P20-C et P20-D1 sont **validés en production**. Le chantier global P20 n’est pas clos.
 
 ### Portée / statut
 
@@ -2474,9 +2474,10 @@ P12 et P23 demeurent des chantiers distincts et ne sont pas fermés dans cette s
 | P20-A | Inventaire production READ-ONLY | **Terminé** (aucune mutation) |
 | P20-B | Runner de migrations sécurisé | **Terminé techniquement** (`77e0d86`) |
 | P20-C | Création + baseline explicite de `schema_migrations` | **Terminé / validé en production** |
-| P20-D+ | Divergences ciblées de schéma, résidus, documentation DATA_MODEL restante | **À faire** — aucune décision de mutation P20-D prise ici |
+| P20-D1 | FK contradictoire `order_items.order_id` | **Terminé / validé en production** (`1dbb6fe`) |
+| P20-D2+ | Autres divergences ciblées (`variant_id`, history, résidus, DATA_MODEL restante) | **À faire** |
 
-`DATA_MODEL.md` documente `schema_migrations` depuis P20-C. Les décisions de schéma P20-D (FKs, `wishlists`, collations, etc.) ne sont pas encore prises.
+`DATA_MODEL.md` documente `schema_migrations` depuis P20-C et `order_items.order_id` ON DELETE RESTRICT depuis P20-D1. Les décisions P20-D restantes (FK `variant_id`, `wishlists`, collations, etc.) ne sont pas encore prises.
 
 ### Stratégie retenue
 
@@ -2508,7 +2509,7 @@ Aucune mutation DB, aucune migration, aucun `ALTER` / `CREATE` / `DROP` / `DELET
 
 **Dérives / résidus observés, non corrigés :**
 
-- `order_items.order_id` : deux FK vers `orders.id` avec règles DELETE contradictoires (`RESTRICT` et `CASCADE`) ;
+- `order_items.order_id` : deux FK vers `orders.id` avec règles DELETE contradictoires (`RESTRICT` et `CASCADE`) — **corrigé ensuite en P20-D1** ;
 - `order_items.variant_id` : deux FK équivalentes vers `product_variants.id` ;
 - `order_status_history.order_id` : deux FK équivalentes vers `orders.id` ;
 - `orders.stripe_session_id` et `orders.stripe_payment_intent_id` : index **NON UNIQUE** ; les contrôles read-only n’ont trouvé aucun doublon non vide au moment de P20-A ;
@@ -2520,7 +2521,7 @@ Aucune mutation DB, aucune migration, aucun `ALTER` / `CREATE` / `DROP` / `DELET
 
 Aucune de ces dérives n’a été corrigée pendant P20-A. Aucune normalisation de collation. Aucune table résiduelle supprimée. Aucune FK modifiée.
 
-Ces sujets restent des **constats / travaux P20 futurs**. Ils ne sont **pas** fermés ici : FKs `order_items`, FKs `order_status_history`, `wishlists`, collations, DDL runtime `logs`, unique `carts`, index Stripe non-unique.
+Ces sujets restent des **constats / travaux P20 futurs** sauf le conflit `order_items.order_id` RESTRICT/CASCADE, clos en P20-D1. Ils ne sont **pas** fermés ici : FKs `order_items.variant_id`, FKs `order_status_history`, `wishlists`, collations, DDL runtime `logs`, unique `carts`, index Stripe non-unique.
 
 ### P20-B — Runner de migrations
 
@@ -2652,15 +2653,50 @@ Variables utilisées (noms seulement, **aucune valeur** documentée) : `SITE_BAS
 3. `GET https://flippinmaple.com/readiness` sans credentials → HTTP 200 `{"ok":true}`.
 4. `POST https://flippinmaple.com/webhook/stripe` sans `stripe-signature` → HTTP 400 `Webhook Error: No stripe-signature header value was provided.` Basic Auth ne bloque pas le webhook ; la signature Stripe reste exigée ; aucun traitement métier Stripe déclenché par ce smoke test.
 
-**Statut :** verrou temporaire **VALIDÉ EN PRODUCTION**. P20 reste **EN COURS**. P20-C reste terminé. P20-D est la prochaine phase.
+**Statut :** verrou temporaire **VALIDÉ EN PRODUCTION**. P20 reste **EN COURS**. P20-C reste terminé. P20-D1 a depuis été clos ; P20-D2 est la prochaine phase de schéma.
 
 **Rollback / retrait futur :** pour rouvrir temporairement le site, désactiver explicitement `SITE_BASIC_AUTH_ENABLED` dans Hostinger, puis appliquer / redémarrer selon le mécanisme Hostinger. Ne pas supprimer username/password des variables **avant** d’avoir désactivé le flag : un flag encore `true` sans credentials produit un fail-closed 503. Après la fin de l’audit, décider séparément si le middleware est retiré du code ou conservé désactivé comme mécanisme opérationnel. Toute réouverture publique doit être validée séparément.
 
+### P20-D1 — FK contradictoire `order_items.order_id`
+
+**P20-D1 est TERMINÉ / VALIDÉ EN PRODUCTION.** Ce n’est **pas** P20-D2. P20 global reste **EN COURS**.
+
+**Analyse.** Production `u601077843_flippinmaple`, table `order_items` : deux FK sur la même relation `order_id → orders.id` :
+
+- `fk_order` — ON UPDATE RESTRICT, ON DELETE RESTRICT
+- `fk_order_items_order` — ON UPDATE RESTRICT, ON DELETE CASCADE
+
+Règles DELETE contradictoires. `order_items` est le snapshot historique / contractuel des lignes achetées. Aucune route HTTP DELETE de commande ; aucun `DELETE FROM orders` / `DELETE FROM order_items` dans le code applicatif ; le webhook ne doit ni supprimer ni réécrire les `order_items` existants. L’audit exige une décision explicite avant toute suppression de snapshots.
+
+**Décision :** conserver `fk_order` (RESTRICT) et retirer seulement `fk_order_items_order` (CASCADE). Les FK `variant_id` (`fk_order_items_product_variant`, `order_items_ibfk_2`) **non touchées**.
+
+**Commit technique :** `1dbb6fe` — `fix(db): remove contradictory order items cascade fk`
+
+**Fichier :** `db/migrations/2026-09-03_order_items_order_fk_restrict.sql`
+
+**Application production :** backup manuel Hostinger effectué et confirmé restaurable **avant** ALTER ; ALTER exécuté **manuellement** avec autorisation explicite. `npm run migrate` **n’a pas** été utilisé. Seule `fk_order_items_order` a été supprimée. Aucune donnée métier modifiée.
+
+**Validation `information_schema` après mutation :**
+
+- `fk_order` existe toujours : RESTRICT / RESTRICT
+- `fk_order_items_order` est absente
+- `fk_order_items_product_variant` existe toujours : RESTRICT / CASCADE
+- `order_items_ibfk_2` existe toujours : RESTRICT / CASCADE
+
+**`schema_migrations` :** la ligne a été ajoutée **explicitement après succès** (pas par le runner) :
+
+- `filename` = `2026-09-03_order_items_order_fk_restrict.sql`
+- `checksum` = `7893970049bb34932b2dbbab6fb864f4fa941d06f4292d4d0b4262e327b4f874`
+- `LENGTH(checksum) = 64`
+- `checksum_matches = 1`
+- `applied_at = 2026-09-04 01:15:00`
+
 ### Prochaines étapes / statut courant
 
-**P20-D** (étape suivante) : examiner puis traiter **séparément** les divergences ciblées du schéma. Non autorisé ici. Non modifié ici :
+**P20-D2** (étape suivante) : examiner puis traiter **séparément** la duplication des FK `order_items.variant_id`. Non autorisé ici. Non modifié ici.
 
-- FKs dupliquées / contradictoires `order_items` ;
+Restent également ouverts :
+
 - FKs dupliquées `order_status_history` ;
 - table résiduelle `wishlists` ;
 - collations mixtes ;
@@ -2671,7 +2707,7 @@ Variables utilisées (noms seulement, **aucune valeur** documentée) : `SITE_BAS
 
 Chaque mutation reste un sous-chantier séparé, avec backup approprié, inspection du SQL, autorisation et validation.
 
-**Statut courant P20 :** **EN COURS**. P20-A terminé (read-only). P20-B terminé techniquement. P20-C terminé / validé en production. Verrou temporaire Basic Auth de la surface publique : **validé en production** (mesure transversale, hors numérotation P20-C/P20-D). P20-D et la suite : à faire. **Non fermé.**
+**Statut courant P20 :** **EN COURS**. P20-A terminé (read-only). P20-B terminé techniquement. P20-C terminé / validé en production. Verrou temporaire Basic Auth de la surface publique : **validé en production** (mesure transversale). P20-D1 terminé / validé en production. P20-D2 et la suite : à faire. **Non fermé.**
 
 ---
 
