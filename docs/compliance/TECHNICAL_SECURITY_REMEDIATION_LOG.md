@@ -1,6 +1,6 @@
 # Journal des correctifs techniques et de sécurité
 
-**Statut :** journal actif — chantiers P3 (checkout public), P4 (webhook Stripe / idempotence), P5 (fallback `order_items`), P6 (gestionnaire d’erreurs), P7 (authentification / sessions / JWT), P8 (inscription / consentement marketing / privacy technique), P9 (consentements email / unsubscribe / webhooks et cycle de révocation), P10 (secret unsubscribe / token hardening), P11 (paniers abandonnés), P13 (données Stripe conservées / minimisation), P14 (livraison Printful), P15 (inventaire Printful), P16 (page de succès), P17 (produits publics), P18 (wishlist) et P19 (Printful automatique du webhook) : **FERMÉS / COMPLETS**. P15, P16, P17, P18 et P19 sont **VALIDÉS EN PRODUCTION**. P12 (job / cron des paniers abandonnés) demeure un chantier **distinct** : sa clôture documentaire n’est pas faite ici ; une validation runtime finale y reste différée. **P20** (base de données et migrations) est **EN COURS** : P20-A (inventaire production read-only) et P20-B (runner de migrations) sont terminés ; **P20-C** (baseline `schema_migrations`) est **terminé et validé en production** ; **P20-D1** à **P20-D4** (FK commande / identifiants Stripe uniques) sont **terminés et validés en production** ; **P20-D5** (`carts` / `uq_user_open`) est **fermé** (analyse terminée, aucune migration) ; P20-D6 et les étapes suivantes restent à faire. P20 n’est **pas fermé**.
+**Statut :** journal actif — chantiers P3 (checkout public), P4 (webhook Stripe / idempotence), P5 (fallback `order_items`), P6 (gestionnaire d’erreurs), P7 (authentification / sessions / JWT), P8 (inscription / consentement marketing / privacy technique), P9 (consentements email / unsubscribe / webhooks et cycle de révocation), P10 (secret unsubscribe / token hardening), P11 (paniers abandonnés), P13 (données Stripe conservées / minimisation), P14 (livraison Printful), P15 (inventaire Printful), P16 (page de succès), P17 (produits publics), P18 (wishlist) et P19 (Printful automatique du webhook) : **FERMÉS / COMPLETS**. P15, P16, P17, P18 et P19 sont **VALIDÉS EN PRODUCTION**. P12 (job / cron des paniers abandonnés) demeure un chantier **distinct** : sa clôture documentaire n’est pas faite ici ; une validation runtime finale y reste différée. **P20** (base de données et migrations) est **EN COURS** : P20-A (inventaire production read-only) et P20-B (runner de migrations) sont terminés ; **P20-C** (baseline `schema_migrations`) est **terminé et validé en production** ; **P20-D1** à **P20-D4** (FK commande / identifiants Stripe uniques) sont **terminés et validés en production** ; **P20-D5** (`carts` / `uq_user_open`) est **fermé** (analyse terminée, aucune migration) ; **P20-D6** (retrait `wishlists`) est **fermé / validé en production** ; P20-D7 et les étapes suivantes restent à faire. P20 n’est **pas fermé**.
 
 Ce document complète `docs/compliance/TECHNICAL_SECURITY_AUDIT.md`.
 
@@ -2465,7 +2465,7 @@ P20 traite la **base de données et les migrations**. Sévérité audit : **MOD�
 
 P12 et P23 demeurent des chantiers distincts et ne sont pas fermés dans cette section. P3–P11 et P13–P19 ne sont pas rouverts.
 
-**P20 n’est pas fermé.** P20-C et P20-D1 à P20-D4 sont **validés en production**. P20-D5 est **fermé** (analyse terminée, aucune mutation). Le chantier global P20 n’est pas clos.
+**P20 n’est pas fermé.** P20-C et P20-D1 à P20-D4 et P20-D6 sont **validés en production**. P20-D5 est **fermé** (analyse terminée, aucune mutation). Le chantier global P20 n’est pas clos.
 
 ### Portée / statut
 
@@ -2479,9 +2479,10 @@ P12 et P23 demeurent des chantiers distincts et ne sont pas fermés dans cette s
 | P20-D3 | FK redondante `order_status_history.order_id` | **Terminé / validé en production** (`86bbd1c`) |
 | P20-D4 | Identifiants Stripe `orders` UNIQUE + `utf8mb4_bin` | **Fermé / validé en production** (`5fc9bf8`) |
 | P20-D5 | `carts.uq_user_open` UNIQUE(`user_id`, `status`) | **Fermé / analyse terminée / aucune migration justifiée** |
-| P20-D6+ | Autres divergences ciblées (`wishlists`, `logs`, collations, DATA_MODEL restante) | **À faire** |
+| P20-D6 | Retrait table legacy `wishlists` | **Fermé / validé en production** (`11cc279`) |
+| P20-D7+ | Autres divergences ciblées (DDL runtime `logs`, collations, DATA_MODEL restante) | **À faire** |
 
-`DATA_MODEL.md` documente aussi, depuis P20-D4, les identifiants Stripe uniques `utf8mb4_bin`, et depuis P20-D5 la portée réelle de `uq_user_open` (inchangée) plus le caractère legacy/inactif de `carts`. Les décisions P20-D restantes (`wishlists`, collations, DDL `logs`, etc.) ne sont pas encore prises.
+`DATA_MODEL.md` documente aussi, depuis P20-D4, les identifiants Stripe uniques `utf8mb4_bin` ; depuis P20-D5 la portée réelle de `uq_user_open` (inchangée) et le caractère legacy/inactif de `carts` ; depuis P20-D6 l’absence de table `wishlists` (retirée). Les décisions P20-D restantes (DDL `logs`, collations, etc.) ne sont pas encore prises.
 
 ### Stratégie retenue
 
@@ -2518,14 +2519,14 @@ Aucune mutation DB, aucune migration, aucun `ALTER` / `CREATE` / `DROP` / `DELET
 - `order_status_history.order_id` : deux FK équivalentes vers `orders.id` — **corrigé ensuite en P20-D3** ;
 - `orders.stripe_session_id` et `orders.stripe_payment_intent_id` : index **NON UNIQUE** ; les contrôles read-only n’ont trouvé aucun doublon non vide au moment de P20-A — **corrigé ensuite en P20-D4** ;
 - `carts` : `UNIQUE(user_id, status)` — unicité par statut, pas seulement pour `open` — **analysé ensuite en P20-D5 ; aucune mutation** ;
-- table résiduelle `wishlists` encore présente après désactivation de l’API P18 ;
+- table résiduelle `wishlists` encore présente après désactivation de l’API P18 — **retirée ensuite en P20-D6** ;
 - `logs` encore créée au runtime (`CREATE TABLE IF NOT EXISTS`) ;
 - collations mixtes ;
 - d’autres tables / relations portent une dérive historique à examiner séparément.
 
 Aucune de ces dérives n’a été corrigée pendant P20-A. Aucune normalisation de collation. Aucune table résiduelle supprimée. Aucune FK modifiée.
 
-Ces sujets restent des **constats / travaux P20 futurs** sauf le conflit `order_items.order_id` RESTRICT/CASCADE (P20-D1), la duplication `order_items.variant_id` (P20-D2), la duplication `order_status_history.order_id` (P20-D3), les identifiants Stripe non uniques (P20-D4) et `uq_user_open` (P20-D5, non muté). Ils ne sont **pas** fermés ici : `wishlists`, collations, DDL runtime `logs`.
+Ces sujets restent des **constats / travaux P20 futurs** sauf le conflit `order_items.order_id` RESTRICT/CASCADE (P20-D1), la duplication `order_items.variant_id` (P20-D2), la duplication `order_status_history.order_id` (P20-D3), les identifiants Stripe non uniques (P20-D4), `uq_user_open` (P20-D5, non muté) et la table `wishlists` (P20-D6). Ils ne sont **pas** fermés ici : collations, DDL runtime `logs`.
 
 ### P20-B — Runner de migrations
 
@@ -2657,7 +2658,7 @@ Variables utilisées (noms seulement, **aucune valeur** documentée) : `SITE_BAS
 3. `GET https://flippinmaple.com/readiness` sans credentials → HTTP 200 `{"ok":true}`.
 4. `POST https://flippinmaple.com/webhook/stripe` sans `stripe-signature` → HTTP 400 `Webhook Error: No stripe-signature header value was provided.` Basic Auth ne bloque pas le webhook ; la signature Stripe reste exigée ; aucun traitement métier Stripe déclenché par ce smoke test.
 
-**Statut :** verrou temporaire **VALIDÉ EN PRODUCTION**. P20 reste **EN COURS**. P20-C reste terminé. P20-D1 à P20-D5 ont depuis été clos / traités ; P20-D6 est la prochaine phase de schéma.
+**Statut :** verrou temporaire **VALIDÉ EN PRODUCTION**. P20 reste **EN COURS**. P20-C reste terminé. P20-D1 à P20-D6 ont depuis été clos / traités ; P20-D7 est la prochaine phase de schéma.
 
 **Rollback / retrait futur :** pour rouvrir temporairement le site, désactiver explicitement `SITE_BASIC_AUTH_ENABLED` dans Hostinger, puis appliquer / redémarrer selon le mécanisme Hostinger. Ne pas supprimer username/password des variables **avant** d’avoir désactivé le flag : un flag encore `true` sans credentials produit un fail-closed 503. Après la fin de l’audit, décider séparément si le middleware est retiré du code ou conservé désactivé comme mécanisme opérationnel. Toute réouverture publique doit être validée séparément.
 
@@ -2818,19 +2819,56 @@ Index `idx_status_order_id` sur `order_status_history.order_id` confirmé. Aucun
 
 `carts` n’est **pas** déclarée supprimable immédiatement. Structure legacy/inactive ; le lecteur webhook et `fk_ac_cart_id` subsistent. Un éventuel retrait de `carts`, de la FK et du lecteur legacy est un **chantier séparé**, après preuve qu’aucun besoin historique ne reste.
 
+### P20-D6 — Retrait de la table legacy `wishlists`
+
+**P20-D6 est FERMÉ / VALIDÉ EN PRODUCTION.** Ce n’est **pas** P20-D7. P20 global reste **EN COURS**.
+
+**Problème.** Après P18 (API wishlist désactivée), la table résiduelle `wishlists` subsistait en production sans consommateur runtime.
+
+**Inventaire avant DROP.** Table présente ; 2 lignes ; dernière activité `2025-08-06 01:03:50` ; même `customer_id` ; 2 `variant_id` distincts. Colonnes : `id` int PK auto_increment ; `customer_id` int NULL ; `product_id` int NOT NULL ; `variant_id` int NOT NULL ; `printful_variant_id` bigint NOT NULL ; `created_at` / `updated_at` datetime. Index : PRIMARY(`id`) ; UNIQUE `unique_customer_variant`(`customer_id`, `variant_id`) ; index non unique `variant_id`. FK sortantes : `fk_wishlists_customer` (`customer_id` → `customers.id`, ON UPDATE RESTRICT, ON DELETE CASCADE) ; `fk_wishlists_variant` (`variant_id` → `product_variants.id`, ON UPDATE RESTRICT, ON DELETE CASCADE). Aucune FK sur `product_id`.
+
+**Dépendances DB.** Aucune FK entrante vers `wishlists`. Aucun trigger sur `wishlists`. Aucun trigger / view / routine ne référence `wishlists`.
+
+**Runtime.** Aucune référence à `wishlist` / `wishlists` / `wishlist_id` / `unique_customer_variant` dans `server/src/db`. Aucun writer. Aucun reader.
+
+**Historique Git.** Aucun `CREATE TABLE wishlists` ni `ALTER TABLE wishlists` versionné trouvés. `7975a28` avait introduit une wishlist sur la table plurielle `wishlists`. `0ab4012` avait ensuite dérivé vers un modèle incompatible `wishlist` singulier / `user_id`. P18 a désactivé l’API.
+
+**Données.** Les 2 lignes stockaient `product_id = 1` alors que leurs variantes actuelles appartenaient au `product_id = 33` (`product_id_matches = 0`). Une des deux avait aussi un `printful_variant_id` incohérent avec sa variante actuelle. Données historiques, partiellement incohérentes avec le catalogue. Aucune archive ni copie des 2 lignes n’a été créée dans le cadre de P20-D6.
+
+**Décision.** Retirer la table `wishlists`. Pas d’autre table touchée. Les index et FK appartenant à `wishlists` partent avec le `DROP TABLE`.
+
+**Commit technique :** `11cc279` — `fix(db): remove legacy wishlists table`
+
+**Fichier :** `db/migrations/2026-09-04_drop_legacy_wishlists.sql` — `DROP TABLE IF EXISTS wishlists;`
+
+**Checksum SHA-256 :** `930ae8b2bd2554a64026063bca1dea5fb47ae5e9d823805f7452e45e92b4ebff`
+
+**Backup / autorisation.** Backup Hostinger d’hier 21h01 disponible et restaurable **avant** mutation (non restauré). Table inchangée depuis `2025-08-06`, donc ce backup contenait déjà les mêmes 2 lignes. DROP exécuté **manuellement** après autorisation explicite : `DROP TABLE IF EXISTS` sur `u601077843_flippinmaple.wishlists`. `npm run migrate` **n’a pas** été utilisé. Aucun rollback testé.
+
+**Validation immédiate après DROP :** `table_exists = 0` ; `tracking_rows = 0`.
+
+**Tracking.** Autorisation explicite ensuite. Ligne ajoutée **manuellement** dans `schema_migrations` (pas par le runner) :
+
+- `filename` = `2026-09-04_drop_legacy_wishlists.sql`
+- `checksum` = `930ae8b2bd2554a64026063bca1dea5fb47ae5e9d823805f7452e45e92b4ebff`
+- `LENGTH(checksum) = 64`
+- `checksum_matches = 1`
+- `applied_at = 2026-09-04 12:19:56`
+
+**Validation finale :** `table_exists = 0`. Checksum 64 caractères, correspondance exacte.
+
 ### Prochaines étapes / statut courant
 
-**P20-D6** (étape suivante, ordre P20-A) : examiner puis traiter **séparément** la table résiduelle `wishlists`. Non autorisé ici. Non modifié ici.
+**P20-D7** (étape suivante, ordre P20-A) : examiner puis traiter **séparément** le DDL runtime `logs` (`CREATE TABLE IF NOT EXISTS logs`). Non autorisé ici. Non modifié ici.
 
 Restent également ouverts :
 
-- DDL runtime `logs` ;
 - collations mixtes ;
 - autres dérives historiques.
 
 Chaque mutation reste un sous-chantier séparé, avec backup approprié, inspection du SQL, autorisation et validation.
 
-**Statut courant P20 :** **EN COURS**. P20-A terminé (read-only). P20-B terminé techniquement. P20-C terminé / validé en production. Verrou temporaire Basic Auth de la surface publique : **validé en production** (mesure transversale). P20-D1 à P20-D4 fermés / validés en production. P20-D5 fermé (analyse terminée, aucune migration). P20-D6 et la suite : à faire. **Non fermé.**
+**Statut courant P20 :** **EN COURS**. P20-A terminé (read-only). P20-B terminé techniquement. P20-C terminé / validé en production. Verrou temporaire Basic Auth de la surface publique : **validé en production** (mesure transversale). P20-D1 à P20-D4 et P20-D6 fermés / validés en production. P20-D5 fermé (analyse terminée, aucune migration). P20-D7 et la suite : à faire. **Non fermé.**
 
 ---
 

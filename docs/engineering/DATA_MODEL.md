@@ -32,7 +32,7 @@ Les TODO, décisions ouvertes et dettes techniques restent dans `docs/INVENTAIRE
 4. [Lot 3 — Panier et listes](#lot-3--panier-et-listes)
    - [carts](#carts--inventaire-13)
    - [abandoned_carts](#abandoned_carts--inventaire-14)
-   - [wishlists](#wishlists--inventaire-114)
+   - [wishlist / wishlists (retirées)](#wishlists--inventaire-114-retirée)
 5. [Domaine Commandes](#domaine-commandes)
    - [orders](#orders--inventaire-15)
    - [order_items](#order_items--inventaire-16)
@@ -97,7 +97,6 @@ abandoned_carts.user_id → customers.id
 refresh_tokens.user_id → customers.id
 unsubscribes.customer_id → customers.id
 user_sessions.customer_id → customers.id
-wishlists.customer_id → customers.id
 
 Note : carts.user_id pointe logiquement vers customers.id, mais il n’y a pas de FK formelle en base.
 
@@ -300,7 +299,6 @@ Connecté à
 order_items.variant_id → product_variants.id
 product_images.variant_id → product_variants.id
 product_promotions.product_variant_id → product_variants.id
-wishlists.variant_id → product_variants.id
 
 Connexions logiques supplémentaires
 main_category_id est un varchar alors que les catégories officielles vivent dans categories (id int, name unique). On doit clarifier ce que c’est : tag marketing libre ou vraie catégorie structurante.
@@ -441,29 +439,9 @@ L’inventaire ci-dessus conserve le schéma / historique. Le runtime **actif** 
 
 **Rétention.** Aucune purge automatique actuelle. Décision P11-I volontaire : pas de `DELETE` périodique tant que P12 et une politique produit / privacy n’ont pas défini un cutoff. Aucune durée finale n’est inscrite ici.
 
-### wishlists ← inventaire §1.14
+### wishlists ← inventaire §1.14 (retirée)
 
-Colonnes clés
-id PK AUTO_INCREMENT
-customer_id (FK customers.id, nullable)
-product_id int NOT NULL
-variant_id int NOT NULL FK → product_variants.id
-printful_variant_id bigint(20) NOT NULL
-created_at, updated_at
-
-PK / Index / FK / Contraintes
-PK(id)
-UNIQUE(customer_id,variant_id)
-Index(variant_id)
-FK customer_id → customers.id ON DELETE CASCADE
-FK variant_id → product_variants.id ON DELETE CASCADE
-
-Rôle métier
-Liste de favoris du client. Peut stocker aussi l’ID Printful pour offrir le bon visuel / prix direct.
-
-Connexions logiques supplémentaires
-product_id n’a pas de FK vers products.id. En théorie variant_id suffit pour remonter au produit. Donc product_id est probablement un cache (optimisation : éviter une jointure quand on affiche la wishlist).
-Si c’est un cache, il peut devenir faux.
+API wishlist désactivée en P18. Table résiduelle `wishlists` supprimée en production en P20-D6 (`DROP TABLE IF EXISTS wishlists`). Aucune table `wishlist` / `wishlists` dans le modèle production actuel.
 
 ---
 
