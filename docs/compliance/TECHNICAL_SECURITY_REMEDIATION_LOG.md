@@ -2627,6 +2627,35 @@ Aucune divergence de schéma listée en P20-A n’a été modifiée dans P20-C.
 
 **Rollback / réversibilité.** P20-C n’a modifié aucune table métier ni aucune donnée métier. Les seules mutations ont été (1) la création de la nouvelle table technique `schema_migrations` et (2) l’insertion de deux lignes de baseline. Tant qu’aucune migration future n’a été appliquée en s’appuyant sur ce registre, un rollback ciblé de P20-C consiste à supprimer `schema_migrations`. Ce rollback ciblé serait préférable à une restauration complète de la base : une restauration Hostinger pourrait écraser des données métier créées après la sauvegarde. Toute suppression éventuelle exige elle aussi une autorisation explicite. Une fois que de futures migrations auront été enregistrées ou appliquées via `schema_migrations`, ce rollback simpliste ne sera plus valide ; il faudra alors un plan spécifique à l’état atteint.
 
+### Verrou temporaire de la surface publique avant P20-D
+
+Mesure transversale temporaire pendant la poursuite de l’audit / P20-D. **Ce n’est pas** une nouvelle divergence de schéma, **pas** un sous-chantier P20-C/P20-D, **pas** une déclaration que tous les risques de sécurité sont corrigés.
+
+**Raison :** réduire temporairement l’accès public à Flippin’ Maple sans couper les health checks Hostinger ni les webhooks Stripe.
+
+**Commit :** `8a1f159` — `feat(security): add temporary site basic auth`
+
+**Fichier :** `server/app.js`
+
+**Comportement :** protection active uniquement si `SITE_BASIC_AUTH_ENABLED=true`. Frontend protégé. Toutes les routes `/api/...` protégées. Credentials absents alors que la protection est activée → fail closed HTTP 503. Credentials Basic invalides ou absents → HTTP 401 + `WWW-Authenticate: Basic realm="Flippin Maple Private"`. Comparaison via `timingSafeEqual`. Aucun bypass IP, localhost, User-Agent ou query string. `multipleStatements`, DB, parser raw Stripe et routes métier **non touchés**.
+
+Variables utilisées (noms seulement, **aucune valeur** documentée) : `SITE_BASIC_AUTH_ENABLED`, `SITE_BASIC_AUTH_USERNAME`, `SITE_BASIC_AUTH_PASSWORD`.
+
+**Exemptions :** `/health`, `/readiness`, `/webhook` et `/webhook/...`.
+
+**Déploiement :** commit `8a1f159` poussé sur `main` ; déploiement Hostinger confirmé `Completed` / `Current` ; les trois variables ont ensuite été appliquées en production. Aucun secret écrit ici.
+
+**Validations production :**
+
+1. Navigation privée `https://flippinmaple.com` → fenêtre native Basic Auth ; après credentials valides, site fonctionnel.
+2. `GET https://flippinmaple.com/api/products` sans credentials → HTTP 401, `WWW-Authenticate: Basic realm="Flippin Maple Private"`, body `Authentication required`.
+3. `GET https://flippinmaple.com/readiness` sans credentials → HTTP 200 `{"ok":true}`.
+4. `POST https://flippinmaple.com/webhook/stripe` sans `stripe-signature` → HTTP 400 `Webhook Error: No stripe-signature header value was provided.` Basic Auth ne bloque pas le webhook ; la signature Stripe reste exigée ; aucun traitement métier Stripe déclenché par ce smoke test.
+
+**Statut :** verrou temporaire **VALIDÉ EN PRODUCTION**. P20 reste **EN COURS**. P20-C reste terminé. P20-D est la prochaine phase.
+
+**Rollback / retrait futur :** pour rouvrir temporairement le site, désactiver explicitement `SITE_BASIC_AUTH_ENABLED` dans Hostinger, puis appliquer / redémarrer selon le mécanisme Hostinger. Ne pas supprimer username/password des variables **avant** d’avoir désactivé le flag : un flag encore `true` sans credentials produit un fail-closed 503. Après la fin de l’audit, décider séparément si le middleware est retiré du code ou conservé désactivé comme mécanisme opérationnel. Toute réouverture publique doit être validée séparément.
+
 ### Prochaines étapes / statut courant
 
 **P20-D** (étape suivante) : examiner puis traiter **séparément** les divergences ciblées du schéma. Non autorisé ici. Non modifié ici :
@@ -2642,7 +2671,7 @@ Aucune divergence de schéma listée en P20-A n’a été modifiée dans P20-C.
 
 Chaque mutation reste un sous-chantier séparé, avec backup approprié, inspection du SQL, autorisation et validation.
 
-**Statut courant P20 :** **EN COURS**. P20-A terminé (read-only). P20-B terminé techniquement. P20-C terminé / validé en production. P20-D et la suite : à faire. **Non fermé.**
+**Statut courant P20 :** **EN COURS**. P20-A terminé (read-only). P20-B terminé techniquement. P20-C terminé / validé en production. Verrou temporaire Basic Auth de la surface publique : **validé en production** (mesure transversale, hors numérotation P20-C/P20-D). P20-D et la suite : à faire. **Non fermé.**
 
 ---
 
