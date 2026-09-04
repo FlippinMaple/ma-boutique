@@ -144,6 +144,15 @@ Webhook signé  POST /webhook/stripe
 | **Si violé** | Le webhook ne peut pas résoudre la commande de façon fiable. |
 | **Fichiers** | `server/controllers/checkoutController.js` |
 
+### Un identifiant Stripe exact pour au plus une commande
+
+| | |
+|---|---|
+| **Description** | Une Checkout Session Stripe (`orders.stripe_session_id`) et un PaymentIntent Stripe (`orders.stripe_payment_intent_id`) correspondent chacun à **au plus une** order. Les colonnes restent nullable ; plusieurs NULL sont permis. La comparaison en base est **case-sensitive** (`utf8mb4_bin`). Les index `idx_orders_stripe_session` et `idx_orders_pi` sont UNIQUE (P20-D4). |
+| **Justification** | Schéma production après P20-D4 ; lecteurs `WHERE … = ? LIMIT 1` ; le code ne lower/uppercase pas ces IDs. |
+| **Si violé** | Deux commandes pour la même session ou le même PaymentIntent, ou comparaison case-insensitive pouvant confondre deux identifiants Stripe distincts. |
+| **Fichiers** | `docs/engineering/DATA_MODEL.md`, `db/migrations/2026-09-04_orders_stripe_identifiers_unique.sql` |
+
 ### Métadonnées Checkout minimales
 
 | | |

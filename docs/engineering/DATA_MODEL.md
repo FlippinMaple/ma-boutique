@@ -482,6 +482,8 @@ total decimal(10,2)
 valeurs en cents: subtotal_cents, shipping_cents, tax_cents, total_cents
 shipping_cost, currency
 Stripe: stripe_session_id, stripe_payment_intent_id, stripe_customer_id, client_reference_id
+
+`stripe_session_id` / `stripe_payment_intent_id` (P20-D4) : VARCHAR(255) NULL DEFAULT NULL, CHARACTER SET utf8mb4 COLLATE utf8mb4_bin. Identifiants Stripe exacts, case-sensitive. Plusieurs NULL permis. Relation logique : au plus une order par ID non NULL.
 Printful: printful_order_id
 
 Snapshots immuables:
@@ -496,6 +498,8 @@ created_at, updated_at
 PK / Index / FK / CHECK
 PK(id)
 Index(status), Index(customer_email), Index(customer_id)
+UNIQUE idx_orders_stripe_session (stripe_session_id) — P20-D4
+UNIQUE idx_orders_pi (stripe_payment_intent_id) — P20-D4
 FK customer_id → customers.id ON DELETE SET NULL ON UPDATE CASCADE
 CHECK json_valid(shipping_address_snapshot)
 
