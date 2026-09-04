@@ -20,7 +20,6 @@ process.on('uncaughtException', (e) => {
 const { default: app } = await import('./app.js');
 const { getDb } = await import('./utils/db.js');
 const { createLogger } = await import('./utils/logger.js');
-const { ensureLogsTable } = await import('./bootstrap/createLogsTable.js');
 const { startCronJobs } = await import('./jobs/index.js');
 
 const PORT = Number(process.env.PORT) || 4242;
@@ -32,7 +31,6 @@ const HOST = process.env.HOST || '0.0.0.0';
   let db = null;
   try {
     db = await getDb();
-    await ensureLogsTable(db);
     console.log('Connexion DB etablie');
   } catch (err) {
     console.warn('DB indisponible, fallback fichier/console pour les logs');
