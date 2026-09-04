@@ -375,18 +375,18 @@ created_at, updated_at (timestamps avec ON UPDATE)
 
 PK / Index / Contraintes
 PK(id)
-Index(user_id)
+Index idx_carts_user_id (user_id) — NON UNIQUE
 UNIQUE uq_user_open(user_id, status)
-→ garantit qu’un utilisateur n’a pas deux paniers open
+Pour un `user_id` non NULL : au plus une ligne par valeur de `status` (`open`, `ordered`, `abandoned`). Ce n’est **pas** une unicité limitée au seul statut `open`. `uq_user_open` reste **inchangé** volontairement (P20-D5 : aucune migration justifiée).
 
 Rôle métier
-Panier actif d’un utilisateur connecté ou invité (en combinaison avec abandoned_carts). Passe par les états open → ordered → (ensuite suivi ailleurs).
+Table **legacy / inactive** dans le runtime actuel (P20-D5) : aucun writer qui crée une ligne `carts` ; table vide en production au moment de l’analyse. Le webhook conserve un UPDATE legacy `open` → `ordered` si `metadata.cart_id` historique. `carts` n’est pas déclarée supprimable immédiatement ; un retrait (table, FK, lecteur webhook) serait un chantier séparé.
 
 Connecté à
-abandoned_carts.cart_id → carts.id
+abandoned_carts.cart_id → carts.id (`fk_ac_cart_id`, ON DELETE SET NULL ON UPDATE CASCADE). Au moment de P20-D5, aucune ligne `abandoned_carts` n’utilise cette FK (`cart_id` tous NULL).
 
 Connexions logiques supplémentaires
-carts.user_id devrait référencer customers.id.
+carts.user_id n’a actuellement aucune FK vers customers.id. P20-D5 n’en ajoute pas : carts est legacy/inactive et toute évolution ou suppression de cette relation doit être traitée dans un chantier séparé.
 Il n’y a pas de FK en base, donc aujourd’hui on peut techniquement avoir un panier qui pointe vers un user supprimé.
 
 ### abandoned_carts ← inventaire §1.4

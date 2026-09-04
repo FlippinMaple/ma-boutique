@@ -599,8 +599,8 @@ Webhook signé  POST /webhook/stripe
 
 | | |
 |---|---|
-| **Description** | Après `paid`, si un `metadata.cart_id` **historique** est présent, `carts.status` passe de `open` à `ordered` (UPDATE conditionnel `status = 'open'`). Les nouvelles sessions checkout n’envoient plus `cart_id`. |
-| **Justification** | Bloc « Verrouiller le panier » du webhook ; P3-C. |
+| **Description** | Chemin **legacy** uniquement : après `paid`, si `session.metadata.cart_id` est présent (**anciennes** sessions), `UPDATE carts SET status='ordered' WHERE id=? AND status='open'`. Les **nouvelles** sessions n’envoient plus `cart_id` depuis `7af49f0`. Le runtime actuel ne crée aucune ligne `carts`. |
+| **Justification** | Lecteur conservé dans `webhookController` ; `7af49f0` a retiré `cart_id` des nouvelles metadata ; P20-D5. |
 | **Si violé** | Même panier open réutilisable après un ancien paiement encore lié à un cart. |
 | **Fichiers** | `server/controllers/webhookController.js` |
 
