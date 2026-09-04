@@ -532,13 +532,13 @@ updated_at datetime DEFAULT current_timestamp() ON UPDATE current_timestamp()
 
 PK / Index / FK / CHECK
 PK(id)
-Index(order_id), Index(variant_id)
+Index(order_id), Index(variant_id) — `idx_product_variant_id` sur `variant_id`
 FK order_id → orders.id (ON DELETE RESTRICT, ON UPDATE RESTRICT) — contrainte `fk_order` (P20-D1)
-FK variant_id → product_variants.id ON DELETE CASCADE
+FK variant_id → product_variants.id (ON DELETE CASCADE, ON UPDATE RESTRICT) — contrainte unique `fk_order_items_product_variant` (P20-D2)
 CHECK json_valid(meta)
 
 Rôle métier
-Snapshot des lignes d’articles d’une commande (prix payé, variante, ID d’exécution Printful). Les lignes sont créées dans la transaction d’initialisation checkout **avant** Stripe. Le webhook ne crée plus de `order_items` : leur absence pour un paiement est un état invalide qui bloque `paid`. Aucun fallback metadata ne les reconstruit. Aucune colonne, index, FK ni migration P5. ON DELETE RESTRICT sur `order_id` protège ces lignes historiques / contractuelles : une commande parente ne peut pas disparaître en entraînant ses snapshots. La FK CASCADE historique `fk_order_items_order` a été retirée en P20-D1. Les FK `variant_id` restent documentées ici telles qu’observées ; leur duplication n’est pas tranchée (P20-D2).
+Snapshot des lignes d’articles d’une commande (prix payé, variante, ID d’exécution Printful). Les lignes sont créées dans la transaction d’initialisation checkout **avant** Stripe. Le webhook ne crée plus de `order_items` : leur absence pour un paiement est un état invalide qui bloque `paid`. Aucun fallback metadata ne les reconstruit. Aucune colonne, index, FK ni migration P5. ON DELETE RESTRICT sur `order_id` protège ces lignes historiques / contractuelles : une commande parente ne peut pas disparaître en entraînant ses snapshots. La FK CASCADE historique `fk_order_items_order` a été retirée en P20-D1. La FK redondante auto-nommée `order_items_ibfk_2` n’est plus présente après P20-D2 ; `idx_product_variant_id` est conservé.
 
 Connecté à
 orders

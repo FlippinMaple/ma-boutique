@@ -1,6 +1,6 @@
 # Journal des correctifs techniques et de sécurité
 
-**Statut :** journal actif — chantiers P3 (checkout public), P4 (webhook Stripe / idempotence), P5 (fallback `order_items`), P6 (gestionnaire d’erreurs), P7 (authentification / sessions / JWT), P8 (inscription / consentement marketing / privacy technique), P9 (consentements email / unsubscribe / webhooks et cycle de révocation), P10 (secret unsubscribe / token hardening), P11 (paniers abandonnés), P13 (données Stripe conservées / minimisation), P14 (livraison Printful), P15 (inventaire Printful), P16 (page de succès), P17 (produits publics), P18 (wishlist) et P19 (Printful automatique du webhook) : **FERMÉS / COMPLETS**. P15, P16, P17, P18 et P19 sont **VALIDÉS EN PRODUCTION**. P12 (job / cron des paniers abandonnés) demeure un chantier **distinct** : sa clôture documentaire n’est pas faite ici ; une validation runtime finale y reste différée. **P20** (base de données et migrations) est **EN COURS** : P20-A (inventaire production read-only) et P20-B (runner de migrations) sont terminés ; **P20-C** (baseline `schema_migrations`) est **terminé et validé en production** ; **P20-D1** (FK `order_items.order_id`) est **terminé et validé en production** ; P20-D2 et les étapes suivantes restent à faire. P20 n’est **pas fermé**.
+**Statut :** journal actif — chantiers P3 (checkout public), P4 (webhook Stripe / idempotence), P5 (fallback `order_items`), P6 (gestionnaire d’erreurs), P7 (authentification / sessions / JWT), P8 (inscription / consentement marketing / privacy technique), P9 (consentements email / unsubscribe / webhooks et cycle de révocation), P10 (secret unsubscribe / token hardening), P11 (paniers abandonnés), P13 (données Stripe conservées / minimisation), P14 (livraison Printful), P15 (inventaire Printful), P16 (page de succès), P17 (produits publics), P18 (wishlist) et P19 (Printful automatique du webhook) : **FERMÉS / COMPLETS**. P15, P16, P17, P18 et P19 sont **VALIDÉS EN PRODUCTION**. P12 (job / cron des paniers abandonnés) demeure un chantier **distinct** : sa clôture documentaire n’est pas faite ici ; une validation runtime finale y reste différée. **P20** (base de données et migrations) est **EN COURS** : P20-A (inventaire production read-only) et P20-B (runner de migrations) sont terminés ; **P20-C** (baseline `schema_migrations`) est **terminé et validé en production** ; **P20-D1** (FK `order_items.order_id`) et **P20-D2** (FK `order_items.variant_id`) sont **terminés et validés en production** ; P20-D3 et les étapes suivantes restent à faire. P20 n’est **pas fermé**.
 
 Ce document complète `docs/compliance/TECHNICAL_SECURITY_AUDIT.md`.
 
@@ -2465,7 +2465,7 @@ P20 traite la **base de données et les migrations**. Sévérité audit : **MOD�
 
 P12 et P23 demeurent des chantiers distincts et ne sont pas fermés dans cette section. P3–P11 et P13–P19 ne sont pas rouverts.
 
-**P20 n’est pas fermé.** P20-C et P20-D1 sont **validés en production**. Le chantier global P20 n’est pas clos.
+**P20 n’est pas fermé.** P20-C, P20-D1 et P20-D2 sont **validés en production**. Le chantier global P20 n’est pas clos.
 
 ### Portée / statut
 
@@ -2475,9 +2475,10 @@ P12 et P23 demeurent des chantiers distincts et ne sont pas fermés dans cette s
 | P20-B | Runner de migrations sécurisé | **Terminé techniquement** (`77e0d86`) |
 | P20-C | Création + baseline explicite de `schema_migrations` | **Terminé / validé en production** |
 | P20-D1 | FK contradictoire `order_items.order_id` | **Terminé / validé en production** (`1dbb6fe`) |
-| P20-D2+ | Autres divergences ciblées (`variant_id`, history, résidus, DATA_MODEL restante) | **À faire** |
+| P20-D2 | FK redondante `order_items.variant_id` | **Terminé / validé en production** (`59020d6`) |
+| P20-D3+ | Autres divergences ciblées (`order_status_history`, résidus, DATA_MODEL restante) | **À faire** |
 
-`DATA_MODEL.md` documente `schema_migrations` depuis P20-C et `order_items.order_id` ON DELETE RESTRICT depuis P20-D1. Les décisions P20-D restantes (FK `variant_id`, `wishlists`, collations, etc.) ne sont pas encore prises.
+`DATA_MODEL.md` documente `schema_migrations` depuis P20-C, `order_items.order_id` ON DELETE RESTRICT depuis P20-D1, et une seule FK `variant_id` (`fk_order_items_product_variant`) depuis P20-D2. Les décisions P20-D restantes (`order_status_history`, `wishlists`, collations, etc.) ne sont pas encore prises.
 
 ### Stratégie retenue
 
@@ -2510,7 +2511,7 @@ Aucune mutation DB, aucune migration, aucun `ALTER` / `CREATE` / `DROP` / `DELET
 **Dérives / résidus observés, non corrigés :**
 
 - `order_items.order_id` : deux FK vers `orders.id` avec règles DELETE contradictoires (`RESTRICT` et `CASCADE`) — **corrigé ensuite en P20-D1** ;
-- `order_items.variant_id` : deux FK équivalentes vers `product_variants.id` ;
+- `order_items.variant_id` : deux FK équivalentes vers `product_variants.id` — **corrigé ensuite en P20-D2** ;
 - `order_status_history.order_id` : deux FK équivalentes vers `orders.id` ;
 - `orders.stripe_session_id` et `orders.stripe_payment_intent_id` : index **NON UNIQUE** ; les contrôles read-only n’ont trouvé aucun doublon non vide au moment de P20-A ;
 - `carts` : `UNIQUE(user_id, status)` — unicité par statut, pas seulement pour `open` ;
@@ -2521,7 +2522,7 @@ Aucune mutation DB, aucune migration, aucun `ALTER` / `CREATE` / `DROP` / `DELET
 
 Aucune de ces dérives n’a été corrigée pendant P20-A. Aucune normalisation de collation. Aucune table résiduelle supprimée. Aucune FK modifiée.
 
-Ces sujets restent des **constats / travaux P20 futurs** sauf le conflit `order_items.order_id` RESTRICT/CASCADE, clos en P20-D1. Ils ne sont **pas** fermés ici : FKs `order_items.variant_id`, FKs `order_status_history`, `wishlists`, collations, DDL runtime `logs`, unique `carts`, index Stripe non-unique.
+Ces sujets restent des **constats / travaux P20 futurs** sauf le conflit `order_items.order_id` RESTRICT/CASCADE (P20-D1) et la duplication `order_items.variant_id` (P20-D2). Ils ne sont **pas** fermés ici : FKs `order_status_history`, `wishlists`, collations, DDL runtime `logs`, unique `carts`, index Stripe non-unique.
 
 ### P20-B — Runner de migrations
 
@@ -2653,7 +2654,7 @@ Variables utilisées (noms seulement, **aucune valeur** documentée) : `SITE_BAS
 3. `GET https://flippinmaple.com/readiness` sans credentials → HTTP 200 `{"ok":true}`.
 4. `POST https://flippinmaple.com/webhook/stripe` sans `stripe-signature` → HTTP 400 `Webhook Error: No stripe-signature header value was provided.` Basic Auth ne bloque pas le webhook ; la signature Stripe reste exigée ; aucun traitement métier Stripe déclenché par ce smoke test.
 
-**Statut :** verrou temporaire **VALIDÉ EN PRODUCTION**. P20 reste **EN COURS**. P20-C reste terminé. P20-D1 a depuis été clos ; P20-D2 est la prochaine phase de schéma.
+**Statut :** verrou temporaire **VALIDÉ EN PRODUCTION**. P20 reste **EN COURS**. P20-C reste terminé. P20-D1 et P20-D2 ont depuis été clos ; P20-D3 est la prochaine phase de schéma.
 
 **Rollback / retrait futur :** pour rouvrir temporairement le site, désactiver explicitement `SITE_BASIC_AUTH_ENABLED` dans Hostinger, puis appliquer / redémarrer selon le mécanisme Hostinger. Ne pas supprimer username/password des variables **avant** d’avoir désactivé le flag : un flag encore `true` sans credentials produit un fail-closed 503. Après la fin de l’audit, décider séparément si le middleware est retiré du code ou conservé désactivé comme mécanisme opérationnel. Toute réouverture publique doit être validée séparément.
 
@@ -2691,13 +2692,53 @@ Règles DELETE contradictoires. `order_items` est le snapshot historique / contr
 - `checksum_matches = 1`
 - `applied_at = 2026-09-04 01:15:00`
 
+### P20-D2 — FK redondante `order_items.variant_id`
+
+**P20-D2 est TERMINÉ / VALIDÉ EN PRODUCTION.** Ce n’est **pas** P20-D3. P20 global reste **EN COURS**.
+
+**Analyse.** Production `u601077843_flippinmaple`, table `order_items` : deux FK **strictement équivalentes** sur `variant_id → product_variants.id` :
+
+- `fk_order_items_product_variant` — ON UPDATE RESTRICT, ON DELETE CASCADE
+- `order_items_ibfk_2` — ON UPDATE RESTRICT, ON DELETE CASCADE
+
+Index `idx_product_variant_id` sur `order_items.variant_id` confirmé. Aucune dépendance runtime aux noms de ces contraintes.
+
+**Décision :** conserver la FK descriptive `fk_order_items_product_variant` ; retirer uniquement `order_items_ibfk_2`. Ne toucher à aucun index ni donnée. `fk_order` non touchée.
+
+**Commit technique :** `59020d6` — `fix(db): deduplicate order items variant fk`
+
+**Fichier :** `db/migrations/2026-09-04_order_items_variant_fk_deduplicate.sql`
+
+**Backup :** le backup manuel Hostinger disponible avait été créé plus tôt dans la même séquence, **avant P20-D1**. Hostinger limite les backups manuels à un par 24 h. P20-D2 n’a **pas** eu un nouveau backup manuel distinct. Aucune restauration n’a été nécessaire.
+
+**Application / observation phpMyAdmin.** Après autorisation explicite, une tentative
+
+`ALTER TABLE u601077843_flippinmaple.order_items DROP FOREIGN KEY order_items_ibfk_2;`
+
+a été exécutée. phpMyAdmin a ensuite affiché **#1091** (contrainte `order_items_ibfk_2` introuvable). Cette tentative **n’est pas** documentée comme un ALTER « réussi ». La cause exacte du #1091 **n’est pas inventée** ici (race, message tardif, état déjà absent, etc.). `npm run migrate` **n’a pas** été utilisé.
+
+**État cible validé en lecture seule immédiatement après :**
+
+- `information_schema.KEY_COLUMN_USAGE` : `fk_order` présente ; `fk_order_items_product_variant` présente ; `order_items_ibfk_2` **absente**
+- `SHOW INDEX` : `idx_product_variant_id` existe toujours sur `variant_id`
+- `information_schema.REFERENTIAL_CONSTRAINTS` : `fk_order_items_product_variant` toujours présente, ON UPDATE RESTRICT, ON DELETE CASCADE
+
+Donc **l’état cible P20-D2 est atteint et validé en production**. Le moment / mécanisme exact de la disparition de `order_items_ibfk_2` ne doit pas être surinterprété à cause du #1091.
+
+**`schema_migrations` :** la ligne a été ajoutée **explicitement après validation de l’état cible** (pas par le runner) :
+
+- `filename` = `2026-09-04_order_items_variant_fk_deduplicate.sql`
+- `checksum` = `f055c65bc3efe798a0fbb731697fe6b8a2d118e1cb3b19c8aa8335d7f993b642`
+- `LENGTH(checksum) = 64`
+- `checksum_matches = 1`
+- `applied_at = 2026-09-04 01:49:21`
+
 ### Prochaines étapes / statut courant
 
-**P20-D2** (étape suivante) : examiner puis traiter **séparément** la duplication des FK `order_items.variant_id`. Non autorisé ici. Non modifié ici.
+**P20-D3** (étape suivante) : examiner puis traiter **séparément** les FK dupliquées `order_status_history.order_id`. Non autorisé ici. Non modifié ici.
 
 Restent également ouverts :
 
-- FKs dupliquées `order_status_history` ;
 - table résiduelle `wishlists` ;
 - collations mixtes ;
 - DDL runtime `logs` ;
@@ -2707,7 +2748,7 @@ Restent également ouverts :
 
 Chaque mutation reste un sous-chantier séparé, avec backup approprié, inspection du SQL, autorisation et validation.
 
-**Statut courant P20 :** **EN COURS**. P20-A terminé (read-only). P20-B terminé techniquement. P20-C terminé / validé en production. Verrou temporaire Basic Auth de la surface publique : **validé en production** (mesure transversale). P20-D1 terminé / validé en production. P20-D2 et la suite : à faire. **Non fermé.**
+**Statut courant P20 :** **EN COURS**. P20-A terminé (read-only). P20-B terminé techniquement. P20-C terminé / validé en production. Verrou temporaire Basic Auth de la surface publique : **validé en production** (mesure transversale). P20-D1 et P20-D2 terminés / validés en production. P20-D3 et la suite : à faire. **Non fermé.**
 
 ---
 
