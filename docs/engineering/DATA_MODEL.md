@@ -554,11 +554,11 @@ changed_at timestamp DEFAULT current_timestamp()
 
 PK / Index / FK
 PK(id)
-Index(order_id)
-FK order_id → orders.id ON DELETE CASCADE
+Index(order_id) — `idx_status_order_id`
+FK order_id → orders.id (ON DELETE CASCADE, ON UPDATE RESTRICT) — contrainte unique `fk_status_history_order` (P20-D3)
 
 Rôle métier
-Historique d’état de chaque commande. Transitions checkout actuelles : `init` → `pending` à la création ; `pending` → `paid` au paiement signé (même COMMIT que l’UPDATE paid, P4-F) ; `pending` → `cancelled` à l’expiration de la Checkout Session Stripe.
+Historique d’état de chaque commande. Transitions checkout actuelles : `init` → `pending` à la création ; `pending` → `paid` au paiement signé (même COMMIT que l’UPDATE paid, P4-F) ; `pending` → `cancelled` à l’expiration de la Checkout Session Stripe. La FK redondante auto-nommée `order_status_history_ibfk_1` a été retirée en P20-D3 ; `idx_status_order_id` est conservé.
 
 ### checkout_idempotency
 
