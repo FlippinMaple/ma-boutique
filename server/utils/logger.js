@@ -117,7 +117,9 @@ export async function logError(errOrMsg, context = '') {
   const base =
     typeof errOrMsg === 'string'
       ? errOrMsg
-      : errOrMsg?.stack || errOrMsg?.message || String(errOrMsg);
+      : process.env.NODE_ENV === 'production'
+        ? errOrMsg?.message || String(errOrMsg)
+        : errOrMsg?.stack || errOrMsg?.message || String(errOrMsg);
 
   const msg = context ? `[${context}] ${base}` : base;
 
