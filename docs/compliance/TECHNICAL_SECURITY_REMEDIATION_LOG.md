@@ -1,6 +1,6 @@
 # Journal des correctifs techniques et de sécurité
 
-**Statut :** journal actif — chantiers P3 (checkout public), P4 (webhook Stripe / idempotence), P5 (fallback `order_items`), P6 (gestionnaire d’erreurs), P7 (authentification / sessions / JWT), P8 (inscription / consentement marketing / privacy technique), P9 (consentements email / unsubscribe / webhooks et cycle de révocation), P10 (secret unsubscribe / token hardening), P11 (paniers abandonnés), P13 (données Stripe conservées / minimisation), P14 (livraison Printful), P15 (inventaire Printful), P16 (page de succès), P17 (produits publics), P18 (wishlist) et P19 (Printful automatique du webhook) : **FERMÉS / COMPLETS**. P15, P16, P17, P18 et P19 sont **VALIDÉS EN PRODUCTION**. P12 (job / cron des paniers abandonnés) demeure un chantier **distinct** : sa clôture documentaire n’est pas faite ici ; une validation runtime finale y reste différée. **P20** (base de données et migrations) est **EN COURS** : P20-A (inventaire production read-only) et P20-B (runner de migrations) sont terminés ; **P20-C** (baseline `schema_migrations`) est **terminé et validé en production** ; **P20-D1** à **P20-D4** (FK commande / identifiants Stripe uniques) sont **terminés et validés en production** ; **P20-D5** (`carts` / `uq_user_open`) est **fermé** (analyse terminée, aucune migration) ; **P20-D6** (retrait `wishlists`) et **P20-D7** (schéma `logs` versionné) sont **fermés / validés en production** ; P20-D8 et les étapes suivantes restent à faire. P20 n’est **pas fermé**.
+**Statut :** journal actif — chantiers P3 (checkout public), P4 (webhook Stripe / idempotence), P5 (fallback `order_items`), P6 (gestionnaire d’erreurs), P7 (authentification / sessions / JWT), P8 (inscription / consentement marketing / privacy technique), P9 (consentements email / unsubscribe / webhooks et cycle de révocation), P10 (secret unsubscribe / token hardening), P11 (paniers abandonnés), P13 (données Stripe conservées / minimisation), P14 (livraison Printful), P15 (inventaire Printful), P16 (page de succès), P17 (produits publics), P18 (wishlist) et P19 (Printful automatique du webhook) : **FERMÉS / COMPLETS**. P15, P16, P17, P18 et P19 sont **VALIDÉS EN PRODUCTION**. P12 (job / cron des paniers abandonnés) demeure un chantier **distinct** : sa clôture documentaire n’est pas faite ici ; une validation runtime finale y reste différée. **P20** (base de données et migrations) est **EN COURS** : P20-A (inventaire production read-only) et P20-B (runner de migrations) sont terminés ; **P20-C** (baseline `schema_migrations`) est **terminé et validé en production** ; **P20-D1** à **P20-D4** (FK commande / identifiants Stripe uniques) sont **terminés et validés en production** ; **P20-D5** (`carts` / `uq_user_open`) est **fermé** (analyse terminée, aucune migration) ; **P20-D6** (retrait `wishlists`) et **P20-D7** (schéma `logs` versionné) sont **fermés / validés en production** ; **P20-D8** (collations mixtes) est **fermé** (analyse terminée, aucune migration justifiée) ; P20-D9+ (autres dérives résiduelles) reste à faire. P20 n’est **pas fermé**.
 
 Ce document complète `docs/compliance/TECHNICAL_SECURITY_AUDIT.md`.
 
@@ -2465,7 +2465,7 @@ P20 traite la **base de données et les migrations**. Sévérité audit : **MOD�
 
 P12 et P23 demeurent des chantiers distincts et ne sont pas fermés dans cette section. P3–P11 et P13–P19 ne sont pas rouverts.
 
-**P20 n’est pas fermé.** P20-C et P20-D1 à P20-D4, P20-D6 et P20-D7 sont **validés en production**. P20-D5 est **fermé** (analyse terminée, aucune mutation). Le chantier global P20 n’est pas clos.
+**P20 n’est pas fermé.** P20-C et P20-D1 à P20-D4, P20-D6 et P20-D7 sont **validés en production**. P20-D5 et P20-D8 sont **fermés** (analyse terminée, aucune mutation). Le chantier global P20 n’est pas clos.
 
 ### Portée / statut
 
@@ -2481,9 +2481,10 @@ P12 et P23 demeurent des chantiers distincts et ne sont pas fermés dans cette s
 | P20-D5 | `carts.uq_user_open` UNIQUE(`user_id`, `status`) | **Fermé / analyse terminée / aucune migration justifiée** |
 | P20-D6 | Retrait table legacy `wishlists` | **Fermé / validé en production** (`11cc279`) |
 | P20-D7 | DDL runtime `logs` / gestion versionnée du schéma | **Fermé / validé en production** (`5b9d60f`, `62642c3`) |
-| P20-D8+ | Divergences restantes (collations mixtes, autres dérives) | **À faire** |
+| P20-D8 | Collations mixtes production | **Fermé / analyse terminée / aucune migration justifiée** |
+| P20-D9+ | Autres dérives résiduelles | **À faire** |
 
-`DATA_MODEL.md` documente aussi, depuis P20-D4, les identifiants Stripe uniques `utf8mb4_bin` ; depuis P20-D5 la portée réelle de `uq_user_open` (inchangée) et le caractère legacy/inactif de `carts` ; depuis P20-D6 l’absence de table `wishlists` (retirée) ; depuis P20-D7 le schéma riche canonique de `logs` (plus de DDL runtime). Les décisions P20-D restantes (collations, etc.) ne sont pas encore prises.
+`DATA_MODEL.md` documente aussi, depuis P20-D4, les identifiants Stripe uniques `utf8mb4_bin` ; depuis P20-D5 la portée réelle de `uq_user_open` (inchangée) et le caractère legacy/inactif de `carts` ; depuis P20-D6 l’absence de table `wishlists` (retirée) ; depuis P20-D7 le schéma riche canonique de `logs` (plus de DDL runtime) ; depuis P20-D8 l’hétérogénéité historique des collations (conservée, aucune normalisation). Les autres dérives résiduelles restent pour P20-D9+.
 
 ### Stratégie retenue
 
@@ -2522,12 +2523,12 @@ Aucune mutation DB, aucune migration, aucun `ALTER` / `CREATE` / `DROP` / `DELET
 - `carts` : `UNIQUE(user_id, status)` — unicité par statut, pas seulement pour `open` — **analysé ensuite en P20-D5 ; aucune mutation** ;
 - table résiduelle `wishlists` encore présente après désactivation de l’API P18 — **retirée ensuite en P20-D6** ;
 - `logs` encore créée au runtime (`CREATE TABLE IF NOT EXISTS`) — **DDL runtime retiré ensuite en P20-D7** ;
-- collations mixtes ;
-- d’autres tables / relations portent une dérive historique à examiner séparément.
+- collations mixtes — **analysé ensuite en P20-D8 ; aucune mutation** ;
+- d’autres tables / relations portent une dérive historique à examiner séparément — **reporté à P20-D9+**.
 
 Aucune de ces dérives n’a été corrigée pendant P20-A. Aucune normalisation de collation. Aucune table résiduelle supprimée. Aucune FK modifiée.
 
-Ces sujets restent des **constats / travaux P20 futurs** sauf le conflit `order_items.order_id` RESTRICT/CASCADE (P20-D1), la duplication `order_items.variant_id` (P20-D2), la duplication `order_status_history.order_id` (P20-D3), les identifiants Stripe non uniques (P20-D4), `uq_user_open` (P20-D5, non muté), la table `wishlists` (P20-D6) et le DDL runtime `logs` (P20-D7). Ils ne sont **pas** fermés ici : collations mixtes, autres dérives.
+Ces sujets restent des **constats / travaux P20 futurs** sauf le conflit `order_items.order_id` RESTRICT/CASCADE (P20-D1), la duplication `order_items.variant_id` (P20-D2), la duplication `order_status_history.order_id` (P20-D3), les identifiants Stripe non uniques (P20-D4), `uq_user_open` (P20-D5, non muté), la table `wishlists` (P20-D6), le DDL runtime `logs` (P20-D7) et les collations mixtes (P20-D8, aucune migration). Les autres dérives restent pour P20-D9+.
 
 ### P20-B — Runner de migrations
 
@@ -2659,7 +2660,7 @@ Variables utilisées (noms seulement, **aucune valeur** documentée) : `SITE_BAS
 3. `GET https://flippinmaple.com/readiness` sans credentials → HTTP 200 `{"ok":true}`.
 4. `POST https://flippinmaple.com/webhook/stripe` sans `stripe-signature` → HTTP 400 `Webhook Error: No stripe-signature header value was provided.` Basic Auth ne bloque pas le webhook ; la signature Stripe reste exigée ; aucun traitement métier Stripe déclenché par ce smoke test.
 
-**Statut :** verrou temporaire **VALIDÉ EN PRODUCTION**. P20 reste **EN COURS**. P20-C reste terminé. P20-D1 à P20-D7 ont depuis été clos / traités ; P20-D8 est la prochaine phase de schéma.
+**Statut :** verrou temporaire **VALIDÉ EN PRODUCTION**. P20 reste **EN COURS**. P20-C reste terminé. P20-D1 à P20-D8 ont depuis été clos / traités ; P20-D9+ est la prochaine phase de schéma.
 
 **Rollback / retrait futur :** pour rouvrir temporairement le site, désactiver explicitement `SITE_BASIC_AUTH_ENABLED` dans Hostinger, puis appliquer / redémarrer selon le mécanisme Hostinger. Ne pas supprimer username/password des variables **avant** d’avoir désactivé le flag : un flag encore `true` sans credentials produit un fail-closed 503. Après la fin de l’audit, décider séparément si le middleware est retiré du code ou conservé désactivé comme mécanisme opérationnel. Toute réouverture publique doit être validée séparément.
 
@@ -2896,13 +2897,55 @@ Index `idx_status_order_id` sur `order_status_history.order_id` confirmé. Aucun
 
 **Backup / limites.** Backup Hostinger déjà confirmé avant cette séquence : disponible/restaurable, **non restauré**. Aucun rollback testé. Ce succès **ne généralise pas** les ALTER / scripts Hostinger.
 
+### P20-D8 — Collations mixtes production
+
+**P20-D8 est FERMÉ / ANALYSE TERMINÉE / AUCUNE MIGRATION JUSTIFIÉE.** Ce n’est **pas** P20-D9. P20 global reste **EN COURS**.
+
+**Sujet.** Hétérogénéité historique des collations sur `u601077843_flippinmaple` (MariaDB 11.8.8). Le simple mélange n’est pas un bug. Aucune mutation : pas de migration, pas d’`ALTER DATABASE`, pas de `CONVERT TO CHARACTER SET`, pas d’uniformisation automatique.
+
+**Inventaire production (27 tables utilisateur).** Défaut de base : `utf8mb4_unicode_ci`. Toutes InnoDB. Répartition des `TABLE_COLLATION` :
+
+| `TABLE_COLLATION` | Tables |
+| --- | --- |
+| `utf8mb4_general_ci` | 11 |
+| `utf8mb4_unicode_ci` | 9 |
+| `utf8mb4_uca1400_ai_ci` | 7 |
+
+Ce mélange est cohérent avec des générations historiques différentes du schéma ; P20-D8 n’en établit pas à lui seul la cause exacte.
+
+**Écarts intra-table.** Six colonnes texte seulement ont une collation différente de celle de leur table. Aucune anomalie intra-table n’est prouvée.
+
+1. `orders.stripe_session_id` — `utf8mb4_bin`, UNIQUE, **intentionnel depuis P20-D4** (comparaison exacte / case-sensitive).
+2. `orders.stripe_payment_intent_id` — `utf8mb4_bin`, UNIQUE, **intentionnel depuis P20-D4**.
+3. `abandoned_carts.cart_contents` — LONGTEXT `utf8mb4_bin`, `CHECK json_valid(cart_contents)`.
+4. `email_events.meta` — LONGTEXT `utf8mb4_bin`, `CHECK json_valid(meta)`.
+5. `orders.shipping_address_snapshot` — LONGTEXT `utf8mb4_bin`, `CHECK json_valid(shipping_address_snapshot)`.
+6. `order_items.meta` — LONGTEXT `utf8mb4_bin`, `CHECK json_valid(meta)`.
+
+Les quatre LONGTEXT `utf8mb4_bin` forment un pattern cohérent de colonnes JSON validées ; P20-D8 ne les retient pas comme anomalies de collation. Ne pas rouvrir P20-D4.
+
+**Comparaisons texte inter-table (runtime).** Audit exhaustif de `server/`, `scripts/`, `src/`. L’audit du runtime a trouvé six paires uniques de comparaisons colonne ↔ colonne d’une autre table, toutes dans `server/jobs/abandonedCartJob.js` (P12, vivant). Les 6/6 traversent des collations différentes ; les 6/6 sont explicitement protégées ; 0 comparaison non protégée restante dans le runtime audité.
+
+- Session Stripe : `orders.stripe_session_id` (`utf8mb4_bin`) vs `abandoned_carts.checkout_session_id` (`utf8mb4_unicode_ci`) via `BINARY o.stripe_session_id = BINARY ac.checkout_session_id`.
+- Emails (`orders.customer_email`, `orders.email_snapshot`, `abandoned_carts.customer_email`, `customers.email`, `consents.email`, `unsubscribes.email`) : mixte `utf8mb4_general_ci` / `utf8mb4_unicode_ci` / `utf8mb4_uca1400_ai_ci`, toutes via `BINARY LOWER(TRIM(IFNULL(...)))` des deux côtés.
+
+Les autres usages texte du runtime sont colonne ↔ paramètre `?`, pas colonne ↔ colonne inter-table. P12 n’est pas fermé ici.
+
+**Objets SQL stockés.** Inventaire read-only `information_schema.VIEWS`, `TRIGGERS`, `ROUTINES`, `EVENTS` : **aucune ligne**. Production : aucune vue, aucun trigger, aucune routine, aucun event. Aucun objet SQL stocké dans cette base (vue, trigger, routine ou event) n’ajoute une autre comparaison texte inter-table hors du runtime audité.
+
+**Table observée, non tranchée.** `stripe_events_p13c_backup_20260818` a été vue pendant l’inventaire. Son statut, son utilité et un éventuel retrait **ne sont pas décidés** en P20-D8. Aucune conclusion n’est tirée ici sur sa nécessité ou sur un éventuel retrait ; cela exige une analyse séparée en P20-D9+.
+
+**Décision.** Conserver l’état actuel. L’audit n’a identifié aucun défaut fonctionnel concret nécessitant une mutation. Uniformiser aujourd’hui (`utf8mb4_general_ci` / `utf8mb4_unicode_ci` / `utf8mb4_uca1400_ai_ci` / `utf8mb4_bin`) provoquerait des ALTER potentiellement coûteux, un rebuild d’index, un risque de changement d’égalité / tri / `LIKE` / UNIQUE, un locking potentiel, un risque Hostinger cas par cas, sans bénéfice fonctionnel démontré.
+
+**Hors périmètre.** Pas de commit de code. Pas de `schema_migrations`. `npm run migrate` non concerné. P20-D1 à P20-D7 non rouverts.
+
 ### Prochaines étapes / statut courant
 
-**P20-D8** (étape suivante) : examiner puis traiter **séparément** les divergences restantes (collations mixtes et autres dérives). Non autorisé ici. Non modifié ici.
+**P20-D9+** (étape suivante) : examiner **séparément** les autres dérives résiduelles. Ne pas y rouvrir les collations déjà tranchées en P20-D8. Ne pas y définir encore artificiellement tous les futurs sous-chantiers.
 
 Chaque mutation reste un sous-chantier séparé, avec backup approprié, inspection du SQL, autorisation et validation.
 
-**Statut courant P20 :** **EN COURS**. P20-A terminé (read-only). P20-B terminé techniquement. P20-C terminé / validé en production. Verrou temporaire Basic Auth de la surface publique : **validé en production** (mesure transversale). P20-D1 à P20-D4, P20-D6 et P20-D7 fermés / validés en production. P20-D5 fermé (analyse terminée, aucune migration). P20-D8 et la suite : à faire. **Non fermé.**
+**Statut courant P20 :** **EN COURS**. P20-A terminé (read-only). P20-B terminé techniquement. P20-C terminé / validé en production. Verrou temporaire Basic Auth de la surface publique : **validé en production** (mesure transversale). P20-D1 à P20-D4, P20-D6 et P20-D7 fermés / validés en production. P20-D5 et P20-D8 fermés (analyse terminée, aucune migration). P20-D9+ : à faire. **Non fermé.**
 
 ---
 

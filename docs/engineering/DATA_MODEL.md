@@ -8,6 +8,8 @@
 
 **Avertissement — contraintes Hostinger :** la prod MySQL peut différer du schéma local (ALTER TABLE / FK). Voir [HOSTING_CONSTRAINTS.md](HOSTING_CONSTRAINTS.md).
 
+**Collations production (P20-D8).** Base `u601077843_flippinmaple` : défaut `utf8mb4_unicode_ci`. Les 27 tables utilisateur restent historiquement mixtes (`utf8mb4_general_ci`, `utf8mb4_unicode_ci`, `utf8mb4_uca1400_ai_ci`). Ce n’est pas une exigence de normalisation. `orders.stripe_session_id` et `orders.stripe_payment_intent_id` sont volontairement `utf8mb4_bin` (P20-D4). Les LONGTEXT JSON validés observés (`abandoned_carts.cart_contents`, `email_events.meta`, `orders.shipping_address_snapshot`, `order_items.meta`) sont aussi `utf8mb4_bin`. P20-D8 : aucune migration. Voir le journal P20-D8.
+
 Les TODO, décisions ouvertes et dettes techniques restent dans `docs/INVENTAIRE_Flippin_Maple.md` jusqu’à migration vers un backlog officiel.
 
 ---
