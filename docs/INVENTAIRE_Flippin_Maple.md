@@ -24,17 +24,19 @@ Profil BDD — Schéma métier et cohérence
 
 → Descriptif migré vers [engineering/DATA_MODEL.md](engineering/DATA_MODEL.md#customers--inventaire-11) (2026-07-16).
 
-TODO
+TODO (historique — ne plus traiter comme tâche P20 ouverte)
 
 Ajouter une FK souple carts.user_id → customers.id ON DELETE SET NULL, ou documenter pourquoi on ne veut pas de FK (paniers anonymes).
 
 Documenter clairement la règle "commande invité vs commande client" : comment on remplit orders.customer_id et orders.customer_email.
 
+**Résolution P20-D5 :** aucune FK `carts.user_id` ajoutée. Analyse terminée, aucune migration justifiée. Ne pas rouvrir D5.
+
 1.2 addresses
 
 → Descriptif migré vers [engineering/DATA_MODEL.md](engineering/DATA_MODEL.md#addresses--inventaire-12) (2026-07-16).
 
-TODO
+TODO (historique — ne plus traiter comme tâche P20 ouverte)
 
 Décider officiellement si on ajoute ces FKs ou pas :
 
@@ -44,15 +46,19 @@ Option B: on assume que ces colonnes peuvent devenir invalides et la vraie sourc
 
 Dans tous les cas, écrire dans le code serveur que orders.shipping_address_snapshot est la preuve légale. On ne doit jamais la modifier après paiement.
 
+**Résolution P20 :** le contrat actuel est l’option B. `orders.shipping_address_id` / `billing_address_id` sont des colonnes **legacy / historiques**. Le checkout vivant écrit le snapshot ; `shipping_address_snapshot` est l’autorité. Aucune FK `orders` → `addresses` n’est requise. Aucune migration P20. Observation production à la clôture P20 (pas un invariant) : 34 shipping IDs non NULL, 0 billing, 0 orphelin. Ne pas DROP dans P20.
+
 1.3 carts
 
 → Descriptif migré vers [engineering/DATA_MODEL.md](engineering/DATA_MODEL.md#carts--inventaire-13) (2026-07-16).
 
-TODO
+TODO (historique — ne plus traiter comme tâche P20 ouverte)
 
 Ajouter FK carts.user_id → customers.id ON DELETE SET NULL, ou documenter explicitement que des paniers orphelins sont autorisés (cas anonymes/conversion invité).
 
 Dans le flux checkout, avant de créer la commande, on doit marquer le panier open → ordered pour respecter l’unicité uq_user_open.
+
+**Résolution P20-D5 :** aucune FK `carts.user_id` ajoutée. Analyse terminée, aucune migration justifiée. `uq_user_open` inchangé. Ne pas rouvrir D5. Le checkout vivant ne repose plus sur `carts` comme autorité.
 
 1.4 abandoned_carts
 
@@ -78,7 +84,7 @@ Les snapshots email*snapshot / shipping*\*\_snapshot sont figés à ce moment-l�
 
 paid_at est posé plus tard par le webhook Stripe quand Stripe confirme le paiement réussi, jamais par le contrôleur checkout.
 
-TODO
+TODO (historique — ne plus traiter comme tâche P20 ouverte)
 
 Choisir :
 
@@ -89,6 +95,8 @@ Option B: ne pas mettre de FK parce qu’une adresse peut être supprimée du pr
 Documenter dans le code: les snapshots dans orders sont la source de vérité légale/fiscale. Ils ne doivent jamais être modifiés après coup.
 
 Stripe et stripe_events: décider comment on relie un event Stripe à une commande pour audit post-mortem (voir stripe_events plus bas). paid_at doit être synchronisé avec cet event Stripe.
+
+**Résolution P20 (adresses) :** contrat actuel = snapshot. Colonnes IDs = legacy / historiques. Aucune FK `orders` → `addresses`. Aucune migration P20. Le lien Stripe / `paid_at` n’est pas rouvert ici (P4 / P13 distincts).
 
 1.6 order_items
 
@@ -130,7 +138,7 @@ Décider ce qu’on fait si on supprime une commande mais qu’on garde un histo
 
 → Descriptif migré vers [engineering/DATA_MODEL.md](engineering/DATA_MODEL.md#product_variants--inventaire-19) (2026-07-16).
 
-TODO
+TODO (historique pour `main_category_id` — ne plus traiter comme blocker P20)
 
 Écrire noir sur blanc dans la doc interne la différence entre :
 
@@ -143,6 +151,8 @@ product_variants.printful_variant_id (ID Printful réel pour la prod)
 Confondre ces IDs = envoyer la mauvaise référence à Printful.
 
 Décider si main_category_id doit devenir une vraie FK vers categories ou si ça reste un champ libre.
+
+**Résolution P20 :** plus un blocker actif P20. Champ vide / inerte lors de l’audit (36 variantes observées, aucune lecture / écriture runtime). Pas un défaut de schéma démontré. Décision future produit seulement. Ne pas DROP. Ne pas créer de FK. Pas de P20-D10.
 
 1.10 products
 

@@ -12,11 +12,22 @@ IMPORTANT — Contraintes d’hébergement (Hostinger / prod actuelle)
 
 La base MySQL en prod (Hostinger) ne nous laisse pas exécuter librement des ALTER TABLE (erreur 1044).
 
-Résultat : certaines contraintes qu’on voudrait mettre directement en base (FK carts.user_id → customers.id ON DELETE SET NULL, FK orders.shipping_address_id → addresses.id, etc.) ne peuvent pas être ajoutées en ce moment.
+Résultat historique : certaines contraintes qu’on aurait voulu mettre directement en base (exemple : FK `carts.user_id` → `customers.id` ON DELETE SET NULL, FK `orders.shipping_address_id` → `addresses.id`) ne pouvaient pas être ajoutées librement (erreur 1044). Cet exemple **reste** une contrainte Hostinger historique.
 
-On émule donc ces contraintes dans le code backend :
+Décisions P20 (ne plus les présenter comme des FK que P20 « voudrait » encore ajouter) :
 
-Quand on associe un panier à un user, si le user n’existe pas, on force user_id = NULL (équivalent à ON DELETE SET NULL).
+- `carts.user_id` a été **tranché en P20-D5 sans migration** (table legacy / inactive ; `uq_user_open` inchangé ; pas de FK ajoutée).
+- `orders.shipping_address_id` / `billing_address_id` sont des colonnes **legacy / historiques**. Le checkout vivant repose sur `shipping_address_snapshot`. **Aucune FK adresse n’est une correction P20 encore ouverte.**
+
+P20 est **FERMÉ / COMPLET**. Les ALTER restent **cas par cas** ; l’historique 1044 n’est pas effacé.
+
+Trois niveaux à ne pas confondre :
+
+1. **Exemples FK historiques.** Les FK `carts.user_id` et `orders.shipping_address_id` ont motivé cette documentation Hostinger : l’erreur 1044 empêchait de les ajouter librement. Ce sont des exemples d’époque, pas une liste de contraintes encore à poser.
+2. **Décisions P20.** Voir le bloc ci-dessus. `carts.user_id` n’a pas de FK (P20-D5, aucune migration). Les IDs d’adresse dans `orders` sont legacy / historiques ; le checkout vivant repose sur `shipping_address_snapshot`. **Aucune FK carts/adresses n’est une dette P20 encore ouverte.** De meilleurs droits ALTER ne les transforment pas automatiquement en contraintes SQL à ajouter. Le runtime **n’a pas** à émuler `ON DELETE SET NULL` sur `carts.user_id` comme contrainte encore désirée.
+3. **Règles runtime encore applicables aujourd’hui.** Hostinger impose des ALTER au cas par cas. Certaines règles d’intégrité sont assurées par le runtime plutôt que par des contraintes DB. Cela **ne** signifie pas que les FK carts/adresses sont « émulées » en attendant d’être matérialisées.
+
+Règles runtime encore vraies (indépendantes des FK carts/adresses) :
 
 Au checkout, on capture des snapshots immuables (adresse, email, prix payé) dans orders et order_items au moment de la création de la commande.
 
@@ -24,13 +35,13 @@ On enregistre immédiatement stripe_session_id dans orders pour pouvoir relier l
 
 On écrit aussi une ligne initiale dans order_status_history.
 
-Ces règles côté code SONT la vérité opérationnelle tant qu’on n’a pas les droits ALTER TABLE sur l’hébergeur. Le jour où on migre vers une base où on a les droits root, on pourra les traduire en vraies contraintes SQL.
+Ces trois règles restent des vérités opérationnelles documentées. Elles ne sont pas un substitut temporaire aux FK carts/adresses, et elles ne seront pas « traduites » en ces FK le jour où les droits ALTER s’améliorent.
 
 **CREATE TABLE vs ALTER TABLE.** `CREATE TABLE IF NOT EXISTS` reste le mécanisme de schéma le moins risqué observé en prod pour une **table neuve** (ex. `logs`, `checkout_idempotency`, et historiquement `stripe_events`). P3-E1 a donc ajouté une table dédiée plutôt qu’un `ALTER TABLE orders`, précisément à cause de l’erreur 1044.
 
 **Webhook et `stripe_events` (P4-B).** La table `stripe_events` existe déjà en production (y compris `order_id`). Depuis P4-B, le webhook **ne tente plus** de `CREATE TABLE` ni `ALTER TABLE` au runtime : il suppose la table provisionnée. Ce n’est pas une nouvelle capacité Hostinger ; c’est la séparation provisioning / traitement. P4 n’a requis aucune migration ni ALTER.
 
-**Runner de migrations.** `npm run migrate` (`scripts/run-migrations.js`) a été corrigé en P20-B (`77e0d86` — `fix(db): harden migration runner`). Le runner utilise une connexion MySQL dédiée (`mysql2/promise`), pas le pool applicatif ; `multipleStatements` n’est activé **que** sur cette connexion, **pas** dans `server/dbConfig.js` ni dans le runtime applicatif. Il est fail-fast, calcule un SHA-256 par fichier, compare filename + checksum à `schema_migrations`, et prend un verrou advisory `GET_LOCK` (timeout 10 s, `RELEASE_LOCK` dans le `finally`). Il refuse de fonctionner si `schema_migrations` n’existe pas ; il ne crée **pas** cette table automatiquement. **P20-C :** `schema_migrations` existe maintenant en production (`u601077843_flippinmaple`). Les deux migrations historiques (`2025-10-18_stripe_events.sql`, `2026-08-15_checkout_idempotency.sql`) y sont baselinées avec leurs SHA-256 exacts ; elles ne doivent **jamais** être rejouées. Si les checksums Git restent identiques, le runner doit les considérer comme déjà appliquées ; un checksum divergent reste fail-closed. `npm run migrate` **n’a pas** été exécuté contre la production pendant P20-C. Ne pas transformer `npm run migrate` en opération automatique de démarrage ou de déploiement. Chaque future exécution de migration production reste une opération explicite : backup approprié, inspection du SQL, autorisation, validation après application. Ce paragraphe ne change pas les droits ALTER Hostinger : l’erreur 1044 et l’émulation des contraintes en code restent valides.
+**Runner de migrations.** `npm run migrate` (`scripts/run-migrations.js`) a été corrigé en P20-B (`77e0d86` — `fix(db): harden migration runner`). Le runner utilise une connexion MySQL dédiée (`mysql2/promise`), pas le pool applicatif ; `multipleStatements` n’est activé **que** sur cette connexion, **pas** dans `server/dbConfig.js` ni dans le runtime applicatif. Il est fail-fast, calcule un SHA-256 par fichier, compare filename + checksum à `schema_migrations`, et prend un verrou advisory `GET_LOCK` (timeout 10 s, `RELEASE_LOCK` dans le `finally`). Il refuse de fonctionner si `schema_migrations` n’existe pas ; il ne crée **pas** cette table automatiquement. **P20-C :** `schema_migrations` existe maintenant en production (`u601077843_flippinmaple`). Les deux migrations historiques (`2025-10-18_stripe_events.sql`, `2026-08-15_checkout_idempotency.sql`) y sont baselinées avec leurs SHA-256 exacts ; elles ne doivent **jamais** être rejouées. Si les checksums Git restent identiques, le runner doit les considérer comme déjà appliquées ; un checksum divergent reste fail-closed. `npm run migrate` **n’a pas** été exécuté contre la production pendant P20-C. Ne pas transformer `npm run migrate` en opération automatique de démarrage ou de déploiement. Chaque future exécution de migration production reste une opération explicite : backup approprié, inspection du SQL, autorisation, validation après application. Ce paragraphe ne change pas les droits ALTER Hostinger : l’erreur 1044 et le principe « ALTER au cas par cas » restent valides. Certaines règles d’intégrité restent assurées par le runtime (snapshots checkout, `stripe_session_id`, `order_status_history`). Cela **ne** rouvre **pas** les FK carts/adresses comme dette P20, et **ne** signifie **pas** qu’elles devront être matérialisées plus tard.
 
 **ALTER P20-D1 (cas par cas).** La correction `order_items` (`fk_order_items_order`) a exigé un ALTER manuel contrôlé en production, après backup Hostinger confirmé restaurable et autorisation explicite. La migration versionnée `2026-09-03_order_items_order_fk_restrict.sql` a ensuite été enregistrée dans `schema_migrations` avec son checksum exact. `npm run migrate` n’a pas appliqué cet ALTER. Cela **ne généralise pas** : tous les ALTER ne sont pas devenus fiables ; l’historique d’erreurs 1044 demeure une contrainte Hostinger à considérer au cas par cas.
 

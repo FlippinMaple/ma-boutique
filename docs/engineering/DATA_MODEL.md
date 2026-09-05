@@ -126,17 +126,11 @@ Connecté à
 customers via customer_id
 
 Connexions logiques supplémentaires
-orders.shipping_address_id devrait référencer addresses.id
-orders.billing_address_id devrait référencer addresses.id
-Ces deux colonnes existent dans orders, mais il n’y a pas de FK en base.
+`orders.shipping_address_id` et `orders.billing_address_id` sont des colonnes **legacy / historiques**. Elles existent encore ; le checkout vivant n’utilise plus ces IDs comme autorité. Le checkout écrit le snapshot d’adresse dans la commande ; `shipping_address_snapshot` est l’autorité historique de la commande pour le checkout actuel. **Aucune FK** vers `addresses.id` n’est actuellement requise. Ce n’est pas une correction P20 ouverte.
 
-C’est important : shipping et billing PEUVENT être différentes pour une même commande. Donc, dans orders, on veut potentiellement deux FKs vers deux rows différentes de addresses.
+Observation production au moment de la clôture P20 (pas un invariant permanent) : 34 `shipping_address_id` non NULL, 0 `billing_address_id` non NULL, 0 référence orpheline observée. Ne pas DROP ces colonnes dans P20 : elles portent encore de l’historique et aucune nécessité fonctionnelle de retrait n’est démontrée.
 
-Pourquoi elles ne sont pas FK dans la base actuellement :
-
-une adresse peut être supprimée du compte après la commande
-
-l’info légale doit rester dans la commande elle-même (snapshot immuable)
+Shipping et billing PEUVENT être différentes pour une même commande. L’info légale reste dans le snapshot immuable de la commande.
 
 ### refresh_tokens ← inventaire §1.15
 
@@ -284,7 +278,7 @@ intégrations :
 printful_variant_id bigint(20) NOT NULL → ID externe Printful
 variant_id int(11) NOT NULL → ID interne maison exposé au front / business
 
-catégorisation : main_category_id varchar(255) (actuellement pas FK)
+catégorisation : main_category_id varchar(255) — existe ; actuellement vide / inerte (pas de FK ; ne pas en créer)
 currency varchar(3)
 created_at, updated_at
 
@@ -303,7 +297,7 @@ product_images.variant_id → product_variants.id
 product_promotions.product_variant_id → product_variants.id
 
 Connexions logiques supplémentaires
-main_category_id est un varchar alors que les catégories officielles vivent dans categories (id int, name unique). On doit clarifier ce que c’est : tag marketing libre ou vraie catégorie structurante.
+`product_variants.main_category_id` existe (varchar). Les catégories officielles vivent dans `categories` (id int, name unique). Ce champ est actuellement **vide** dans les 36 variantes observées lors de P20 ; aucune lecture / écriture runtime identifiée. Sémantique **non utilisée / inerte** actuellement. Ce n’est **pas** un défaut de schéma actif. Toute suppression ou réutilisation future relève d’une décision produit / modèle séparée. **Ne pas DROP. Ne pas créer de FK.**
 
 variant_id vs printful_variant_id vs id sont trois identifiants différents, chacun avec un rôle distinct. Ça doit être documenté et respecté.
 
@@ -494,9 +488,9 @@ shipping_logs.order_id → orders.id
 checkout_idempotency.order_id → orders.id (relation logique, pas de FK)
 
 Connexions logiques supplémentaires
-shipping_address_id et billing_address_id existent encore sur `orders`, mais le checkout public ne les lit plus et n’y écrit plus (P3-C). L’autorité d’adresse est le snapshot.
+`shipping_address_id` et `billing_address_id` sont des colonnes **legacy / historiques**. Le checkout public ne les lit plus et n’y écrit plus (P3-C). L’autorité d’adresse de la commande est `shipping_address_snapshot`. **Aucune FK** vers `addresses.id` n’est actuellement requise. Observation production au moment de la clôture P20 (pas un invariant permanent) : 34 `shipping_address_id` non NULL, 0 `billing_address_id` non NULL, 0 orphelin. Ne pas DROP ces colonnes dans P20.
 
-shipping et billing PEUVENT être différentes (cadeau envoyé à quelqu’un d’autre, facture pour l’acheteur). La base permet deux IDs différents mais ne déclare pas de FK.
+shipping et billing PEUVENT être différentes (cadeau envoyé à quelqu’un d’autre, facture pour l’acheteur). La base permet encore deux IDs différents ; ce n’est plus le contrat vivant.
 
 Statuts checkout réellement écrits aujourd’hui : `pending` (création), `paid` (webhook paiement), `cancelled` (webhook `checkout.session.expired` si encore `pending`, avec `cancelled_at`). Le passage `pending` → `paid` commit atomiquement le statut, `paid_at`, `stripe_payment_intent_id` et l’history `pending` → `paid` (P4-F). Une `cancelled` ne redevient pas `paid`.
 
@@ -641,7 +635,7 @@ Rôle
 Registre technique des migrations SQL versionnées sous `db/migrations/`. `filename` identifie le fichier. `checksum` est le SHA-256 du contenu UTF-8 exact. Le runner refuse un checksum différent pour une migration déjà appliquée. Une migration pending n’est enregistrée qu’après réussite SQL. **Ce n’est pas une entité métier.** Aucune FK. Aucune relation métier.
 
 État initial P20-C
-Table créée et baselinée en production avec les deux migrations historiques existantes : `2025-10-18_stripe_events.sql` et `2026-08-15_checkout_idempotency.sql`. Cela **ne signifie pas** que leurs SQL ont été rejoués : elles ont été enregistrées comme déjà absorbées par le schéma production existant. Les checksums exacts sont dans le journal P20. P20-D n’est pas terminé.
+Table créée et baselinée en production avec les deux migrations historiques existantes : `2025-10-18_stripe_events.sql` et `2026-08-15_checkout_idempotency.sql`. Cela **ne signifie pas** que leurs SQL ont été rejoués : elles ont été enregistrées comme déjà absorbées par le schéma production existant. Les checksums exacts sont dans le journal P20. P20 est **FERMÉ / COMPLET**. Certaines migrations production ont été exécutées manuellement, puis trackées manuellement après validation. `npm run migrate` n’a **pas** été l’outil d’application en production. Le registre `schema_migrations` reste le mécanisme documenté.
 
 Enregistrement P20-D7 (manuel, après validation)
 `2026-09-04_logs_schema_managed.sql` — checksum `a5a67c38f393036ca23b66d8992eb518a41d7f678190015a672aa5efe6983266`. `npm run migrate` n’a pas inscrit cette ligne. Autres P20-D : voir le journal.
