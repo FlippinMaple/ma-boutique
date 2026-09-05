@@ -684,7 +684,10 @@ idx_level(level)
 idx_context(context)
 
 Rôle métier
-Journal technique applicatif. Le writer actuel alimente surtout `level`, `message`, `created_at`. `context` et `details` sont conservés au schéma (compatibilité / historique) mais **ne sont pas** alimentés par le writer courant. La purge des anciennes lignes est gérée séparément par le job existant (~7 jours) ; ce n’est pas une opération de migration.
+Journal technique applicatif. Writer actuel : `level`, `message`, `created_at` seulement. `context` et `details` existent au schéma (P20-D7) et **ne sont pas** alimentés.
+
+Rétention / fallback (P21)
+Purge MySQL quotidienne, cutoff par défaut 7 jours (`LOG_RETENTION_DAYS`). Si aucune DB exploitable (`engine=none`), le job signale `Purge SKIPPED` — ce n’est pas un succès de suppression. Fallback fichier : `logs/app.log`, borné à 5 MiB ; un seul backup `logs/app.log.1` ; rotation **uniquement** si le writer DB est indisponible ou échoue. Ce fichier n’est **pas** une archive durable ni la source canonique. En `NODE_ENV=production`, `logError(Error)` ne persiste plus `.stack`.
 
 Gestion de schéma (P20-D7)
-Plus aucun `CREATE TABLE` runtime. Provisioning uniquement par migration versionnée `2026-09-04_logs_schema_managed.sql`. P20-D7 validé en production. La table production était déjà conforme au schéma riche : **aucun ALTER** n’a été nécessaire à l’application.
+Plus aucun `CREATE TABLE` runtime. Provisioning uniquement par migration versionnée `2026-09-04_logs_schema_managed.sql`. P20-D7 validé en production. La table production était déjà conforme au schéma riche : **aucun ALTER** n’a été nécessaire à l’application. P21 n’a ajouté aucune migration.

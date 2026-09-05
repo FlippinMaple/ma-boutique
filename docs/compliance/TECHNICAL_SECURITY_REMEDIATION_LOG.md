@@ -1,6 +1,6 @@
 # Journal des correctifs techniques et de sécurité
 
-**Statut :** journal actif — chantiers P3 (checkout public), P4 (webhook Stripe / idempotence), P5 (fallback `order_items`), P6 (gestionnaire d’erreurs), P7 (authentification / sessions / JWT), P8 (inscription / consentement marketing / privacy technique), P9 (consentements email / unsubscribe / webhooks et cycle de révocation), P10 (secret unsubscribe / token hardening), P11 (paniers abandonnés), **P12** (job / cron des paniers abandonnés), P13 (données Stripe conservées / minimisation), P14 (livraison Printful), P15 (inventaire Printful), P16 (page de succès), P17 (produits publics), P18 (wishlist) et P19 (Printful automatique du webhook) : **FERMÉS / COMPLETS**. P12, P15, P16, P17, P18 et P19 sont **VALIDÉS EN PRODUCTION**. **P20** (base de données et migrations) est **FERMÉ / COMPLET**. P20-A à P20-D9 ont été traités selon leur statut documenté (validations production ou analyses sans mutation). Aucun autre défaut de schéma démontré n’exige une mutation. P23 demeure distinct. Le résidu live différé P13 (`upsertStripeEvent` post-`dd9580d`) reste distinct et ne bloque pas ces clôtures.
+**Statut :** journal actif — chantiers P3 (checkout public), P4 (webhook Stripe / idempotence), P5 (fallback `order_items`), P6 (gestionnaire d’erreurs), P7 (authentification / sessions / JWT), P8 (inscription / consentement marketing / privacy technique), P9 (consentements email / unsubscribe / webhooks et cycle de révocation), P10 (secret unsubscribe / token hardening), P11 (paniers abandonnés), **P12** (job / cron des paniers abandonnés), P13 (données Stripe conservées / minimisation), P14 (livraison Printful), P15 (inventaire Printful), P16 (page de succès), P17 (produits publics), P18 (wishlist) et P19 (Printful automatique du webhook) : **FERMÉS / COMPLETS**. P12, P15, P16, P17, P18 et P19 sont **VALIDÉS EN PRODUCTION**. **P20** (base de données et migrations) est **FERMÉ / COMPLET**. P20-A à P20-D9 ont été traités selon leur statut documenté (validations production ou analyses sans mutation). Aucun autre défaut de schéma démontré n’exige une mutation. **P21** (journaux / logging) est **FERMÉ / COMPLET**. P21 n’est **pas** déclaré VALIDÉ EN PRODUCTION. P22, P23 et P24 demeurent distincts. Le résidu live différé P13 (`upsertStripeEvent` post-`dd9580d`) reste distinct et ne bloque pas ces clôtures.
 
 Ce document complète `docs/compliance/TECHNICAL_SECURITY_AUDIT.md`.
 
@@ -3056,6 +3056,88 @@ Le courriel transactionnel a été **reçu** dans la boîte du destinataire et c
 Hors périmètre de cette clôture : marketing, effet réel de la purge (`purged = 0` sur ce tick), certification légale, délivrabilité inbox.
 
 P23 demeure distinct. Le résidu live différé P13 n’est pas déclaré validé ici.
+
+---
+
+## 5 septembre 2026 — Clôture P21 : journaux / logging (FERMÉ / COMPLET)
+
+Le constat initial d’audit P21 reste figé dans `TECHNICAL_SECURITY_AUDIT.md`. Ce journal documente la remédiation technique. Aucune certification de conformité légale n’est revendiquée. P21 n’est **pas** déclaré VALIDÉ EN PRODUCTION.
+
+**P21 est FERMÉ / COMPLET.**
+
+### Constat initial
+
+L’audit figé indiquait notamment : fallback `app.log` non borné (`appendFileSync`, pas de rotation ni de purge, croissance possible indéfinie) ; `logError(Error)` pouvant persister une stack ; contrat de purge ambigu si la DB est indisponible (`ok: true`, `engine: none` → « Purge OK ») ; diagnostics DB trop détaillés au démarrage ; risque d’objets d’erreur trop riches dans stdout ; concurrence possible de la purge multi-process.
+
+### P21-A — audit de reprise
+
+Audit read-only. P20-D7 avait déjà retiré le DDL runtime de `logs` et versionné le schéma (`2026-09-04_logs_schema_managed.sql`). La purge MySQL ~7 jours était déjà active. `context` / `details` restent volontairement inutilisés par le writer. Aucune nouvelle migration n’était nécessaire. P22, P23, P24 et le résidu live P13 restent hors P21.
+
+### P21-B — diagnostics de configuration DB
+
+`server/dbConfig.js` : plus de `passwordLength`, `passwordFirstCode`, `passwordLastCode`, ni des valeurs `host` / `user` / `database`. Diagnostic limité aux booléens `hostSet` / `userSet` / `databaseSet` / `passwordSet` et aux **noms** de variables sources.
+
+**Commit :** `b911941bfd1a8d126ab8925dcd60259876bcdf7b` — `fix(logging): stop exposing database credential metadata`
+
+### P21-C — handlers process et erreur DB de démarrage
+
+`server/server.js` : `unhandledRejection` / `uncaughtException` ne dumpent plus l’objet entier (résumé `name` / `code` ; `message` seulement hors production ; non-Error → `typeof` seulement). Échec DB de démarrage : `name` + `code` ou `DB_CONNECT_FAILED` ; plus de `message`, `errno`, `sqlState` ni stack.
+
+**Commit :** `c178a2a93bef1a48c716624b5bab56e71027174e` — `fix(logging): sanitize server error diagnostics`
+
+### P21-D — observabilité de la purge
+
+`server/jobs/purgeLogs.js` : `ok: true` et `engine: 'none'` → `Purge SKIPPED`, plus `Purge OK`. DELETE et rétention inchangés. `purgeOldLogs()` inchangé.
+
+**Commit :** `41e1ef0753bbd76d8b62b6a1df9cecfbda540b00` — `fix(logging): report skipped log purges`
+
+### P21-E — borne du fallback fichier
+
+`server/utils/logger.js` : fallback toujours `logs/app.log`. Seuil **5 MiB** (`5 * 1024 * 1024`), taille de ligne en octets UTF-8 (`Buffer.byteLength`). Rotation : `app.log` → `app.log.1` (un seul backup, remplacé). Aucune librairie ajoutée. Writer DB inchangé.
+
+**Commit :** `cd5143cc74031e6eec3e844924d03d350e221a62` — `fix(logging): bound fallback log file size`
+
+### P21-F — checkout Stripe stdout
+
+`server/controllers/checkoutController.js` : `console.error` de création de session conserve `type`, `message`, `code`, `param` ; plus de `err.raw`. Réponse HTTP Stripe inchangée. `err.raw.message` reste utilisé uniquement pour le message client existant.
+
+**Commit :** `eb57b9c7e018a4e268f6c0acdb23c5822b2611ab` — `fix(logging): avoid logging raw Stripe errors`
+
+### P21-G — stacks `logError` en production
+
+`server/utils/logger.js` : si `NODE_ENV === 'production'`, `logError(Error)` persiste `message` (sinon `String(...)`), jamais `.stack`. Hors production, l’ordre `stack || message || String` est conservé. Les strings restent inchangées.
+
+**Commit :** `ce29a35d4a789752a6ccf4c82ab052518b6b0982` — `fix(logging): suppress error stacks in production`
+
+### Validations
+
+Validations **locales / code** uniquement. Aucune preuve runtime production exhaustive de P21 n’a été effectuée. Aucune validation production n’est inventée ici.
+
+- syntaxe `node --check` pour chaque fichier modifié ;
+- `git diff --check` à chaque étape ;
+- P21-B : diagnostics avec valeurs factices ; aucune valeur credential exposée ;
+- P21-E : tests temporaires A/B/C (sous seuil ; rotation au dépassement ; remplacement du backup) ;
+- P21-G : faux pool DB ; PROD sans stack ; DEV avec stack ; string inchangée ;
+- aucun test consistant à couper MySQL en production ;
+- aucune panne artificielle de production.
+
+### Résidus acceptés / non bloquants
+
+La fermeture P21 n’affirme **pas** que tout logging du repo a été uniformisé.
+
+1. Plusieurs process peuvent théoriquement lancer la purge simultanément. `DELETE` idempotent ; aucun défaut métier démontré ; aucun lock ajouté.
+2. Quelques `console.error(..., Error)` historiques restent dans certaines routes. Risque résiduel faible ; aucune exposition de secret démontrée ; pas de refonte globale des `console.*` dans P21.
+3. `logs.context` / `logs.details` restent inutilisés par le writer (décision P20-D7). Aucune migration.
+4. Dettes de modules non montés / anciens appels logger : hors scope.
+5. Aucun Winston, Pino ou autre framework de logging.
+
+### Verdict P21
+
+**P21 est FERMÉ / COMPLET.**
+
+Les risques matériels identifiés pour P21 ont été corrigés avec un périmètre minimal. Cela ne signifie pas : observabilité centralisée complète ; normalisation de chaque `console.*` ; rotation distribuée multi-worker ; validation exhaustive hors logging ; validation production spécifique complète de tous les chemins d’erreur.
+
+P22, P23 et P24 restent distincts. Le résidu live P13 (`upsertStripeEvent` post-`dd9580d`) reste distinct.
 
 ---
 
