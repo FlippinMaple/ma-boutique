@@ -1,6 +1,6 @@
 # Journal des correctifs techniques et de sécurité
 
-**Statut :** journal actif — chantiers P3 (checkout public), P4 (webhook Stripe / idempotence), P5 (fallback `order_items`), P6 (gestionnaire d’erreurs), P7 (authentification / sessions / JWT), P8 (inscription / consentement marketing / privacy technique), P9 (consentements email / unsubscribe / webhooks et cycle de révocation), P10 (secret unsubscribe / token hardening), P11 (paniers abandonnés), **P12** (job / cron des paniers abandonnés), P13 (données Stripe conservées / minimisation), P14 (livraison Printful), P15 (inventaire Printful), P16 (page de succès), P17 (produits publics), P18 (wishlist) et P19 (Printful automatique du webhook) : **FERMÉS / COMPLETS**. P12, P15, P16, P17, P18 et P19 sont **VALIDÉS EN PRODUCTION**. **P20** (base de données et migrations) est **FERMÉ / COMPLET**. P20-A à P20-D9 ont été traités selon leur statut documenté (validations production ou analyses sans mutation). Aucun autre défaut de schéma démontré n’exige une mutation. **P21** (journaux / logging) est **FERMÉ / COMPLET**. P21 n’est **pas** déclaré VALIDÉ EN PRODUCTION. P22, P23 et P24 demeurent distincts. Le résidu live différé P13 (`upsertStripeEvent` post-`dd9580d`) reste distinct et ne bloque pas ces clôtures.
+**Statut :** journal actif — chantiers P3 (checkout public), P4 (webhook Stripe / idempotence), P5 (fallback `order_items`), P6 (gestionnaire d’erreurs), P7 (authentification / sessions / JWT), P8 (inscription / consentement marketing / privacy technique), P9 (consentements email / unsubscribe / webhooks et cycle de révocation), P10 (secret unsubscribe / token hardening), P11 (paniers abandonnés), **P12** (job / cron des paniers abandonnés), P13 (données Stripe conservées / minimisation), P14 (livraison Printful), P15 (inventaire Printful), P16 (page de succès), P17 (produits publics), P18 (wishlist) et P19 (Printful automatique du webhook) : **FERMÉS / COMPLETS**. P12, P15, P16, P17, P18 et P19 sont **VALIDÉS EN PRODUCTION**. **P20** (base de données et migrations) est **FERMÉ / COMPLET**. P20-A à P20-D9 ont été traités selon leur statut documenté (validations production ou analyses sans mutation). Aucun autre défaut de schéma démontré n’exige une mutation. **P21** (journaux / logging) est **FERMÉ / COMPLET**. P21 n’est **pas** déclaré VALIDÉ EN PRODUCTION. **P22** (routes administratives) est **FERMÉ / COMPLET**. P22 n’est **pas** déclaré VALIDÉ EN PRODUCTION. P23 et P24 demeurent distincts. Le résidu live différé P13 (`upsertStripeEvent` post-`dd9580d`) reste distinct et ne bloque pas ces clôtures.
 
 Ce document complète `docs/compliance/TECHNICAL_SECURITY_AUDIT.md`.
 
@@ -3138,6 +3138,103 @@ La fermeture P21 n’affirme **pas** que tout logging du repo a été uniformis�
 Les risques matériels identifiés pour P21 ont été corrigés avec un périmètre minimal. Cela ne signifie pas : observabilité centralisée complète ; normalisation de chaque `console.*` ; rotation distribuée multi-worker ; validation exhaustive hors logging ; validation production spécifique complète de tous les chemins d’erreur.
 
 P22, P23 et P24 restent distincts. Le résidu live P13 (`upsertStripeEvent` post-`dd9580d`) reste distinct.
+
+---
+
+## 5 septembre 2026 — Clôture P22 : routes administratives (FERMÉ / COMPLET)
+
+Le constat initial d’audit P22 reste figé dans `TECHNICAL_SECURITY_AUDIT.md`. Ce journal documente la reprise et la clôture. Aucune certification de conformité légale n’est revendiquée. P22 n’est **pas** déclaré VALIDÉ EN PRODUCTION.
+
+**P22 est FERMÉ / COMPLET.**
+
+P22 traite les **routes administratives**. Sévérité audit : **FAIBLE**. Ce n’est **pas** P21 (journaux), **pas** P23 (API de vérification du paiement), **pas** P24. Le résidu live différé P13 (`upsertStripeEvent` post-`dd9580d`) reste distinct.
+
+### Constat initial figé
+
+Faits figés dans l’audit (non réécrits) :
+
+- `router.use(requireRole('admin'))` était déjà placé avant toutes les routes admin ;
+- `requireRole` relisait déjà le rôle en base ;
+- `listOrders` retournait déjà un ensemble limité de colonnes ;
+- `listStripeEvents` n’exposait pas `payload` ;
+- `getOrderDetail` utilisait alors `SELECT * FROM orders` et `oi.*` ;
+- les routes restaient admin-only ;
+- recommandation : préférer des colonnes explicites ;
+- `/health/paid-without-items` retournait `customer_email`, mais restait admin-only.
+
+### P22-A — audit de reprise read-only
+
+Audit code / Git read-only. HEAD audité : `12e4ff2`. Working tree propre. Aucun fichier modifié pendant P22-A. Aucun nouveau commit technique.
+
+Montage unique dans `server/app.js` : `app.use('/api/admin', adminRoutes)`. Aucun second montage public du même router. Dans `server/routes/adminRoutes.js`, `router.use(requireRole('admin'))` est placé avant toutes les routes ; aucune route n’est déclarée avant ce middleware. Aucun contrôleur de `adminController` n’est monté ailleurs.
+
+Routes admin actuelles, toutes derrière `requireRole('admin')` :
+
+- GET `/api/admin/health/paid-without-items`
+- GET `/api/admin/products`
+- PATCH `/api/admin/products/:id/featured`
+- GET `/api/admin/orders`
+- GET `/api/admin/orders/:id`
+- GET `/api/admin/stripe-events`
+
+### Autorisation
+
+Chaîne runtime actuelle :
+
+requête `/api/admin/*`
+→ cookie `access`
+→ `jwt.verify(..., algorithms: ['HS256'])`
+→ `payload.sub`
+→ SELECT MySQL `id, role, email` depuis `customers`
+→ comparaison du rôle DB avec `admin`
+→ contrôleur
+
+Le rôle JWT n’est **pas** la source d’autorité des APIs admin. `requireRole` relit le rôle depuis MySQL. Absence de cookie, JWT invalide / expiré, `sub` non fini ou utilisateur introuvable → HTTP 401. Authentifié mais rôle DB insuffisant → HTTP 403.
+
+### Projections administratives
+
+`getOrderDetail` n’utilise plus `SELECT * FROM orders` ni `oi.*`. Projections explicites actuelles :
+
+orders : `id`, `status`, `total`, `currency`, `customer_email`, `created_at`, `paid_at`, `stripe_session_id`.
+
+order_items : `id`, `printful_variant_id`, `quantity`, `price_at_purchase`, `variant_business_id`.
+
+history : `old_status`, `new_status`, `changed_at`.
+
+Une future colonne DB sensible n’est donc plus automatiquement exposée sur cet endpoint.
+
+Également à projections explicites : `listOrders` ; `listStripeEvents` (sans `payload`) ; `healthPaidWithoutItems` ; `listAdminProducts`.
+
+### Correctif historique déjà réalisé — P13-D
+
+P22 n’a nécessité **aucun nouveau correctif code**. Le défaut historique de projection de `getOrderDetail` avait déjà été retiré par P13-D :
+
+**Commit :** `820899b` — `fix(admin): restrict order detail projections`
+
+Ce commit appartient historiquement à P13-D. Il a remplacé `SELECT * FROM orders` et `oi.*`. Il est déjà documenté dans ce journal (section P13-D). La validation production historique P13-D — Order #106, détail admin fonctionnel — reste une preuve antérieure du fonctionnement de cette projection. Ce n’est **pas** une nouvelle campagne de validation production P22.
+
+### PATCH featured
+
+Périmètre P22 uniquement : `PATCH /api/admin/products/:id/featured` est admin-only ; `id` entier positif ; `is_featured` booléen ; aucune route HTTP publique équivalente de mutation n’a été trouvée. Aucun audit métier featured n’est refait ici.
+
+### Résidus acceptés / non bloquants
+
+1. `/health/paid-without-items` retourne `customer_email`. Accès admin-only. Comportement déjà connu dans l’audit figé. Pas un défaut P22 démontré.
+2. Le détail commande admin retourne notamment `customer_email`, `stripe_session_id` et l’historique des statuts. Données nécessaires à l’administration. Accès protégé. Pas un défaut P22 en soi.
+3. `AdminGuard` frontend peut utiliser le rôle du JWT pour l’UI. Ce n’est pas l’autorisation API. Les endpoints backend relisent le rôle depuis MySQL. Résidu acceptable.
+4. P22 ne prétend pas constituer un système RBAC multi-rôle complet. Périmètre actuel : protection du router admin.
+
+### Validations
+
+Audit read-only. Git propre avant / après P22-A. Recherche repo complète des montages et contrôleurs. Comparaison audit figé ↔ code actuel. Historique Git de `adminController`. Aucun test destructif. Aucune mutation DB. Aucun changement Hostinger. Aucune nouvelle validation runtime production P22.
+
+### Verdict
+
+**P22 est FERMÉ / COMPLET.**
+
+Motif : invariants admin respectés ; rôle MySQL demeure la source d’autorité ; aucun bypass actuel trouvé ; aucune projection `*` résiduelle sur ces endpoints ; le seul défaut historique matériel avait déjà été corrigé sous P13-D ; aucun correctif code supplémentaire requis.
+
+P22 n’est **pas** déclaré VALIDÉ EN PRODUCTION. P23 et P24 restent distincts. Le résidu live P13 (`upsertStripeEvent` post-`dd9580d`) reste distinct.
 
 ---
 
