@@ -14,7 +14,11 @@ export async function runPurgeLogsJob() {
   );
 
   const res = await purgeOldLogs(db, RETENTION_DAYS);
-  if (res.ok) {
+  if (res.ok && res.engine === 'none') {
+    await logger.warn(
+      `⚠️ Purge SKIPPED (engine=none${res.note ? `, note=${res.note}` : ''})`
+    );
+  } else if (res.ok) {
     await logger.info(
       `✅ Purge OK (engine=${res.engine}${
         res.note ? `, note=${res.note}` : ''
