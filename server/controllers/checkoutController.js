@@ -1099,8 +1099,7 @@ export const createCheckoutSession = async (req, res) => {
       type: err?.type,
       message: err?.message,
       code: err?.code,
-      param: err?.param,
-      raw: err?.raw
+      param: err?.param
     });
     const clientMessage =
       err?.raw?.message || err?.message || 'Erreur inconnue côté Stripe.';
