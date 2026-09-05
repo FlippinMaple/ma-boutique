@@ -423,7 +423,15 @@ L’inventaire ci-dessus conserve le schéma / historique. Le runtime **actif** 
 
 **Recovered (P11-G)** — `webhookController.js`, après COMMIT paid. Colonnes : `is_recovered`, `recovered_at`, `checkout_session_id`, `customer_email`, `last_activity`, `created_at`.
 
-**P12 actuel (non remédié dans P11)** — `abandonedCartJob.js`. Colonnes : `id`, `customer_email`, `cart_snapshot` / `cart_contents`, `created_at`, `is_recovered`, `checkout_session_id`, `last_email_sent_at`, `campaign_id`. P12 ne lit pas `last_activity` ni `recovered_at`.
+**P12 (cron, fermé / validé en production le 5 septembre 2026)** — `abandonedCartJob.js`. Colonnes réellement utilisées :
+
+- pick / conversion : `id`, `is_recovered`, `last_email_sent_at`, `last_activity`, `created_at`, `checkout_session_id`, `customer_email` ;
+- aperçu d’email : `cart_contents` / `cart_snapshot` ;
+- envoi transactional : `customer_email`, puis `UPDATE last_email_sent_at` après `sendEmail` réussi ;
+- marketing (code présent, **non validé** par la preuve P12) : les mêmes plus `campaign_id` ;
+- purge 30 jours : `last_activity`, `created_at`, et `recovered_at` **uniquement** dans `GREATEST(...)` du `DELETE` — le pick et l’envoi **ne lisent pas** `recovered_at`.
+
+Fenêtre transactional : `COALESCE(last_activity, created_at) >= UTC_TIMESTAMP() - INTERVAL 24 HOUR` et `last_email_sent_at IS NULL`. Exclusion des commandes payées au pick, puis re-vérification `hasOrder` avant envoi. Suppression (`unsubscribes` / bounce / complaint) avant envoi. Verrou nommé `GET_LOCK('flippinmaple:abandoned-cart-cron', 0)`. Logs `abandoned-cart-cron` dans `logs.message`.
 
 `cart_id`, `user_id` et `anonymous_token` peuvent exister au schéma (index de production observés) ; l’INSERT public P11 **ne les renseigne pas**. `abandoned_at` et `notified` appartiennent à l’ancien chemin retiré en P11-H ; ils ne sont **pas** nécessaires au runtime P11 actuel.
 
@@ -433,7 +441,7 @@ L’inventaire ci-dessus conserve le schéma / historique. Le runtime **actif** 
 
 **P11-G — recovered.** Priorité stricte `checkout_session_id` exact (`is_recovered = 0`). Fallback email seulement si aucune ligne session : `checkout_session_id IS NULL`, fenêtre 30 jours sur `COALESCE(last_activity, created_at)`. Recovered **n’est pas** une preuve que le snapshot exact a été acheté. Le matching de la commande paid reste strict et n’utilise pas l’email.
 
-**Rétention.** Aucune purge automatique actuelle. Décision P11-I volontaire : pas de `DELETE` périodique tant que P12 et une politique produit / privacy n’ont pas défini un cutoff. Aucune durée finale n’est inscrite ici.
+**Rétention.** P11-I n’avait pas ajouté de purge. P12 exécute désormais, dans le même tick que les envois, `purgeExpiredAbandonedCarts` : `DELETE` des lignes dont `GREATEST(COALESCE(last_activity, created_at), COALESCE(recovered_at, created_at)) < UTC_TIMESTAMP() - INTERVAL 30 DAY`, LIMIT 500. La preuve runtime du 5 septembre 2026 a `purged = 0` : le code de purge est présent ; son effet n’a pas été observé sur ce tick.
 
 ### wishlists ← inventaire §1.14 (retirée)
 

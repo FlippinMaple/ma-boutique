@@ -1,6 +1,6 @@
 # Journal des correctifs techniques et de sécurité
 
-**Statut :** journal actif — chantiers P3 (checkout public), P4 (webhook Stripe / idempotence), P5 (fallback `order_items`), P6 (gestionnaire d’erreurs), P7 (authentification / sessions / JWT), P8 (inscription / consentement marketing / privacy technique), P9 (consentements email / unsubscribe / webhooks et cycle de révocation), P10 (secret unsubscribe / token hardening), P11 (paniers abandonnés), P13 (données Stripe conservées / minimisation), P14 (livraison Printful), P15 (inventaire Printful), P16 (page de succès), P17 (produits publics), P18 (wishlist) et P19 (Printful automatique du webhook) : **FERMÉS / COMPLETS**. P15, P16, P17, P18 et P19 sont **VALIDÉS EN PRODUCTION**. P12 (job / cron des paniers abandonnés) demeure un chantier **distinct** : sa clôture documentaire n’est pas faite ici ; une validation runtime finale y reste différée. **P20** (base de données et migrations) est **FERMÉ / COMPLET**. P20-A à P20-D9 ont été traités selon leur statut documenté (validations production ou analyses sans mutation). Aucun autre défaut de schéma démontré n’exige une mutation. P12 et P23 demeurent distincts. Le résidu live différé P13 (`upsertStripeEvent` post-`dd9580d`) reste distinct et ne bloque pas cette clôture.
+**Statut :** journal actif — chantiers P3 (checkout public), P4 (webhook Stripe / idempotence), P5 (fallback `order_items`), P6 (gestionnaire d’erreurs), P7 (authentification / sessions / JWT), P8 (inscription / consentement marketing / privacy technique), P9 (consentements email / unsubscribe / webhooks et cycle de révocation), P10 (secret unsubscribe / token hardening), P11 (paniers abandonnés), **P12** (job / cron des paniers abandonnés), P13 (données Stripe conservées / minimisation), P14 (livraison Printful), P15 (inventaire Printful), P16 (page de succès), P17 (produits publics), P18 (wishlist) et P19 (Printful automatique du webhook) : **FERMÉS / COMPLETS**. P12, P15, P16, P17, P18 et P19 sont **VALIDÉS EN PRODUCTION**. **P20** (base de données et migrations) est **FERMÉ / COMPLET**. P20-A à P20-D9 ont été traités selon leur statut documenté (validations production ou analyses sans mutation). Aucun autre défaut de schéma démontré n’exige une mutation. P23 demeure distinct. Le résidu live différé P13 (`upsertStripeEvent` post-`dd9580d`) reste distinct et ne bloque pas ces clôtures.
 
 Ce document complète `docs/compliance/TECHNICAL_SECURITY_AUDIT.md`.
 
@@ -1640,7 +1640,7 @@ Résidus : race SELECT→INSERT P11-F sans UNIQUE ; beacon navigateur best-effor
 
 Cela ne constitue **pas** une certification de conformité légale.
 
-La prochaine priorité d’audit est **P12** — job / cron des paniers abandonnés.
+La prochaine priorité d’audit, **à la date de clôture P11**, était **P12** — job / cron des paniers abandonnés. P12 a ensuite été corrigé dans `main`, puis **fermé / validé en production le 5 septembre 2026** (voir la section de clôture P12).
 
 ---
 
@@ -2465,7 +2465,7 @@ P20 traite la **base de données et les migrations**. Sévérité audit : **MOD�
 
 P12 et P23 demeurent des chantiers distincts et ne sont pas fermés dans cette section. P3–P11 et P13–P19 ne sont pas rouverts.
 
-**P20 est FERMÉ / COMPLET.** Ce n’est pas une affirmation uniforme « VALIDÉ EN PRODUCTION » pour tout le chantier : P20-C et P20-D1 à P20-D4, P20-D6, P20-D7 et P20-D9 ont été **validés en production** ; P20-D5 et P20-D8 sont des **analyses sans mutation** ; P20-B est le runner. P12 et P23 ne sont pas fermés ici.
+**P20 est FERMÉ / COMPLET.** Ce n’est pas une affirmation uniforme « VALIDÉ EN PRODUCTION » pour tout le chantier : P20-C et P20-D1 à P20-D4, P20-D6, P20-D7 et P20-D9 ont été **validés en production** ; P20-D5 et P20-D8 sont des **analyses sans mutation** ; P20-B est le runner. P12 n’est **pas** fermé dans cette section P20 ; il a ensuite été **fermé / validé en production le 5 septembre 2026**. P23 n’est pas fermé ici.
 
 ### Portée / statut
 
@@ -2995,7 +2995,67 @@ P20-A : inventaire terminé. P20-B : runner durci (`77e0d86`). P20-C : registre 
 
 `npm run migrate` n’a **pas** été l’outil d’application des migrations manuelles déjà validées ; le tracking `schema_migrations` a été fait manuellement après validation. Ce contrat **n’est pas** un blocker de clôture.
 
-P12 demeure **distinct / non fermé** ici (validation runtime cron encore différée). P23 demeure **distinct / non fermé** ici. Le résidu live différé P13 (`upsertStripeEvent` post-`dd9580d`) n’est **pas** déclaré validé et **ne bloque pas** P20.
+À la date de clôture P20, la validation runtime P12 était encore différée. **P12 a ensuite été FERMÉ / COMPLET / VALIDÉ EN PRODUCTION le 5 septembre 2026** (voir la section de clôture P12). P23 demeure **distinct / non fermé** ici. Le résidu live différé P13 (`upsertStripeEvent` post-`dd9580d`) n’est **pas** déclaré validé et **ne bloque pas** P20.
+
+---
+
+## 5 septembre 2026 — Clôture P12 : cron des paniers abandonnés (FERMÉ / COMPLET / VALIDÉ EN PRODUCTION)
+
+Le constat initial d’audit P12 reste figé dans `TECHNICAL_SECURITY_AUDIT.md`. Ce journal documente la remédiation et la validation runtime. Aucune certification de conformité légale n’est revendiquée. P11 (collecte / recovered) et P20 (schéma) ne sont pas rouverts.
+
+**P12 est FERMÉ / COMPLET / VALIDÉ EN PRODUCTION.**
+
+Le correctif technique était déjà dans `main` avant cette clôture documentaire. Runtime vivant : `server/jobs/abandonedCartJob.js`, activé depuis `server/jobs/index.js` seulement si `ENABLE_ABANDON_CRON === 'true'`, lancé par `startCronJobs()` dans `server/server.js`. Collecte publique inchangée : `server/routes/abandonedCartRoutes.js` / `src/pages/Checkout.jsx`.
+
+### Nature du correctif (code actuel)
+
+Le cron n’utilise plus `req`. `startAbandonedCartCron` pose un `setInterval` (aucun tick immédiat au démarrage). Intervalle : `RELANCE_INTERVAL_MIN` (défaut 15), plancher 5 minutes.
+
+**Pick transactional** (`pickTransactional`, LIMIT 200) :
+
+- `is_recovered = 0` ;
+- aucune commande payée correspondant au prédicat de conversion (session Stripe `BINARY` **ou** email / `email_snapshot` `BINARY LOWER(TRIM(IFNULL(...)))` avec `o.paid_at >= COALESCE(ac.last_activity, ac.created_at)`) ;
+- `COALESCE(last_activity, created_at) >= UTC_TIMESTAMP() - INTERVAL 24 HOUR` ;
+- `last_email_sent_at IS NULL`.
+
+**Avant envoi** (`sendTransactional`) : email non vide ; `isSuppressed` (`unsubscribes` / `email_events` bounce|complaint) ; nouvelle vérification `hasOrder` (même prédicat). Puis `sendEmail`. **Après succès seulement** : `UPDATE abandoned_carts SET last_email_sent_at = UTC_TIMESTAMP() WHERE id = ?`.
+
+**Concurrence :** `tickRunning` in-process ; `GET_LOCK('flippinmaple:abandoned-cart-cron', 0)` / `RELEASE_LOCK` sur une connexion dédiée.
+
+**Observabilité :** `logInfo` / `logError` avec contexte `abandoned-cart-cron` (préfixe dans `logs.message` ; le writer n’alimente pas `logs.context`). Succès : `completed duration_ms=… tx_selected=… tx_sent=… tx_skipped=… marketing_selected=… marketing_sent=… marketing_skipped=… purged=…`. Échec : `failed phase=…`.
+
+**Rétention (même tick, après transactional + marketing) :** `purgeExpiredAbandonedCarts` — `DELETE` si `GREATEST(COALESCE(last_activity, created_at), COALESCE(recovered_at, created_at)) < UTC_TIMESTAMP() - INTERVAL 30 DAY`, LIMIT 500. `recovered_at` n’est **pas** lu par le pick ni par l’envoi ; uniquement par cette purge.
+
+Le chemin marketing existe dans le code. **Cette clôture ne le valide pas** : le tick de preuve a `marketing_selected = 0` / `marketing_sent = 0`.
+
+### Preuve runtime production — 5 septembre 2026
+
+Parcours utilisateur réel. Tick observé :
+
+- `logs.id` = **4944**
+- `created_at` = **2026-09-05 16:02:20**
+- `completed`
+- `tx_selected = 1`, `tx_sent = 1`, `tx_skipped = 0`
+- `marketing_selected = 0`, `marketing_sent = 0`, `purged = 0`
+
+Ligne correspondante :
+
+- `abandoned_carts.id` = **18**
+- `source` = `beforeunload`
+- `created_at` = **2026-09-05 16:01:13**
+- `last_activity` = **2026-09-05 16:04:30**
+- `last_email_sent_at` = **2026-09-05 16:02:20** (identique à l’horloge du tick)
+- `is_recovered` = **0**
+
+Aucun `failed` P12 correspondant observé pour ce tick.
+
+Le courriel transactionnel a été **reçu** dans la boîte du destinataire et classé dans les **indésirables**. Ceci est uniquement une **preuve de livraison SMTP / bout-en-bout**. Ce n’est **pas** une validation de délivrabilité, ni une optimisation anti-spam, ni un classement « inbox » garanti.
+
+`last_activity` postérieur à `last_email_sent_at` est cohérent avec un refresh P11-F **après** l’envoi ; ce n’est pas une contradiction du tick.
+
+Hors périmètre de cette clôture : marketing, effet réel de la purge (`purged = 0` sur ce tick), certification légale, délivrabilité inbox.
+
+P23 demeure distinct. Le résidu live différé P13 n’est pas déclaré validé ici.
 
 ---
 
