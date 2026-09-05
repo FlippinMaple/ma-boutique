@@ -3,6 +3,31 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+const FALLBACK_LOG_MAX_BYTES = 5 * 1024 * 1024;
+
+function appendFallbackLine(filePath, line) {
+  const backupPath = `${filePath}.1`;
+  let currentSize = 0;
+  try {
+    currentSize = fs.statSync(filePath).size;
+  } catch (e) {
+    if (e?.code !== 'ENOENT') throw e;
+  }
+  if (currentSize + Buffer.byteLength(line, 'utf8') > FALLBACK_LOG_MAX_BYTES) {
+    try {
+      fs.unlinkSync(backupPath);
+    } catch (e) {
+      if (e?.code !== 'ENOENT') throw e;
+    }
+    try {
+      fs.renameSync(filePath, backupPath);
+    } catch (e) {
+      if (e?.code !== 'ENOENT') throw e;
+    }
+  }
+  fs.appendFileSync(filePath, line);
+}
+
 /**
  * createLogger: retourne un logger qui loggue vers la DB si disponible,
  * sinon vers un fichier local (ou console).
@@ -18,7 +43,7 @@ export function createLogger(db) {
   const writeFallback = (level, msg) => {
     const line = `[${new Date().toISOString()}] ${level.toUpperCase()}: ${msg}\n`;
     try {
-      fs.appendFileSync(filePath, line);
+      appendFallbackLine(filePath, line);
     } catch {
       /* si même ça échoue, on bascule console */ console[level]?.(line) ??
         console.log(line);
