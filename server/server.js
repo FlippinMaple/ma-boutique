@@ -10,11 +10,25 @@ const __dirname = dirname(__filename);
 dotenv.config({ path: join(__dirname, '..', '.env') });
 dotenv.config({ path: join(__dirname, '.env') });
 
+function safeProcessErrorSummary(value) {
+  if (value instanceof Error) {
+    const summary = { name: value.name };
+    if (value.code != null && value.code !== '') {
+      summary.code = value.code;
+    }
+    if (process.env.NODE_ENV !== 'production') {
+      summary.message = value.message;
+    }
+    return summary;
+  }
+  return { type: typeof value };
+}
+
 process.on('unhandledRejection', (r) => {
-  console.error('UnhandledRejection:', r);
+  console.error('UnhandledRejection:', safeProcessErrorSummary(r));
 });
 process.on('uncaughtException', (e) => {
-  console.error('UncaughtException:', e);
+  console.error('UncaughtException:', safeProcessErrorSummary(e));
 });
 
 const { default: app } = await import('./app.js');
@@ -35,10 +49,9 @@ const HOST = process.env.HOST || '0.0.0.0';
   } catch (err) {
     console.warn('DB indisponible, fallback fichier/console pour les logs');
     console.warn('DB error detail:', {
-      code: err?.code,
-      errno: err?.errno,
-      sqlState: err?.sqlState,
-      message: err?.message
+      name: err?.name || 'Error',
+      code:
+        err?.code != null && err.code !== '' ? err.code : 'DB_CONNECT_FAILED'
     });
   }
 
