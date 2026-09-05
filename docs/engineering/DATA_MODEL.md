@@ -641,6 +641,9 @@ Registre technique des migrations SQL versionnées sous `db/migrations/`. `filen
 État initial P20-C
 Table créée et baselinée en production avec les deux migrations historiques existantes : `2025-10-18_stripe_events.sql` et `2026-08-15_checkout_idempotency.sql`. Cela **ne signifie pas** que leurs SQL ont été rejoués : elles ont été enregistrées comme déjà absorbées par le schéma production existant. Les checksums exacts sont dans le journal P20. P20-D n’est pas terminé.
 
+Enregistrement P20-D7 (manuel, après validation)
+`2026-09-04_logs_schema_managed.sql` — checksum `a5a67c38f393036ca23b66d8992eb518a41d7f678190015a672aa5efe6983266`. `npm run migrate` n’a pas inscrit cette ligne. Autres P20-D : voir le journal.
+
 Connecté à
 Aucune FK.
 
@@ -663,9 +666,21 @@ Sert à tracer les jobs planifiés (crons, batchs, synchronisations, etc.).
 ### logs ← inventaire §1.21
 
 Colonnes clés
-id PK AUTO_INCREMENT (bigint unsigned)
-level enum('debug','info','warn','error') INDEX
-message (texte), context (INDEX), details (longtext), created_at (INDEX)
+id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT
+level ENUM('debug','info','warn','error') NOT NULL DEFAULT 'info'
+message TEXT NOT NULL
+context VARCHAR(128) NULL
+details LONGTEXT NULL
+created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+
+PK / Index
+PRIMARY(id)
+idx_created_at(created_at)
+idx_level(level)
+idx_context(context)
 
 Rôle métier
-Sert de journal applicatif pour debug et audit interne.
+Journal technique applicatif. Le writer actuel alimente surtout `level`, `message`, `created_at`. `context` et `details` sont conservés au schéma (compatibilité / historique) mais **ne sont pas** alimentés par le writer courant. La purge des anciennes lignes est gérée séparément par le job existant (~7 jours) ; ce n’est pas une opération de migration.
+
+Gestion de schéma (P20-D7)
+Plus aucun `CREATE TABLE` runtime. Provisioning uniquement par migration versionnée `2026-09-04_logs_schema_managed.sql`. P20-D7 validé en production. La table production était déjà conforme au schéma riche : **aucun ALTER** n’a été nécessaire à l’application.

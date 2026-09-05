@@ -1,6 +1,6 @@
 # Journal des correctifs techniques et de sécurité
 
-**Statut :** journal actif — chantiers P3 (checkout public), P4 (webhook Stripe / idempotence), P5 (fallback `order_items`), P6 (gestionnaire d’erreurs), P7 (authentification / sessions / JWT), P8 (inscription / consentement marketing / privacy technique), P9 (consentements email / unsubscribe / webhooks et cycle de révocation), P10 (secret unsubscribe / token hardening), P11 (paniers abandonnés), P13 (données Stripe conservées / minimisation), P14 (livraison Printful), P15 (inventaire Printful), P16 (page de succès), P17 (produits publics), P18 (wishlist) et P19 (Printful automatique du webhook) : **FERMÉS / COMPLETS**. P15, P16, P17, P18 et P19 sont **VALIDÉS EN PRODUCTION**. P12 (job / cron des paniers abandonnés) demeure un chantier **distinct** : sa clôture documentaire n’est pas faite ici ; une validation runtime finale y reste différée. **P20** (base de données et migrations) est **EN COURS** : P20-A (inventaire production read-only) et P20-B (runner de migrations) sont terminés ; **P20-C** (baseline `schema_migrations`) est **terminé et validé en production** ; **P20-D1** à **P20-D4** (FK commande / identifiants Stripe uniques) sont **terminés et validés en production** ; **P20-D5** (`carts` / `uq_user_open`) est **fermé** (analyse terminée, aucune migration) ; **P20-D6** (retrait `wishlists`) est **fermé / validé en production** ; P20-D7 et les étapes suivantes restent à faire. P20 n’est **pas fermé**.
+**Statut :** journal actif — chantiers P3 (checkout public), P4 (webhook Stripe / idempotence), P5 (fallback `order_items`), P6 (gestionnaire d’erreurs), P7 (authentification / sessions / JWT), P8 (inscription / consentement marketing / privacy technique), P9 (consentements email / unsubscribe / webhooks et cycle de révocation), P10 (secret unsubscribe / token hardening), P11 (paniers abandonnés), P13 (données Stripe conservées / minimisation), P14 (livraison Printful), P15 (inventaire Printful), P16 (page de succès), P17 (produits publics), P18 (wishlist) et P19 (Printful automatique du webhook) : **FERMÉS / COMPLETS**. P15, P16, P17, P18 et P19 sont **VALIDÉS EN PRODUCTION**. P12 (job / cron des paniers abandonnés) demeure un chantier **distinct** : sa clôture documentaire n’est pas faite ici ; une validation runtime finale y reste différée. **P20** (base de données et migrations) est **EN COURS** : P20-A (inventaire production read-only) et P20-B (runner de migrations) sont terminés ; **P20-C** (baseline `schema_migrations`) est **terminé et validé en production** ; **P20-D1** à **P20-D4** (FK commande / identifiants Stripe uniques) sont **terminés et validés en production** ; **P20-D5** (`carts` / `uq_user_open`) est **fermé** (analyse terminée, aucune migration) ; **P20-D6** (retrait `wishlists`) et **P20-D7** (schéma `logs` versionné) sont **fermés / validés en production** ; P20-D8 et les étapes suivantes restent à faire. P20 n’est **pas fermé**.
 
 Ce document complète `docs/compliance/TECHNICAL_SECURITY_AUDIT.md`.
 
@@ -2465,7 +2465,7 @@ P20 traite la **base de données et les migrations**. Sévérité audit : **MOD�
 
 P12 et P23 demeurent des chantiers distincts et ne sont pas fermés dans cette section. P3–P11 et P13–P19 ne sont pas rouverts.
 
-**P20 n’est pas fermé.** P20-C et P20-D1 à P20-D4 et P20-D6 sont **validés en production**. P20-D5 est **fermé** (analyse terminée, aucune mutation). Le chantier global P20 n’est pas clos.
+**P20 n’est pas fermé.** P20-C et P20-D1 à P20-D4, P20-D6 et P20-D7 sont **validés en production**. P20-D5 est **fermé** (analyse terminée, aucune mutation). Le chantier global P20 n’est pas clos.
 
 ### Portée / statut
 
@@ -2480,9 +2480,10 @@ P12 et P23 demeurent des chantiers distincts et ne sont pas fermés dans cette s
 | P20-D4 | Identifiants Stripe `orders` UNIQUE + `utf8mb4_bin` | **Fermé / validé en production** (`5fc9bf8`) |
 | P20-D5 | `carts.uq_user_open` UNIQUE(`user_id`, `status`) | **Fermé / analyse terminée / aucune migration justifiée** |
 | P20-D6 | Retrait table legacy `wishlists` | **Fermé / validé en production** (`11cc279`) |
-| P20-D7+ | Autres divergences ciblées (DDL runtime `logs`, collations, DATA_MODEL restante) | **À faire** |
+| P20-D7 | DDL runtime `logs` / gestion versionnée du schéma | **Fermé / validé en production** (`5b9d60f`, `62642c3`) |
+| P20-D8+ | Divergences restantes (collations mixtes, autres dérives) | **À faire** |
 
-`DATA_MODEL.md` documente aussi, depuis P20-D4, les identifiants Stripe uniques `utf8mb4_bin` ; depuis P20-D5 la portée réelle de `uq_user_open` (inchangée) et le caractère legacy/inactif de `carts` ; depuis P20-D6 l’absence de table `wishlists` (retirée). Les décisions P20-D restantes (DDL `logs`, collations, etc.) ne sont pas encore prises.
+`DATA_MODEL.md` documente aussi, depuis P20-D4, les identifiants Stripe uniques `utf8mb4_bin` ; depuis P20-D5 la portée réelle de `uq_user_open` (inchangée) et le caractère legacy/inactif de `carts` ; depuis P20-D6 l’absence de table `wishlists` (retirée) ; depuis P20-D7 le schéma riche canonique de `logs` (plus de DDL runtime). Les décisions P20-D restantes (collations, etc.) ne sont pas encore prises.
 
 ### Stratégie retenue
 
@@ -2520,13 +2521,13 @@ Aucune mutation DB, aucune migration, aucun `ALTER` / `CREATE` / `DROP` / `DELET
 - `orders.stripe_session_id` et `orders.stripe_payment_intent_id` : index **NON UNIQUE** ; les contrôles read-only n’ont trouvé aucun doublon non vide au moment de P20-A — **corrigé ensuite en P20-D4** ;
 - `carts` : `UNIQUE(user_id, status)` — unicité par statut, pas seulement pour `open` — **analysé ensuite en P20-D5 ; aucune mutation** ;
 - table résiduelle `wishlists` encore présente après désactivation de l’API P18 — **retirée ensuite en P20-D6** ;
-- `logs` encore créée au runtime (`CREATE TABLE IF NOT EXISTS`) ;
+- `logs` encore créée au runtime (`CREATE TABLE IF NOT EXISTS`) — **DDL runtime retiré ensuite en P20-D7** ;
 - collations mixtes ;
 - d’autres tables / relations portent une dérive historique à examiner séparément.
 
 Aucune de ces dérives n’a été corrigée pendant P20-A. Aucune normalisation de collation. Aucune table résiduelle supprimée. Aucune FK modifiée.
 
-Ces sujets restent des **constats / travaux P20 futurs** sauf le conflit `order_items.order_id` RESTRICT/CASCADE (P20-D1), la duplication `order_items.variant_id` (P20-D2), la duplication `order_status_history.order_id` (P20-D3), les identifiants Stripe non uniques (P20-D4), `uq_user_open` (P20-D5, non muté) et la table `wishlists` (P20-D6). Ils ne sont **pas** fermés ici : collations, DDL runtime `logs`.
+Ces sujets restent des **constats / travaux P20 futurs** sauf le conflit `order_items.order_id` RESTRICT/CASCADE (P20-D1), la duplication `order_items.variant_id` (P20-D2), la duplication `order_status_history.order_id` (P20-D3), les identifiants Stripe non uniques (P20-D4), `uq_user_open` (P20-D5, non muté), la table `wishlists` (P20-D6) et le DDL runtime `logs` (P20-D7). Ils ne sont **pas** fermés ici : collations mixtes, autres dérives.
 
 ### P20-B — Runner de migrations
 
@@ -2658,7 +2659,7 @@ Variables utilisées (noms seulement, **aucune valeur** documentée) : `SITE_BAS
 3. `GET https://flippinmaple.com/readiness` sans credentials → HTTP 200 `{"ok":true}`.
 4. `POST https://flippinmaple.com/webhook/stripe` sans `stripe-signature` → HTTP 400 `Webhook Error: No stripe-signature header value was provided.` Basic Auth ne bloque pas le webhook ; la signature Stripe reste exigée ; aucun traitement métier Stripe déclenché par ce smoke test.
 
-**Statut :** verrou temporaire **VALIDÉ EN PRODUCTION**. P20 reste **EN COURS**. P20-C reste terminé. P20-D1 à P20-D6 ont depuis été clos / traités ; P20-D7 est la prochaine phase de schéma.
+**Statut :** verrou temporaire **VALIDÉ EN PRODUCTION**. P20 reste **EN COURS**. P20-C reste terminé. P20-D1 à P20-D7 ont depuis été clos / traités ; P20-D8 est la prochaine phase de schéma.
 
 **Rollback / retrait futur :** pour rouvrir temporairement le site, désactiver explicitement `SITE_BASIC_AUTH_ENABLED` dans Hostinger, puis appliquer / redémarrer selon le mécanisme Hostinger. Ne pas supprimer username/password des variables **avant** d’avoir désactivé le flag : un flag encore `true` sans credentials produit un fail-closed 503. Après la fin de l’audit, décider séparément si le middleware est retiré du code ou conservé désactivé comme mécanisme opérationnel. Toute réouverture publique doit être validée séparément.
 
@@ -2857,18 +2858,51 @@ Index `idx_status_order_id` sur `order_status_history.order_id` confirmé. Aucun
 
 **Validation finale :** `table_exists = 0`. Checksum 64 caractères, correspondance exacte.
 
+### P20-D7 — Schéma `logs` versionné / retrait du DDL runtime
+
+**P20-D7 est FERMÉ / VALIDÉ EN PRODUCTION.** Ce n’est **pas** P20-D8. P20 global reste **EN COURS**.
+
+**Problème.** Le runtime exécutait `ensureLogsTable(db)` au démarrage (`server/bootstrap/createLogsTable.js`). Le bootstrap récent ne décrivait qu’un schéma minimal (`id BIGINT`, `level VARCHAR(16)`, `message TEXT`, `created_at DATETIME`). La production avait déjà le schéma riche historique. Un `CREATE TABLE IF NOT EXISTS` runtime ne modifie pas une table existante : la divergence restait masquée.
+
+**Décision.** Conserver le schéma riche comme canonique. Ne pas supprimer `context` / `details`. Ne pas simplifier la table pour coller au bootstrap récent. Retirer tout provisioning DDL du runtime. Gérer `logs` uniquement par migration versionnée. Le logger **n’a pas** été modifié : il écrit surtout `level`, `message`, `created_at`. `context` / `details` restent au schéma, non alimentés par le writer actuel.
+
+**Commits techniques :**
+
+- `5b9d60f` — `fix(db): manage logs schema with migration`
+- `62642c3` — `fix(db): make logs migration phpmyadmin compatible`
+
+**Fichiers :** ajout `db/migrations/2026-09-04_logs_schema_managed.sql` ; modification `server/server.js` (plus d’import / appel `ensureLogsTable`) ; suppression `server/bootstrap/createLogsTable.js`.
+
+**Checksum SHA-256 final :** `a5a67c38f393036ca23b66d8992eb518a41d7f678190015a672aa5efe6983266`
+
+**Migration.** Cinq cas : table absente → CREATE riche ; bootstrap minimal compatible → upgrade in-place conditionnel ; schéma riche déjà conforme → aucun ALTER ; état partiel composé uniquement d’éléments connus → complétion ; structure inattendue → `SIGNAL SQLSTATE '45000'`. Garde-fous : InnoDB, utf8mb4, PRIMARY KEY(`id`), type/unsigned/auto_increment de `id`, `id < 0` avant conversion, `level` VARCHAR historique ou ENUM canonique, valeurs `level` avant ENUM, `message` TEXT NOT NULL, `context` / `details` nullable, `created_at` DATETIME NOT NULL, trois index secondaires ; refus d’index composite, UNIQUE, mauvais type, mauvaise colonne ou prefix index du même nom. Aucun DROP TABLE, DELETE, nettoyage, copie/rebuild, normalisation d’une structure inconnue.
+
+**Première tentative phpMyAdmin.** Import manuel du compound statement top-level `BEGIN NOT ATOMIC` … `END` : phpMyAdmin a découpé au premier `;` → SQL #1064. Aucun ALTER atteint. `schema_migrations` inchangé (`migration_tracking_rows = 0`). Application saine. Après cet échec : `logs` = 1220 lignes ; `newest_log_at = 2026-09-04 23:41:53`.
+
+**Correctif `62642c3`.** Mêmes guards, placés dans `SET @guard_sql = 'BEGIN NOT ATOMIC … END'` puis `PREPARE guard_stmt` / `EXECUTE` / `DEALLOCATE`. Aucun `DELIMITER` (compatibilité runner Node/mysql2).
+
+**Deuxième import manuel** (phpMyAdmin, migration corrigée) : réussi. Guards préparés et exécutés sans SIGNAL. `@alter_parts` vide → la migration a construit `SELECT 1` ; `EXECUTE stmt` a retourné `1`. **Aucun `ALTER TABLE logs` n’a été exécuté en production** : le schéma était déjà conforme (11 contrôles structurels read-only à 1/1 avant ce second import).
+
+**Purge observée, indépendante.** Après application : `log_rows = 1061` ; `oldest_log_at = 2026-08-29 00:11:51` ; `newest_log_at = 2026-09-05 00:12:10`. La baisse 1220 → 1061 **ne vient pas** de P20-D7 (aucun DELETE dans la migration). Fenêtre compatible avec la purge ~7 jours du job existant.
+
+**Tracking.** `npm run migrate` **n’a pas** été exécuté contre la production. Ligne ajoutée **manuellement** dans `schema_migrations` après validation :
+
+- `filename` = `2026-09-04_logs_schema_managed.sql`
+- `checksum` = `a5a67c38f393036ca23b66d8992eb518a41d7f678190015a672aa5efe6983266`
+- `checksum_ok` = `1`
+- `applied_at = 2026-09-05 00:19:28`
+
+**Runtime / readiness.** Plus d’`ensureLogsTable`, plus de `createLogsTable.js`, plus de `CREATE TABLE logs` au démarrage. Après déploiement des commits sur `main` : `GET https://flippinmaple.com/readiness` → HTTP 200 `{"ok":true}`.
+
+**Backup / limites.** Backup Hostinger déjà confirmé avant cette séquence : disponible/restaurable, **non restauré**. Aucun rollback testé. Ce succès **ne généralise pas** les ALTER / scripts Hostinger.
+
 ### Prochaines étapes / statut courant
 
-**P20-D7** (étape suivante, ordre P20-A) : examiner puis traiter **séparément** le DDL runtime `logs` (`CREATE TABLE IF NOT EXISTS logs`). Non autorisé ici. Non modifié ici.
-
-Restent également ouverts :
-
-- collations mixtes ;
-- autres dérives historiques.
+**P20-D8** (étape suivante) : examiner puis traiter **séparément** les divergences restantes (collations mixtes et autres dérives). Non autorisé ici. Non modifié ici.
 
 Chaque mutation reste un sous-chantier séparé, avec backup approprié, inspection du SQL, autorisation et validation.
 
-**Statut courant P20 :** **EN COURS**. P20-A terminé (read-only). P20-B terminé techniquement. P20-C terminé / validé en production. Verrou temporaire Basic Auth de la surface publique : **validé en production** (mesure transversale). P20-D1 à P20-D4 et P20-D6 fermés / validés en production. P20-D5 fermé (analyse terminée, aucune migration). P20-D7 et la suite : à faire. **Non fermé.**
+**Statut courant P20 :** **EN COURS**. P20-A terminé (read-only). P20-B terminé techniquement. P20-C terminé / validé en production. Verrou temporaire Basic Auth de la surface publique : **validé en production** (mesure transversale). P20-D1 à P20-D4, P20-D6 et P20-D7 fermés / validés en production. P20-D5 fermé (analyse terminée, aucune migration). P20-D8 et la suite : à faire. **Non fermé.**
 
 ---
 
