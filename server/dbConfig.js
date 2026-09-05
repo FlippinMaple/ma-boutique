@@ -82,15 +82,10 @@ export function resolveDbConfig() {
   );
 
   console.warn('DB config selected:', {
-    host,
-    user,
-    database,
+    hostSet: !!host,
+    userSet: !!user,
+    databaseSet: !!database,
     passwordSet: !!password,
-    passwordLength: password ? password.length : 0,
-    passwordFirstCode: password ? password.codePointAt(0) : null,
-    passwordLastCode: password
-      ? password.codePointAt(password.length - 1)
-      : null,
     sources: {
       host: process.env.MYSQL_HOST
         ? 'MYSQL_HOST'
@@ -120,10 +115,10 @@ export function resolveDbConfig() {
   if (!host || !user || !password || !database) {
     // aide debug si ça re-casse
     console.error('DB VARS CHECK →', {
-      host,
+      hostSet: !!host,
       userSet: !!user,
-      pwdSet: !!password,
-      dbSet: !!database
+      passwordSet: !!password,
+      databaseSet: !!database
     });
     throw new Error('DB config missing (host/user/password/database)');
   }
