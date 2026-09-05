@@ -1,6 +1,6 @@
 # Journal des correctifs techniques et de sécurité
 
-**Statut :** journal actif — chantiers P3 (checkout public), P4 (webhook Stripe / idempotence), P5 (fallback `order_items`), P6 (gestionnaire d’erreurs), P7 (authentification / sessions / JWT), P8 (inscription / consentement marketing / privacy technique), P9 (consentements email / unsubscribe / webhooks et cycle de révocation), P10 (secret unsubscribe / token hardening), P11 (paniers abandonnés), P13 (données Stripe conservées / minimisation), P14 (livraison Printful), P15 (inventaire Printful), P16 (page de succès), P17 (produits publics), P18 (wishlist) et P19 (Printful automatique du webhook) : **FERMÉS / COMPLETS**. P15, P16, P17, P18 et P19 sont **VALIDÉS EN PRODUCTION**. P12 (job / cron des paniers abandonnés) demeure un chantier **distinct** : sa clôture documentaire n’est pas faite ici ; une validation runtime finale y reste différée. **P20** (base de données et migrations) est **EN COURS** : P20-A (inventaire production read-only) et P20-B (runner de migrations) sont terminés ; **P20-C** (baseline `schema_migrations`) est **terminé et validé en production** ; **P20-D1** à **P20-D4** (FK commande / identifiants Stripe uniques) sont **terminés et validés en production** ; **P20-D5** (`carts` / `uq_user_open`) est **fermé** (analyse terminée, aucune migration) ; **P20-D6** (retrait `wishlists`) et **P20-D7** (schéma `logs` versionné) sont **fermés / validés en production** ; **P20-D8** (collations mixtes) est **fermé** (analyse terminée, aucune migration justifiée) ; P20-D9+ (autres dérives résiduelles) reste à faire. P20 n’est **pas fermé**.
+**Statut :** journal actif — chantiers P3 (checkout public), P4 (webhook Stripe / idempotence), P5 (fallback `order_items`), P6 (gestionnaire d’erreurs), P7 (authentification / sessions / JWT), P8 (inscription / consentement marketing / privacy technique), P9 (consentements email / unsubscribe / webhooks et cycle de révocation), P10 (secret unsubscribe / token hardening), P11 (paniers abandonnés), P13 (données Stripe conservées / minimisation), P14 (livraison Printful), P15 (inventaire Printful), P16 (page de succès), P17 (produits publics), P18 (wishlist) et P19 (Printful automatique du webhook) : **FERMÉS / COMPLETS**. P15, P16, P17, P18 et P19 sont **VALIDÉS EN PRODUCTION**. P12 (job / cron des paniers abandonnés) demeure un chantier **distinct** : sa clôture documentaire n’est pas faite ici ; une validation runtime finale y reste différée. **P20** (base de données et migrations) est **EN COURS** : P20-A (inventaire production read-only) et P20-B (runner de migrations) sont terminés ; **P20-C** (baseline `schema_migrations`) est **terminé et validé en production** ; **P20-D1** à **P20-D4** (FK commande / identifiants Stripe uniques) sont **terminés et validés en production** ; **P20-D5** (`carts` / `uq_user_open`) est **fermé** (analyse terminée, aucune migration) ; **P20-D6** (retrait `wishlists`) et **P20-D7** (schéma `logs` versionné) sont **fermés / validés en production** ; **P20-D8** (collations mixtes) est **fermé** (analyse terminée, aucune migration justifiée) ; **P20-D9** (retrait backup P13-C) est **fermé / validé en production**. Les éventuels résidus restants exigent une évaluation séparée. P20 n’est **pas fermé**.
 
 Ce document complète `docs/compliance/TECHNICAL_SECURITY_AUDIT.md`.
 
@@ -1698,7 +1698,7 @@ Jamais `{}` comme fallback (un objet vide n’est pas un NULL SQL). `reconcileSt
 
 Opération SQL production. **Aucun commit Git.**
 
-Backup créé **avant** mutation : table `stripe_events_p13c_backup_20260818`. 48 rows historiques contenant encore des payloads complets y ont été sauvegardées. Le backup est **conservé volontairement**. Aucun `DROP` dans cette clôture. Table hors schéma applicatif vivant : filet de rollback / preuve historique temporaire, pas une entité fonctionnelle.
+Backup créé **avant** mutation : table `stripe_events_p13c_backup_20260818`. 48 rows historiques contenant encore des payloads complets y ont été sauvegardées. Le backup est **conservé volontairement** dans P13. Aucun `DROP` dans cette clôture. Table hors schéma applicatif vivant : filet de rollback / preuve historique temporaire, pas une entité fonctionnelle. **Retirée ensuite en P20-D9.**
 
 Transformation appliquée sur les payloads actifs :
 
@@ -1761,7 +1761,7 @@ La remédiation technique est terminée :
 
 **Résidu explicite :** le premier upsert `stripe_events` produit par un webhook live post-`dd9580d` n’a pas encore été observé. À confirmer lors du prochain webhook naturel ou test. Ce résidu **ne bloque pas** la fermeture technique P13. Il ne doit **pas** être présenté comme déjà validé.
 
-Backup `stripe_events_p13c_backup_20260818` : **conserver** jusqu’à stabilisation documentaire / décision explicite ultérieure. Aucune suppression dans P13.
+Backup `stripe_events_p13c_backup_20260818` : **conserver** jusqu’à stabilisation documentaire / décision explicite ultérieure. Aucune suppression dans P13. **Retiré ensuite en P20-D9** (validé en production).
 
 **P12 demeure un chantier distinct et n’est pas fermé dans cette section.**
 
@@ -2465,7 +2465,7 @@ P20 traite la **base de données et les migrations**. Sévérité audit : **MOD�
 
 P12 et P23 demeurent des chantiers distincts et ne sont pas fermés dans cette section. P3–P11 et P13–P19 ne sont pas rouverts.
 
-**P20 n’est pas fermé.** P20-C et P20-D1 à P20-D4, P20-D6 et P20-D7 sont **validés en production**. P20-D5 et P20-D8 sont **fermés** (analyse terminée, aucune mutation). Le chantier global P20 n’est pas clos.
+**P20 n’est pas fermé.** P20-C et P20-D1 à P20-D4, P20-D6, P20-D7 et P20-D9 sont **validés en production**. P20-D5 et P20-D8 sont **fermés** (analyse terminée, aucune mutation). Le chantier global P20 n’est pas clos.
 
 ### Portée / statut
 
@@ -2482,9 +2482,9 @@ P12 et P23 demeurent des chantiers distincts et ne sont pas fermés dans cette s
 | P20-D6 | Retrait table legacy `wishlists` | **Fermé / validé en production** (`11cc279`) |
 | P20-D7 | DDL runtime `logs` / gestion versionnée du schéma | **Fermé / validé en production** (`5b9d60f`, `62642c3`) |
 | P20-D8 | Collations mixtes production | **Fermé / analyse terminée / aucune migration justifiée** |
-| P20-D9+ | Autres dérives résiduelles | **À faire** |
+| P20-D9 | Retrait backup P13-C `stripe_events_p13c_backup_20260818` | **Fermé / validé en production** (`a2f0d56`) |
 
-`DATA_MODEL.md` documente aussi, depuis P20-D4, les identifiants Stripe uniques `utf8mb4_bin` ; depuis P20-D5 la portée réelle de `uq_user_open` (inchangée) et le caractère legacy/inactif de `carts` ; depuis P20-D6 l’absence de table `wishlists` (retirée) ; depuis P20-D7 le schéma riche canonique de `logs` (plus de DDL runtime) ; depuis P20-D8 l’hétérogénéité historique des collations (conservée, aucune normalisation). Les autres dérives résiduelles restent pour P20-D9+.
+`DATA_MODEL.md` documente aussi, depuis P20-D4, les identifiants Stripe uniques `utf8mb4_bin` ; depuis P20-D5 la portée réelle de `uq_user_open` (inchangée) et le caractère legacy/inactif de `carts` ; depuis P20-D6 l’absence de table `wishlists` (retirée) ; depuis P20-D7 le schéma riche canonique de `logs` (plus de DDL runtime) ; depuis P20-D8 l’hétérogénéité historique des collations (conservée, aucune normalisation) ; depuis P20-D9 l’absence de `stripe_events_p13c_backup_20260818` (retirée). Les éventuels résidus restants exigent une évaluation séparée.
 
 ### Stratégie retenue
 
@@ -2524,11 +2524,11 @@ Aucune mutation DB, aucune migration, aucun `ALTER` / `CREATE` / `DROP` / `DELET
 - table résiduelle `wishlists` encore présente après désactivation de l’API P18 — **retirée ensuite en P20-D6** ;
 - `logs` encore créée au runtime (`CREATE TABLE IF NOT EXISTS`) — **DDL runtime retiré ensuite en P20-D7** ;
 - collations mixtes — **analysé ensuite en P20-D8 ; aucune mutation** ;
-- d’autres tables / relations portent une dérive historique à examiner séparément — **reporté à P20-D9+**.
+- d’autres tables / relations portent une dérive historique à examiner séparément — le backup P13-C a été **retiré ensuite en P20-D9** ; le reste exige une évaluation séparée.
 
 Aucune de ces dérives n’a été corrigée pendant P20-A. Aucune normalisation de collation. Aucune table résiduelle supprimée. Aucune FK modifiée.
 
-Ces sujets restent des **constats / travaux P20 futurs** sauf le conflit `order_items.order_id` RESTRICT/CASCADE (P20-D1), la duplication `order_items.variant_id` (P20-D2), la duplication `order_status_history.order_id` (P20-D3), les identifiants Stripe non uniques (P20-D4), `uq_user_open` (P20-D5, non muté), la table `wishlists` (P20-D6), le DDL runtime `logs` (P20-D7) et les collations mixtes (P20-D8, aucune migration). Les autres dérives restent pour P20-D9+.
+Ces sujets restent des **constats / travaux P20 futurs** sauf le conflit `order_items.order_id` RESTRICT/CASCADE (P20-D1), la duplication `order_items.variant_id` (P20-D2), la duplication `order_status_history.order_id` (P20-D3), les identifiants Stripe non uniques (P20-D4), `uq_user_open` (P20-D5, non muté), la table `wishlists` (P20-D6), le DDL runtime `logs` (P20-D7), les collations mixtes (P20-D8, aucune migration) et le backup P13-C (P20-D9). Les éventuels résidus restants exigent une évaluation séparée.
 
 ### P20-B — Runner de migrations
 
@@ -2660,7 +2660,7 @@ Variables utilisées (noms seulement, **aucune valeur** documentée) : `SITE_BAS
 3. `GET https://flippinmaple.com/readiness` sans credentials → HTTP 200 `{"ok":true}`.
 4. `POST https://flippinmaple.com/webhook/stripe` sans `stripe-signature` → HTTP 400 `Webhook Error: No stripe-signature header value was provided.` Basic Auth ne bloque pas le webhook ; la signature Stripe reste exigée ; aucun traitement métier Stripe déclenché par ce smoke test.
 
-**Statut :** verrou temporaire **VALIDÉ EN PRODUCTION**. P20 reste **EN COURS**. P20-C reste terminé. P20-D1 à P20-D8 ont depuis été clos / traités ; P20-D9+ est la prochaine phase de schéma.
+**Statut :** verrou temporaire **VALIDÉ EN PRODUCTION**. P20 reste **EN COURS**. P20-C reste terminé. P20-D1 à P20-D9 ont depuis été clos / traités. Les éventuels résidus restants exigent une évaluation séparée.
 
 **Rollback / retrait futur :** pour rouvrir temporairement le site, désactiver explicitement `SITE_BASIC_AUTH_ENABLED` dans Hostinger, puis appliquer / redémarrer selon le mécanisme Hostinger. Ne pas supprimer username/password des variables **avant** d’avoir désactivé le flag : un flag encore `true` sans credentials produit un fail-closed 503. Après la fin de l’audit, décider séparément si le middleware est retiré du code ou conservé désactivé comme mécanisme opérationnel. Toute réouverture publique doit être validée séparément.
 
@@ -2933,19 +2933,54 @@ Les autres usages texte du runtime sont colonne ↔ paramètre `?`, pas colonne 
 
 **Objets SQL stockés.** Inventaire read-only `information_schema.VIEWS`, `TRIGGERS`, `ROUTINES`, `EVENTS` : **aucune ligne**. Production : aucune vue, aucun trigger, aucune routine, aucun event. Aucun objet SQL stocké dans cette base (vue, trigger, routine ou event) n’ajoute une autre comparaison texte inter-table hors du runtime audité.
 
-**Table observée, non tranchée.** `stripe_events_p13c_backup_20260818` a été vue pendant l’inventaire. Son statut, son utilité et un éventuel retrait **ne sont pas décidés** en P20-D8. Aucune conclusion n’est tirée ici sur sa nécessité ou sur un éventuel retrait ; cela exige une analyse séparée en P20-D9+.
+**Table observée, non tranchée ici.** `stripe_events_p13c_backup_20260818` a été vue pendant l’inventaire. Son statut, son utilité et un éventuel retrait **ne sont pas décidés** en P20-D8. **Retirée ensuite en P20-D9.**
 
 **Décision.** Conserver l’état actuel. L’audit n’a identifié aucun défaut fonctionnel concret nécessitant une mutation. Uniformiser aujourd’hui (`utf8mb4_general_ci` / `utf8mb4_unicode_ci` / `utf8mb4_uca1400_ai_ci` / `utf8mb4_bin`) provoquerait des ALTER potentiellement coûteux, un rebuild d’index, un risque de changement d’égalité / tri / `LIKE` / UNIQUE, un locking potentiel, un risque Hostinger cas par cas, sans bénéfice fonctionnel démontré.
 
 **Hors périmètre.** Pas de commit de code. Pas de `schema_migrations`. `npm run migrate` non concerné. P20-D1 à P20-D7 non rouverts.
 
+### P20-D9 — Retrait du backup P13-C
+
+**P20-D9 est FERMÉ / VALIDÉ EN PRODUCTION.** P20 global reste **EN COURS**.
+
+**Sujet.** Table temporaire `stripe_events_p13c_backup_20260818`, créée hors Git avant la neutralisation P13-C (48 payloads Stripe historiques complets). Hors modèle applicatif. Avant P20-D9, aucune dépendance runtime ni aucun script applicatif ne nécessitait cette table. La migration D9 la référence uniquement pour effectuer son retrait contrôlé. Filet de rollback / preuve, plus nécessaire une fois la table vivante entièrement neutralisée et la décision de retrait prise.
+
+**Commit technique :** `a2f0d56` — `fix(db): retire P13-C Stripe backup`
+
+**Fichier :** `db/migrations/2026-09-04_drop_stripe_events_p13c_backup.sql`
+
+**Checksum SHA-256 :** `94f2713b05168de10b47e2efe71c15b0e640664e56531eed43eae01ecffcf9d0`
+
+**Migration.** Fail-closed. Un seul `DROP TABLE` de cette table. Aucun `DELETE` / `UPDATE` / `INSERT` applicatif. Aucun `ALTER` d’une autre table. Guards : table présente ; exactement `event_id VARCHAR(255) NOT NULL` et `payload LONGTEXT NULL` ; aucune colonne inattendue ; aucune FK entrante / sortante ; 48 lignes ; 48 `event_id` distincts ; aucun `event_id` NULL ; 48 payloads backup non-NULL (`SUM(payload IS NULL) = 0`, sans lecture du contenu) ; 48/48 `event_id` présents dans `stripe_events` ; forme live des 48 correspondants = 28 `minimal_object_id` / 14 `minimal_payment_intent_id` / 6 NULL / 0 legacy / 0 invalid / 0 autre JSON. Les stats ne s’exécutent qu’après validation structurelle. `DATABASE()` seulement (pas de nom de base durci).
+
+**Runtime.** Inchangé. Writer P13 : payload minimal ou NULL. `reconcileStripeEvents` accepte encore le format minimal et le legacy.
+
+**Première tentative phpMyAdmin.** Import manuel : aucune erreur visible utile ; backup encore présent ensuite ; `schema_migrations` inchangé (`migration_tracked = 0`). Aucun succès revendiqué.
+
+**Probes.** Un probe séparé a confirmé que `PREPARE` → `BEGIN NOT ATOMIC` → `DROP TABLE` est supporté lorsque le `DROP` est derrière une branche non exécutée. Un premier probe avec `SELECT` dans `EXECUTE` a provoqué #2014 Commands out of sync. Le probe corrigé, sans result set interne, a réussi (`compound_ddl_prepare_ok`).
+
+**Deuxième exécution** (session / page phpMyAdmin fraîche) : `EXECUTE stats_stmt` réussi ; `EXECUTE guard_stmt` réussi ; `DEALLOCATE` réussi ; aucun `SIGNAL` ; aucun message d’erreur.
+
+**Validation immédiate après DROP :** `backup_exists = 0` ; `stripe_events_exists = 1` ; `stripe_events_rows = 135` ; `migration_tracked = 0`.
+
+**Tracking.** `npm run migrate` **n’a pas** été exécuté contre la production. Ligne ajoutée **manuellement** dans `schema_migrations` après validation :
+
+- `filename` = `2026-09-04_drop_stripe_events_p13c_backup.sql`
+- `checksum` = `94f2713b05168de10b47e2efe71c15b0e640664e56531eed43eae01ecffcf9d0`
+- `checksum_ok` = `1`
+- `applied_at = 2026-09-05 01:27:31`
+
+**Validation finale :** `backup_exists = 0` ; `stripe_events_rows = 135` ; checksum 64 caractères, correspondance exacte.
+
+**Hors périmètre.** Runner non utilisé pour appliquer D9. Aucun rollback testé. Ce succès **ne généralise pas** les `DROP` / scripts Hostinger.
+
 ### Prochaines étapes / statut courant
 
-**P20-D9+** (étape suivante) : examiner **séparément** les autres dérives résiduelles. Ne pas y rouvrir les collations déjà tranchées en P20-D8. Ne pas y définir encore artificiellement tous les futurs sous-chantiers.
+P20-D9 est fermé. P20 n’est **pas** fermé automatiquement. Les éventuels résidus de schéma restants (colonnes adresse, `main_category_id`, tables éventuellement inertes, etc.) exigent une **évaluation séparée**. Ne pas y rouvrir D1–D9.
 
 Chaque mutation reste un sous-chantier séparé, avec backup approprié, inspection du SQL, autorisation et validation.
 
-**Statut courant P20 :** **EN COURS**. P20-A terminé (read-only). P20-B terminé techniquement. P20-C terminé / validé en production. Verrou temporaire Basic Auth de la surface publique : **validé en production** (mesure transversale). P20-D1 à P20-D4, P20-D6 et P20-D7 fermés / validés en production. P20-D5 et P20-D8 fermés (analyse terminée, aucune migration). P20-D9+ : à faire. **Non fermé.**
+**Statut courant P20 :** **EN COURS**. P20-A terminé (read-only). P20-B terminé techniquement. P20-C terminé / validé en production. Verrou temporaire Basic Auth de la surface publique : **validé en production** (mesure transversale). P20-D1 à P20-D4, P20-D6, P20-D7 et P20-D9 fermés / validés en production. P20-D5 et P20-D8 fermés (analyse terminée, aucune migration). **Non fermé.**
 
 ---
 
