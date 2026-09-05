@@ -93,3 +93,17 @@ export const abandonedCartLimiter = rateLimit({
     });
   }
 });
+
+export const paymentsVerifyLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req, res) => {
+    res.status(429).json({
+      error:
+        'Trop de tentatives de vérification du paiement. Réessaie dans quelques instants.',
+      code: 'PAYMENTS_VERIFY_RATE_LIMITED'
+    });
+  }
+});

@@ -1,22 +1,29 @@
 // server/controllers/paymentsController.js
 
 // GET /payments/verify?session_id=...
-// Response: { paid, found?, orderId? }
+// Response: { paid, found?, error? } — never orderId; never mutates; never calls Stripe
 export async function verifyPaymentStatus(req, res) {
   const db = req.app.locals.db;
-  const sessionId = req.query.session_id || null;
+  const sessionId = req.query.session_id;
 
-  if (!sessionId) {
+  if (sessionId == null || sessionId === '') {
     return res.status(400).json({
       paid: false,
       error: 'missing_session_id'
     });
   }
 
+  if (typeof sessionId !== 'string' || sessionId.length > 255) {
+    return res.status(400).json({
+      paid: false,
+      error: 'invalid_session_id'
+    });
+  }
+
   try {
     // Lookup order by Stripe session id
     const [[orderRow]] = await db.query(
-      `SELECT id, status
+      `SELECT status
          FROM orders
         WHERE stripe_session_id = ?
         LIMIT 1`,
@@ -36,8 +43,7 @@ export async function verifyPaymentStatus(req, res) {
 
     return res.json({
       paid: isPaid,
-      found: true,
-      orderId: orderRow.id
+      found: true
     });
   } catch (err) {
     console.error('[verifyPaymentStatus] db error', err?.message || err);
