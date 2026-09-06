@@ -35,6 +35,8 @@ Ce fichier définit, pour la future page d’accueil de Flippin’ Maple :
 
 Ce n’est **pas** une implémentation technique. Aucun composant, aucune feuille de style et aucun actif graphique ne sont fournis ici.
 
+> **Note de gouvernance (2026-09-06).** Une intégration visuelle partielle de l’accueil existe maintenant dans le code. Ce document reste la **spécification cible**, pas un journal d’implémentation. L’écart spec ↔ page actuelle n’est pas refermé. Ce document n’autorise pas les actifs, le logo, ni une nouvelle phase.
+
 La page d’accueil doit être une **application de la marque**, pas la marque elle-même. Elle suit la direction de travail **Northern Utility Editorial** (`VISUAL_IDENTITY.md`) et le positionnement de `VISION_AND_POSITIONING.md`.
 
 ### Principe narratif

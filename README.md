@@ -14,10 +14,45 @@ Le nom technique historique du dépôt (`mon-shop-artofwhere`) est un héritage 
 
 ## 2. Statut actuel
 
-- Le socle technique e-commerce est en développement.
-- L’identité de marque est en cours de refondation.
+Point d’entrée opérationnel du dépôt. Ce n’est ni la Constitution, ni un journal de session. Les phases stratégiques restent dans `docs/00_PROJECT_MASTER.md` §10 ; ce README ne déclare pas une « phase courante » Constitution.
+
+### 2.1 Constats
+
+- Le socle technique e-commerce existe (catalogue, panier, paiement, fulfillment).
+- L’identité de marque est en cours de refondation. Logo / wordmark / symbole : encore **ouverts** (`docs/brand/VISUAL_IDENTITY.md`).
 - Le projet n’est pas encore prêt pour un lancement public.
-- La documentation spécialisée existe maintenant pour la marque, l’engineering, la conformité, la sécurité et la page d’accueil ; certains de ces documents sont encore des drafts ou des plans de travail internes.
+- La documentation spécialisée existe pour la marque, l’engineering, la conformité, la sécurité et la page d’accueil ; certains documents sont encore des drafts ou des plans de travail internes.
+
+**Constat déduit (pas un statut de phase écrit dans la Constitution) :** les critères de sortie de la Phase 1 — Fondation de marque ne sont pas tous atteints. Exemple observable dans le dépôt : `index.html` expose encore le titre `Vite + React` et le favicon `/vite.svg`.
+
+### 2.2 Programmes fermés
+
+**Sécurité — numérotation P.**
+
+Les chantiers **P3–P24** sont fermés. Détail et validations : [`docs/compliance/TECHNICAL_SECURITY_REMEDIATION_LOG.md`](docs/compliance/TECHNICAL_SECURITY_REMEDIATION_LOG.md). **Aucun P25 n’est ouvert.** Ce programme n’est pas une roadmap produit.
+
+**Passe storefront — nomenclature de chantier/session.**
+
+Une passe storefront globale a été complétée jusqu’à `b80e408`. Elle couvrait les fondations visuelles, les principales surfaces storefront, les états système et l’accessibilité.
+
+Sa nomenclature de travail R2–R10 était une nomenclature de chantier/session. Elle ne correspond **pas** aux règles fondamentales R1–R10 de `docs/00_PROJECT_MASTER.md` §7. Aucun « R11 » officiel n’est défini.
+
+L’historique détaillé des commits reste dans Git.
+
+### 2.3 Prochaine phase produit
+
+**Aucun chantier produit suivant n’est officiellement choisi.**
+
+Il n’existe pas de phase « R11 ». Ne pas en inventer une.
+
+Candidats déjà documentés — **décision humaine requise** avant ouverture, sans ordre imposé :
+
+- chrome public restant (exemple : titre et favicon scaffold dans `index.html`) ;
+- actifs / logo / homepage, seulement lorsqu’un document spécialisé les autorise explicitement (`docs/brand/VISUAL_IDENTITY.md` ; `docs/web/HOMEPAGE_ASSETS.md` §29 n’autorise aucune étape) ;
+- reprise ou revalidation de l’audit décrit dans `docs/compliance/PRIVACY_COOKIES_CHATBOT_PLAN.md` §23 (texte antérieur à P8–P24 ; ne plus le traiter comme prochaine action automatique) ;
+- dette / résidus déjà identifiés (inventaire héritage ; éléments signalés en session, non priorisés ici).
+
+Cette liste n’ouvre aucun chantier.
 
 ---
 

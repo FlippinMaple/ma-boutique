@@ -112,6 +112,8 @@ Il ne doit **jamais** fabriquer le récit.
 
 Ces règles s’appliquent à toute décision produit, design, code, contenu ou partenariat.
 
+La numérotation **R1–R10** de cette section désigne des **règles permanentes**. Elle n’est pas une séquence de chantiers de session, ni un historique Git. Toute nomenclature opérationnelle de chantier est distincte de ces règles. L’état synthétique de la passe storefront actuellement documentée se trouve dans `README.md` §2.
+
 ### R1 — La marque prime sur l’outil
 Aucun fournisseur, framework ou hébergeur ne doit apparaître comme l’identité publique de Flippin’ Maple.
 
@@ -217,6 +219,8 @@ Ces décisions sont considérées **prises**, jusqu’à révocation formelle da
 
 Les phases sont stratégiques. Les dates précises vivent ailleurs.
 
+Ce document **ne tient pas** un statut « phase courante / ouverte » de session. L’état opérationnel des programmes déjà fermés, et le fait que le prochain chantier produit n’est pas encore choisi, vivent dans `README.md` §2.
+
 ### Phase 0 — Socle technique (état historique / en cours)
 Existence d’un moteur e-commerce (catalogue, panier, paiement, fulfillment).  
 **Objectif de phase :** fiabiliser la machine.  
@@ -226,6 +230,7 @@ Existence d’un moteur e-commerce (catalogue, panier, paiement, fulfillment).
 Activer Flippin’ Maple partout où le client regarde : nom, récit, identité, expérience, confiance.  
 POD reste le moyen de production.  
 **Critère de sortie :** un inconnu comprend en 10 secondes quelle marque il visite — et ce n’est pas « un shop Vite + Printful ».
+Cette Constitution **ne déclare pas** ce critère atteint.
 
 ### Phase 2 — Marque premium opérante
 Catalogue curaté, storytelling, qualité perçue, opérations stables, SEO et présence crédibles.  
@@ -280,7 +285,7 @@ Cette carte indique où vit l’autorité. Elle ne duplique pas le contenu des d
 |---|---|---|
 | `docs/compliance/PRIVACY_COOKIES_CHATBOT_PLAN.md` | document interne de travail | Source interne pour confidentialité, témoins, consentements et futur chatbot ; pas un avis juridique |
 | `docs/compliance/TECHNICAL_SECURITY_AUDIT.md` | audit exploratoire figé | Constats initiaux de sécurité et d’intégrité transactionnelle ; ne reçoit pas les correctifs courants |
-| `docs/compliance/TECHNICAL_SECURITY_REMEDIATION_LOG.md` | corrections en cours | Journal des correctifs, commits, déploiements et validations de production |
+| `docs/compliance/TECHNICAL_SECURITY_REMEDIATION_LOG.md` | journal des clôtures P3–P24 (aucun P25 ouvert) | Journal des correctifs, commits, déploiements et validations de production |
 
 #### Web / page d’accueil
 
@@ -324,6 +329,7 @@ Format : date · ID · décision · raison.
 | 2026-08-13 | C04 | Carte documentaire centrale resynchronisée avec les documents spécialisés réellement présents | Les index de `00_PROJECT_MASTER.md` et du README ne reflétaient plus `docs/brand/`, `docs/engineering/`, `docs/compliance/` et `docs/web/` |
 | 2026-08-16 | C05 | Flippin’ Maple adopte comme direction un monolithe modulaire avec séparation progressive entre commerce core, configuration de marque/instance et intégrations fournisseurs ; Stripe et Printful sont des providers de l’instance actuelle, non des dépendances conceptuelles obligatoires du core | Préserver la simplicité actuelle tout en permettant l’évolution, le remplacement de fournisseurs et la réutilisation future du moteur, sans imposer des microservices prématurés |
 | 2025-10-21 | H01 | (Héritage) Auth JWT / cookies httpOnly — alignement front/back | Noté historiquement dans `NOTES.md` ; détail technique hors Constitution |
+| 2026-09-06 | C06 | Les règles §7 R1–R10 sont une numérotation permanente de principes. Toute numérotation opérationnelle de chantiers lui est distincte et ne vit pas dans cette Constitution (état synthétique : `README.md` §2) | Empêcher qu’une nomenclature de session soit lue comme une révision des règles fondamentales, et empêcher d’inventer une phase officielle par simple incrément |
 
 ---
 
@@ -337,6 +343,7 @@ Avant de modifier le projet, confirmer :
 4. Est-ce que je contredis une règle §7 ou une décision §8 ?  
 5. Si je touche au schéma, ai-je consulté `docs/engineering/DATA_MODEL.md` (et non l’inventaire) ?  
 6. Si je prends une décision structurante nouvelle, l’ai-je écrite au §12 ?
+7. Si je cherche l’état opérationnel ou le prochain chantier : ai-je lu `README.md` §2 plutôt que d’inventer une phase ?
 
 Si la réponse à (4) est oui → **arrêter** et trancher explicitement avant de coder.
 

@@ -2,6 +2,8 @@
 
 **Statut :** journal actif — chantiers P3 (checkout public), P4 (webhook Stripe / idempotence), P5 (fallback `order_items`), P6 (gestionnaire d’erreurs), P7 (authentification / sessions / JWT), P8 (inscription / consentement marketing / privacy technique), P9 (consentements email / unsubscribe / webhooks et cycle de révocation), P10 (secret unsubscribe / token hardening), P11 (paniers abandonnés), **P12** (job / cron des paniers abandonnés), P13 (données Stripe conservées / minimisation), P14 (livraison Printful), P15 (inventaire Printful), P16 (page de succès), P17 (produits publics), P18 (wishlist) et P19 (Printful automatique du webhook) : **FERMÉS / COMPLETS**. P12, P15, P16, P17, P18, P19 et P23 sont **VALIDÉS EN PRODUCTION**. **P20** (base de données et migrations) est **FERMÉ / COMPLET**. P20-A à P20-D9 ont été traités selon leur statut documenté (validations production ou analyses sans mutation). Aucun autre défaut de schéma démontré n’exige une mutation. **P21** (journaux / logging) est **FERMÉ / COMPLET**. P21 n’est **pas** déclaré VALIDÉ EN PRODUCTION. **P22** (routes administratives) est **FERMÉ / COMPLET**. P22 n’est **pas** déclaré VALIDÉ EN PRODUCTION. **P23** (API de vérification du paiement) est **FERMÉ / COMPLET**. P23 est **VALIDÉ EN PRODUCTION**. **P24** (interface checkout) est **FERMÉ / COMPLET**. P24 n’est **pas** déclaré VALIDÉ EN PRODUCTION. Le writer live P13-B (`upsertStripeEvent` post-`dd9580d`) est **VALIDÉ EN PRODUCTION** (P13-R2, 6 septembre 2026). P13 n’est pas reclasé ici comme VALIDÉ EN PRODUCTION dans son ensemble.
 
+**Aucun chantier P25 n’est ouvert.** Ce journal n’ordonne plus de « prochaine priorité P… ». L’état opérationnel et l’absence de chantier produit choisi sont dans `README.md` §2.
+
 Ce document complète `docs/compliance/TECHNICAL_SECURITY_AUDIT.md`.
 
 - le **rapport d’audit** conserve les constats initiaux figés;
@@ -3460,6 +3462,18 @@ Ces rows sont postérieures au cut-over `dd9580d` (`fix(stripe): minimize persis
 Le writer P13-B est maintenant **VALIDÉ EN PRODUCTION**.
 
 Aucune validation supplémentaire, replay ou mutation n’est requise pour ce résidu.
+
+---
+
+## 6 septembre 2026 — Clôture de programme : aucun chantier P suivant
+
+Les chantiers **P3–P24** sont fermés (détail dans l’en-tête et les sections datées). **Aucun P25 n’est ouvert.**
+
+Ce journal ne définit pas la prochaine phase produit. L’état opérationnel et l’absence de chantier suivant choisi sont dans `README.md` §2.
+
+La passe storefront de session (numérotation R2–R10 de chantier/session, distincte des règles R1–R10 de la Constitution) n’appartient pas à ce journal.
+
+Aucune modification de code dans cette entrée.
 
 ---
 

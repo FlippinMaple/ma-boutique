@@ -3,8 +3,9 @@
 **Document :** `docs/engineering/ARCHITECTURE.md`  
 **Statut :** actif — direction architecturale  
 **Date :** 2026-08-16  
+**Correction de statut d’audit :** 2026-09-06
 **Portée :** comment c’est bâti, frontières du core, providers et portabilité  
-**Hors portée :** détails de schéma, invariants checkout, contraintes Hostinger, textes juridiques, inventaire de couplage
+**Hors portée :** détails de schéma, invariants checkout, contraintes Hostinger, textes juridiques, inventaire de couplage, roadmap produit
 
 ---
 
@@ -14,7 +15,7 @@ Ce document fixe une **direction architecturale**. Il ne décrit pas une platefo
 
 Flippin’ Maple demeure la marque et le produit principal actuel. Le moteur technique doit, à terme, pouvoir être réutilisé comme **core e-commerce** pour d’autres boutiques, sans que Stripe, Printful ou l’identité Flippin’ Maple deviennent le cœur conceptuel du système.
 
-**Priorité d’audit inchangée.** P8 (inscription / consentement marketing / privacy technique) est **FERMÉ / COMPLET**. La prochaine priorité d’audit est **P9**. Le chantier réel de portabilité se fera **après** ou **séparément** de l’audit courant, sauf si une correction future doit naturellement respecter ces frontières.
+**Programme d’audit P3–P24 :** fermé (P8 et P9 compris). **Aucun chantier P suivant n’est ouvert.** Le détail des clôtures est dans `docs/compliance/TECHNICAL_SECURITY_REMEDIATION_LOG.md`. Ce document d’architecture ne définit pas la prochaine phase produit. Le chantier réel de portabilité se fera **après** ou **séparément** d’un mandat explicite, sauf si une correction future doit naturellement respecter ces frontières.
 
 Autorités spécialisées (ce document ne les duplique pas) :
 
@@ -145,7 +146,7 @@ Stripe est une intégration critique et fonctionnelle. La direction ne doit pas 
 
 - fragiliser Stripe ;
 - abstraire artificiellement chaque ligne Stripe ;
-- modifier le checkout actuel pendant l’audit.
+- modifier le checkout actuel sans mandat explicite.
 
 Toute abstraction future de paiement **doit préserver** les invariants de `docs/engineering/CHECKOUT_INVARIANTS.md`.
 
@@ -191,7 +192,7 @@ Les textes et paramètres légaux sont propres à une instance, une juridiction 
 - pas de files / message brokers sans besoin réel ;
 - pas d’abstraction pour le plaisir d’abstraire ;
 - pas de réécriture générale ;
-- pas de refactor massif pendant l’audit actuel.
+- pas de refactor massif sans mandat explicite.
 
 Extraire ou abstraire seulement s’il existe une frontière métier ou un besoin réel. Le monolithe modulaire reste le choix par défaut.
 
@@ -221,7 +222,7 @@ Si c’est clairement une intégration fournisseur : éviter d’introduire de n
 
 Si l’abstraction coûterait beaucoup plus cher que sa valeur immédiate : **documenter le couplage et reporter proprement** plutôt que sur-concevoir.
 
-Cette règle s’applique aux évolutions courantes. Elle ne déclenche pas le chantier de portabilité et ne change pas l’ordre de l’audit (P9 ensuite).
+Cette règle s’applique aux évolutions courantes. Elle ne déclenche pas le chantier de portabilité. Le programme P3–P24 est fermé ; aucun ordre P suivant n’est défini ici.
 
 ---
 
@@ -236,7 +237,7 @@ Avant tout gros refactor, inventorier :
 - URLs et textes légaux ;
 - dépendances entre domaines.
 
-Ce rapport d’inventaire **n’est pas créé ici**. Le chantier se fera après ou séparément de l’audit courant, sauf frontière naturelle dans une correction future.
+Ce rapport d’inventaire **n’est pas créé ici**. Le chantier se fera après ou séparément d’un mandat explicite, sauf frontière naturelle dans une correction future.
 
 ---
 

@@ -50,6 +50,8 @@ Les actifs servent la hiérarchie éditoriale de la page d’accueil : installer
 
 Audit en lecture seule (2026-07-22). Aucun fichier déplacé, renommé ou téléchargé.
 
+> **Note de gouvernance (2026-09-06).** Les §3.1–3.5 sont un **instantané du 2026-07-22**. Ils n’ont pas été refaits. Depuis, une passe storefront de session (R2–R10, fermée à `b80e408` — voir `README.md` §2) a notamment remplacé le stub texte de `Home.jsx` par une accueil éditoriale réduite. Les actifs de marque (logo, photographies, favicon marque) restent absents ou scaffold. Ne plus lire « `Home.jsx` = stub » comme l’état actuel.
+
 ### 3.1 Emplacements observés
 
 | Chemin | Existe | Observation |
@@ -708,6 +710,8 @@ Responsable nommé : **non défini** — décisions à assigner.
 14. Aucun déploiement sans autorisation
 
 **Ce document n’autorise aucune de ces étapes.**
+
+Cette liste n’est **pas** le prochain chantier produit officiellement choisi (aucun n’est choisi — `README.md` §2).
 
 ---
 

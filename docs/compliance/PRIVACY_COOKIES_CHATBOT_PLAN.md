@@ -4,7 +4,7 @@
 - Statut : document interne de travail
 - Portée : conformité, architecture, inventaire et implantation
 - Validation juridique : requise avant mise en production
-- Dernière mise à jour : 2026-07-23
+- Dernière mise à jour : 2026-09-06 (annotation de gouvernance §23 ; le corps du plan n’a pas été ré-audité)
 
 > **Avertissement.** Ce document est un plan de travail interne. Il ne constitue pas un avis juridique et ne prétend pas que Flippin’ Maple est déjà conforme. Toute affirmation publique de conformité exige une validation juridique québécoise préalable.
 
@@ -1218,7 +1218,9 @@ Les liens précis pourront être ajoutés au moment de la validation documentair
 
 ## 23. Prochaine action autorisée
 
-La prochaine action autorisée est un audit technique ciblé du projet.
+> **Note de gouvernance (2026-09-06).** Le texte ci-dessous a été rédigé le 2026-07-23, **avant** la fermeture des chantiers de remédiation P8–P24. Il n’est **plus** la prochaine phase produit automatique du dépôt. Une décision humaine est requise pour savoir s’il faut **reprendre ou revalider** cet audit au regard de l’état post-P24, ou choisir un autre chantier déjà documenté (`README.md` §2). Cette section n’autorise toujours aucun code (restrictions inchangées). Elle n’ouvre pas un « R11 ».
+
+La séquence historique prévue par ce plan était un audit technique ciblé du projet.
 
 Ordre :
 
