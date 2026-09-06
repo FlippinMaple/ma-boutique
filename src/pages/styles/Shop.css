@@ -113,6 +113,11 @@
   );
 }
 
+.shop-search__input:focus-visible {
+  outline: 2px solid var(--color-oxide-red);
+  outline-offset: 2px;
+}
+
 .shop-search__submit {
   position: absolute;
   top: 50%;

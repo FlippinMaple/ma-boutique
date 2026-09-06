@@ -45,7 +45,7 @@ const Dashboard = () => {
 
   if (loading) {
     return (
-      <main className="dashboard-page">
+      <main className="dashboard-page" id="main-content">
         <div className="dashboard-page__inner">
           <p className="dashboard-page__state">Chargement…</p>
         </div>
@@ -58,7 +58,7 @@ const Dashboard = () => {
   const displayLast = capitalizeSmart(user.last_name || '');
 
   return (
-    <main className="dashboard-page">
+    <main className="dashboard-page" id="main-content">
       <div className="dashboard-page__inner">
         <h1 className="dashboard-page__title">
           Bienvenue {displayFirst} {displayLast}

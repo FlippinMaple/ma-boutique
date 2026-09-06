@@ -11,6 +11,7 @@ import {
 import api from './utils/api';
 import { Toaster } from 'react-hot-toast';
 import { ModalProvider } from './context/ModalContext';
+import { useCart } from './CartContext';
 
 import Header from './components/Header';
 import Footer from './components/Footer';
@@ -50,12 +51,16 @@ function AppInner() {
   const initRanRef = useRef(false);
   const navigate = useNavigate();
   const { pathname } = useLocation();
+  const { cart } = useCart();
   const isAdminSurface = pathname.startsWith('/admin');
   const hasMainContentTarget =
     pathname === '/' ||
     pathname === '/shop' ||
     pathname.startsWith('/product/') ||
-    pathname === '/checkout' ||
+    (pathname === '/checkout' && Array.isArray(cart) && cart.length > 0) ||
+    pathname === '/login' ||
+    pathname === '/register' ||
+    (pathname === '/dashboard' && isAuthenticated) ||
     pathname === '/unsubscribe';
 
   const applyUser = useCallback((nextUser) => {

@@ -54,7 +54,7 @@ const Login = ({ onAuthSuccess }) => {
   };
 
   return (
-    <main className="login-page">
+    <main className="login-page" id="main-content">
       <div className="login-page__inner">
         <h1 className="login-page__title">Se connecter</h1>
         <form className="login-form" onSubmit={handleSubmit}>

@@ -50,13 +50,20 @@ export default function Header({ isAuthenticated, onLogout, userRole }) {
         <Link
           to="/checkout"
           className="site-header__link site-header__cart"
+          aria-label={
+            totalQuantity === 1
+              ? 'Panier, 1 article'
+              : totalQuantity > 1
+                ? `Panier, ${totalQuantity} articles`
+                : 'Panier'
+          }
         >
           Panier
           {totalQuantity > 0 && (
             <span
               ref={badgeRef}
               className={`site-header__cart-badge ${animate ? 'bump' : ''}`}
-              aria-label={`${totalQuantity} article(s) dans le panier`}
+              aria-hidden="true"
             >
               {totalQuantity}
             </span>

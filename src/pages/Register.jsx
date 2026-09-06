@@ -107,7 +107,7 @@ const Register = () => {
   };
 
   return (
-    <main className="register-page">
+    <main className="register-page" id="main-content">
       <div className="register-page__inner">
         <h1 className="register-page__title">Créer un compte</h1>
         <form onSubmit={handleSubmit} className="register-form">
