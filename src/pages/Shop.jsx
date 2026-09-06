@@ -96,7 +96,8 @@ const Shop = () => {
       const el = document.getElementById(`product-${highlightId}`);
       if (el) {
         el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        el.style.outline = '2px solid #38bdf8';
+        el.style.outline = '2px solid var(--color-deep-forest)';
+        el.style.outlineOffset = '4px';
       }
     }
   }, [products, highlightId]);
@@ -234,10 +235,43 @@ const Shop = () => {
                           />
                         </Link>
                       ) : (
-                        <div
-                          className="shop-image-fallback"
-                          aria-hidden="true"
-                        />
+                        <>
+                          {/*
+                            PLACEHOLDER ACTIF — PHOTOGRAPHIE PRODUIT CATALOGUE
+
+                            Rôle :
+                            présenter les produits de façon cohérente dans le catalogue.
+
+                            Sujet :
+                            produit porté ou isolé selon direction finale.
+
+                            Ratio :
+                            4:5.
+
+                            Résolution :
+                            minimum 1600 × 2000.
+
+                            Format :
+                            AVIF / WebP.
+
+                            Direction :
+                            lumière cohérente ;
+                            échelle constante ;
+                            fond Maple Bone / gris clair ou environnement commun ;
+                            pas de mélange brutal entre mockups POD et
+                            photographie éditoriale.
+
+                            Responsive :
+                            object-fit cover contrôlé.
+
+                            Intention :
+                            faire percevoir une collection cohérente, pas un dump Printful.
+                          */}
+                          <div
+                            className="shop-image-fallback"
+                            aria-hidden="true"
+                          />
+                        </>
                       )}
                     </div>
                     <div className="shop-card__body">
