@@ -154,10 +154,44 @@ const ProductDetail = () => {
                 className="product-detail__image"
               />
             ) : (
-              <div
-                className="product-detail__image-fallback"
-                aria-hidden="true"
-              />
+              <>
+                {/*
+                  PLACEHOLDER ACTIF — PHOTOGRAPHIE PRODUIT PDP
+
+                  Rôle :
+                  présenter la pièce principale et permettre l’évaluation du produit.
+
+                  Sujet :
+                  produit porté ou isolé selon la direction photographique finale.
+
+                  Ratio :
+                  4:5.
+
+                  Résolution :
+                  minimum 1600 × 2000.
+
+                  Format :
+                  AVIF / WebP.
+
+                  Direction :
+                  éclairage cohérent avec Home et Shop ;
+                  fond Maple Bone / gris clair ou environnement sobre commun ;
+                  échelle lisible ;
+                  vêtement clairement visible ;
+                  aucune marque concurrente.
+
+                  Responsive :
+                  object-fit cover contrôlé ;
+                  cadrage conservant le produit lisible sur mobile.
+
+                  Intention :
+                  fiche produit éditoriale et fonctionnelle, pas mockup POD brut.
+                */}
+                <div
+                  className="product-detail__image-fallback"
+                  aria-hidden="true"
+                />
+              </>
             )}
           </div>
 

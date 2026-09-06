@@ -30,9 +30,11 @@
   margin-bottom: clamp(var(--space-5), 4vw, var(--space-7));
   padding-block: var(--space-1);
   font-family: var(--font-display);
-  font-size: clamp(0.7rem, 1.4vw, 0.8rem);
+  font-stretch: var(--font-display-stretch);
+  font-size: 0.75rem;
   font-weight: 600;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   color: var(--color-ink-black);
   text-decoration: underline;
   text-decoration-thickness: 1px;
@@ -55,10 +57,10 @@
   overflow: hidden;
   background-color: color-mix(
     in srgb,
-    var(--color-cold-concrete) 18%,
+    var(--color-cold-concrete) 14%,
     var(--color-maple-bone)
   );
-  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
 }
 
 .product-detail__image {
@@ -72,17 +74,12 @@
   width: 100%;
   height: 100%;
   background-color: var(--color-deep-forest);
-  background-image:
-    linear-gradient(
-      155deg,
-      color-mix(in srgb, var(--color-charcoal) 50%, transparent) 0%,
-      transparent 50%
-    ),
-    linear-gradient(
-      25deg,
-      color-mix(in srgb, var(--color-ink-black) 30%, transparent) 0%,
-      transparent 45%
-    );
+  background-image: linear-gradient(
+    to top,
+    var(--color-charcoal) 0%,
+    var(--color-charcoal) 16%,
+    transparent 16%
+  );
 }
 
 .product-detail__content {
@@ -94,10 +91,14 @@
 
 .product-detail__eyebrow {
   margin: 0 0 var(--space-3);
+  padding-top: var(--space-3);
+  width: max-content;
+  border-top: 1px solid var(--color-border);
   font-family: var(--font-display);
-  font-size: clamp(0.7rem, 1.4vw, 0.8rem);
+  font-stretch: var(--font-display-stretch);
+  font-size: 0.75rem;
   font-weight: 600;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--color-deep-forest);
 }
@@ -105,10 +106,11 @@
 .product-detail__title {
   margin: 0;
   font-family: var(--font-display);
-  font-size: clamp(2rem, 5vw, 3.75rem);
-  font-weight: 700;
+  font-stretch: var(--font-display-stretch);
+  font-size: clamp(1.85rem, 4.2vw, 3rem);
+  font-weight: 800;
   line-height: 1.05;
-  letter-spacing: -0.02em;
+  letter-spacing: 0.01em;
   color: var(--color-ink-black);
   overflow-wrap: anywhere;
 }
@@ -116,17 +118,21 @@
 .product-detail__price {
   margin: var(--space-4) 0 0;
   font-family: var(--font-display);
-  font-size: clamp(1.15rem, 2.2vw, 1.45rem);
+  font-stretch: var(--font-display-stretch);
+  font-size: clamp(1.05rem, 2vw, 1.25rem);
   font-weight: 600;
+  letter-spacing: 0.02em;
   color: var(--color-ink-black);
 }
 
 .product-detail__description {
   margin: var(--space-5) 0 0;
-  max-width: 42rem;
+  padding-top: var(--space-5);
+  max-width: 34rem;
+  border-top: 1px solid var(--color-border);
   font-family: var(--font-body);
-  font-size: clamp(1rem, 1.8vw, 1.1rem);
-  line-height: 1.65;
+  font-size: clamp(1rem, 1.6vw, 1.0625rem);
+  line-height: 1.6;
   color: var(--color-text);
   white-space: pre-line;
 }
@@ -148,9 +154,10 @@
   margin: 0 0 var(--space-3);
   padding: 0;
   font-family: var(--font-display);
-  font-size: clamp(0.7rem, 1.4vw, 0.8rem);
+  font-stretch: var(--font-display-stretch);
+  font-size: 0.75rem;
   font-weight: 600;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--color-text-secondary);
 }
@@ -174,8 +181,8 @@
   line-height: 1.2;
   color: var(--color-ink-black);
   background-color: transparent;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
+  border: 1px solid color-mix(in srgb, var(--color-ink-black) 22%, transparent);
+  border-radius: 0;
   cursor: pointer;
   transition:
     color var(--duration-fast) var(--ease-natural),
@@ -209,9 +216,10 @@
 
 .product-quantity__label {
   font-family: var(--font-display);
-  font-size: clamp(0.7rem, 1.4vw, 0.8rem);
+  font-stretch: var(--font-display-stretch);
+  font-size: 0.75rem;
   font-weight: 600;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--color-text-secondary);
 }
@@ -224,8 +232,8 @@
   font-size: 1rem;
   color: var(--color-ink-black);
   background-color: transparent;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
+  border: 1px solid color-mix(in srgb, var(--color-ink-black) 22%, transparent);
+  border-radius: 0;
   outline: none;
   transition:
     border-color var(--duration-fast) var(--ease-natural),
@@ -251,7 +259,7 @@
   max-width: 20rem;
   padding-bottom: var(--space-2);
   font-family: var(--font-body);
-  font-size: clamp(0.8rem, 1.5vw, 0.9rem);
+  font-size: 0.8125rem;
   font-weight: 600;
   line-height: 1.4;
   text-align: right;
@@ -287,14 +295,15 @@
   margin-top: var(--space-5);
   padding: var(--space-3) var(--space-5);
   font-family: var(--font-display);
-  font-size: clamp(0.7rem, 1.4vw, 0.8rem);
+  font-stretch: var(--font-display-stretch);
+  font-size: 0.75rem;
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--color-maple-bone);
   background-color: var(--color-ink-black);
   border: 1px solid var(--color-ink-black);
-  border-radius: var(--radius-sm);
+  border-radius: 0;
   cursor: pointer;
   transition:
     color var(--duration-fast) var(--ease-natural),
