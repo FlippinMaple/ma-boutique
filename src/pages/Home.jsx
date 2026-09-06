@@ -62,6 +62,53 @@ const Home = () => {
               Voir la boutique
             </Link>
           </div>
+          {/*
+            PLACEHOLDER ACTIF — HERO CAMPAGNE
+
+            Rôle :
+            installer immédiatement l’univers Flippin’ Maple.
+
+            Sujet :
+            une ou deux personnes adultes portant les vêtements dans un
+            environnement urbain canadien froid.
+
+            Cadrage desktop :
+            horizontal, environ 3:2 ou 16:9, sujet plutôt côté droit.
+
+            Cadrage mobile :
+            4:5 distinct ou safe area centrale.
+
+            Style :
+            documentaire / éditorial / mature / mouvement naturel.
+
+            Matières :
+            béton, asphalte, métal, bois clair.
+
+            Palette :
+            charbon, noir, Bone, gris froid, Deep Forest discret.
+
+            Format final :
+            AVIF ou WebP.
+
+            Résolution cible desktop :
+            minimum 2400 × 1350.
+
+            Résolution cible mobile :
+            minimum 1600 × 2000 si fichier séparé.
+
+            Interdits :
+            feuille d’érable visible ; chalet ; pose de skate caricaturale ;
+            néon ; saturation excessive ; marque concurrente ; texte incrusté.
+
+            Responsive :
+            object-fit cover avec cadrage mobile validé séparément.
+
+            Intention :
+            culture skate comme origine, pas comme cliché sportif.
+
+            Repli actuel :
+            aplat Deep Forest / Charcoal. Aucune photo, aucun alt inventé.
+          */}
           <div className="home-hero__visual" aria-hidden="true" />
         </div>
       </section>

@@ -42,10 +42,42 @@ const HomeProductCard = ({ product }) => {
               decoding="async"
             />
           ) : (
-            <div
-              className="home-product-card__image-fallback"
-              aria-hidden="true"
-            />
+            <>
+              {/*
+                PLACEHOLDER ACTIF — PHOTOGRAPHIE PRODUIT
+
+                Rôle :
+                présenter les pièces avec cohérence.
+
+                Sujet :
+                produit porté ou isolé selon direction finale.
+
+                Ratio :
+                4:5.
+
+                Résolution :
+                minimum 1600 × 2000.
+
+                Format :
+                AVIF / WebP.
+
+                Direction :
+                lumière cohérente ;
+                fond Maple Bone / gris clair ou environnement commun ;
+                même échelle entre produits ;
+                pas de mélange brutal photo éditoriale / mockup POD.
+
+                Responsive :
+                image complète, object-fit cover contrôlé.
+
+                Intention :
+                faire percevoir une marque de vêtements, pas un catalogue Printful.
+              */}
+              <div
+                className="home-product-card__image-fallback"
+                aria-hidden="true"
+              />
+            </>
           )}
         </div>
 
