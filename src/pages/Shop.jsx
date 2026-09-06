@@ -25,7 +25,7 @@ const Shop = () => {
     }
 
     flashShownRef.current = true;
-    toast.success('🎉 Merci pour ton achat !', { id: 'purchase-thanks' });
+    toast.success('Merci pour ton achat !', { id: 'purchase-thanks' });
 
     const nextState = { ...(location.state || {}) };
     delete nextState.purchaseSuccess;

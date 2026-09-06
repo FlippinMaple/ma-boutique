@@ -28,6 +28,19 @@ import ProtectedCheckoutRoute from './components/ProtectedCheckoutRoute';
 
 import { adminRoutes } from './admin/AdminRoutes';
 
+const toastBaseStyle = {
+  background: 'var(--color-maple-bone)',
+  color: 'var(--color-ink-black)',
+  border: '1px solid var(--color-border)',
+  borderRadius: 0,
+  boxShadow: 'none',
+  fontFamily: 'var(--font-body)',
+  fontSize: '0.9375rem',
+  lineHeight: 1.4,
+  padding: '0.875rem 1rem',
+  maxWidth: '22rem'
+};
+
 function AppInner() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [userRole, setUserRole] = useState(null);
@@ -108,7 +121,15 @@ function AppInner() {
     }
   };
 
-  if (loading) return <div>Chargement...</div>;
+  if (loading) {
+    return (
+      <main className="app-bootstrap-state">
+        <p className="app-bootstrap-state__message" role="status">
+          Chargement...
+        </p>
+      </main>
+    );
+  }
 
   return (
     <div className="site-shell">
@@ -123,7 +144,32 @@ function AppInner() {
         userRole={userRole}
         user={user}
       />
-      <Toaster position="top-right" />
+      <Toaster
+        position="top-right"
+        toastOptions={{
+          style: toastBaseStyle,
+          success: {
+            style: {
+              ...toastBaseStyle,
+              borderLeft: '3px solid var(--color-deep-forest)'
+            },
+            iconTheme: {
+              primary: 'var(--color-deep-forest)',
+              secondary: 'var(--color-maple-bone)'
+            }
+          },
+          error: {
+            style: {
+              ...toastBaseStyle,
+              borderLeft: '3px solid var(--color-oxide-red)'
+            },
+            iconTheme: {
+              primary: 'var(--color-oxide-red)',
+              secondary: 'var(--color-maple-bone)'
+            }
+          }
+        }}
+      />
       <div className="site-shell__content">
         <Routes>
           <Route path="/" element={<Home />} />

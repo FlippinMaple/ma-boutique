@@ -38,7 +38,7 @@ const Dashboard = () => {
     } catch {
       /* ignore */
     } finally {
-      toast('Déconnexion effectuée. 👋');
+      toast('Déconnexion effectuée.');
       navigate('/login');
     }
   };
