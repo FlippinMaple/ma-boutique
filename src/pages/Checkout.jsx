@@ -597,10 +597,42 @@ const Checkout = () => {
                           decoding="async"
                         />
                       ) : (
-                        <div
-                          className="checkout-item__image-fallback"
-                          aria-hidden="true"
-                        />
+                        <>
+                          {/*
+                            PLACEHOLDER ACTIF — PHOTOGRAPHIE PRODUIT CHECKOUT
+
+                            Rôle :
+                            identifier clairement l’article au moment de finaliser la commande.
+
+                            Sujet :
+                            même photographie produit utilisée dans Shop / PDP lorsque disponible.
+
+                            Ratio :
+                            4:5.
+
+                            Résolution source :
+                            minimum 1600 × 2000.
+
+                            Format cible :
+                            AVIF / WebP.
+
+                            Direction :
+                            cohérente avec Home / Shop / PDP ;
+                            produit immédiatement identifiable ;
+                            échelle uniforme.
+
+                            Responsive :
+                            crop contrôlé ;
+                            produit lisible même à petite taille.
+
+                            Intention :
+                            continuité visuelle du catalogue jusqu’au paiement.
+                          */}
+                          <div
+                            className="checkout-item__image-fallback"
+                            aria-hidden="true"
+                          />
+                        </>
                       )}
                     </div>
 
