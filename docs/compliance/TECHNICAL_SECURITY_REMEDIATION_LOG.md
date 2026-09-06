@@ -1,6 +1,6 @@
 # Journal des correctifs techniques et de sécurité
 
-**Statut :** journal actif — chantiers P3 (checkout public), P4 (webhook Stripe / idempotence), P5 (fallback `order_items`), P6 (gestionnaire d’erreurs), P7 (authentification / sessions / JWT), P8 (inscription / consentement marketing / privacy technique), P9 (consentements email / unsubscribe / webhooks et cycle de révocation), P10 (secret unsubscribe / token hardening), P11 (paniers abandonnés), **P12** (job / cron des paniers abandonnés), P13 (données Stripe conservées / minimisation), P14 (livraison Printful), P15 (inventaire Printful), P16 (page de succès), P17 (produits publics), P18 (wishlist) et P19 (Printful automatique du webhook) : **FERMÉS / COMPLETS**. P12, P15, P16, P17, P18, P19 et P23 sont **VALIDÉS EN PRODUCTION**. **P20** (base de données et migrations) est **FERMÉ / COMPLET**. P20-A à P20-D9 ont été traités selon leur statut documenté (validations production ou analyses sans mutation). Aucun autre défaut de schéma démontré n’exige une mutation. **P21** (journaux / logging) est **FERMÉ / COMPLET**. P21 n’est **pas** déclaré VALIDÉ EN PRODUCTION. **P22** (routes administratives) est **FERMÉ / COMPLET**. P22 n’est **pas** déclaré VALIDÉ EN PRODUCTION. **P23** (API de vérification du paiement) est **FERMÉ / COMPLET**. P23 est **VALIDÉ EN PRODUCTION**. **P24** (interface checkout) est **FERMÉ / COMPLET**. P24 n’est **pas** déclaré VALIDÉ EN PRODUCTION. Le résidu live différé P13 (`upsertStripeEvent` post-`dd9580d`) reste distinct et ne bloque pas ces clôtures.
+**Statut :** journal actif — chantiers P3 (checkout public), P4 (webhook Stripe / idempotence), P5 (fallback `order_items`), P6 (gestionnaire d’erreurs), P7 (authentification / sessions / JWT), P8 (inscription / consentement marketing / privacy technique), P9 (consentements email / unsubscribe / webhooks et cycle de révocation), P10 (secret unsubscribe / token hardening), P11 (paniers abandonnés), **P12** (job / cron des paniers abandonnés), P13 (données Stripe conservées / minimisation), P14 (livraison Printful), P15 (inventaire Printful), P16 (page de succès), P17 (produits publics), P18 (wishlist) et P19 (Printful automatique du webhook) : **FERMÉS / COMPLETS**. P12, P15, P16, P17, P18, P19 et P23 sont **VALIDÉS EN PRODUCTION**. **P20** (base de données et migrations) est **FERMÉ / COMPLET**. P20-A à P20-D9 ont été traités selon leur statut documenté (validations production ou analyses sans mutation). Aucun autre défaut de schéma démontré n’exige une mutation. **P21** (journaux / logging) est **FERMÉ / COMPLET**. P21 n’est **pas** déclaré VALIDÉ EN PRODUCTION. **P22** (routes administratives) est **FERMÉ / COMPLET**. P22 n’est **pas** déclaré VALIDÉ EN PRODUCTION. **P23** (API de vérification du paiement) est **FERMÉ / COMPLET**. P23 est **VALIDÉ EN PRODUCTION**. **P24** (interface checkout) est **FERMÉ / COMPLET**. P24 n’est **pas** déclaré VALIDÉ EN PRODUCTION. Le writer live P13-B (`upsertStripeEvent` post-`dd9580d`) est **VALIDÉ EN PRODUCTION** (P13-R2, 6 septembre 2026). P13 n’est pas reclasé ici comme VALIDÉ EN PRODUCTION dans son ensemble.
 
 Ce document complète `docs/compliance/TECHNICAL_SECURITY_AUDIT.md`.
 
@@ -1692,7 +1692,7 @@ Nouveau contrat d’écriture (`upsertStripeEvent`) :
 
 Jamais `{}` comme fallback (un objet vide n’est pas un NULL SQL). `reconcileStripeEvents` est **dual-format** : ancien JSON Stripe complet **et** nouveau format minimal. Les autres chemins webhook / idempotence (INSERT IGNORE `event_id`, replay métier P4) restent fonctionnels sans payload complet.
 
-**Validation :** code déployé en production ; compatibilité SQL / code vérifiée ; format minimal présent en base **après P13-C** (réécriture historique). **Aucun nouvel `upsertStripeEvent` live post-`dd9580d` n’a encore été observé.** Ce point est une **validation runtime différée**. Le writer live n’est **pas** déclaré validé en production.
+**Validation :** code déployé en production ; compatibilité SQL / code vérifiée ; format minimal présent en base **après P13-C** (réécriture historique). **Aucun nouvel `upsertStripeEvent` live post-`dd9580d` n’a encore été observé.** Ce point est une **validation runtime différée**. Le writer live n’est **pas** déclaré validé en production. **Mise à jour 6 septembre 2026 :** writer live observé en production (P13-R2) ; voir la section datée du 6 septembre 2026.
 
 ### P13-C — Neutralisation des payloads historiques
 
@@ -1759,7 +1759,7 @@ La remédiation technique est terminée :
 - metadata Checkout réduite ;
 - compatibilité legacy conservée.
 
-**Résidu explicite :** le premier upsert `stripe_events` produit par un webhook live post-`dd9580d` n’a pas encore été observé. À confirmer lors du prochain webhook naturel ou test. Ce résidu **ne bloque pas** la fermeture technique P13. Il ne doit **pas** être présenté comme déjà validé.
+**Résidu explicite :** le premier upsert `stripe_events` produit par un webhook live post-`dd9580d` n’a pas encore été observé. À confirmer lors du prochain webhook naturel ou test. Ce résidu **ne bloque pas** la fermeture technique P13. Il ne doit **pas** être présenté comme déjà validé. **Mise à jour 6 septembre 2026 :** ce résidu est **FERMÉ** (P13-R2).
 
 Backup `stripe_events_p13c_backup_20260818` : **conserver** jusqu’à stabilisation documentaire / décision explicite ultérieure. Aucune suppression dans P13. **Retiré ensuite en P20-D9** (validé en production).
 
@@ -2995,7 +2995,7 @@ P20-A : inventaire terminé. P20-B : runner durci (`77e0d86`). P20-C : registre 
 
 `npm run migrate` n’a **pas** été l’outil d’application des migrations manuelles déjà validées ; le tracking `schema_migrations` a été fait manuellement après validation. Ce contrat **n’est pas** un blocker de clôture.
 
-À la date de clôture P20, la validation runtime P12 était encore différée. **P12 a ensuite été FERMÉ / COMPLET / VALIDÉ EN PRODUCTION le 5 septembre 2026** (voir la section de clôture P12). P23 demeure **distinct / non fermé** ici. Le résidu live différé P13 (`upsertStripeEvent` post-`dd9580d`) n’est **pas** déclaré validé et **ne bloque pas** P20.
+À la date de clôture P20, la validation runtime P12 était encore différée. **P12 a ensuite été FERMÉ / COMPLET / VALIDÉ EN PRODUCTION le 5 septembre 2026** (voir la section de clôture P12). P23 demeure **distinct / non fermé** ici. Le résidu live différé P13 (`upsertStripeEvent` post-`dd9580d`) n’était **pas** déclaré validé à cette date et **ne bloquait pas** P20. Fermé ensuite en P13-R2 (6 septembre 2026).
 
 ---
 
@@ -3055,7 +3055,7 @@ Le courriel transactionnel a été **reçu** dans la boîte du destinataire et c
 
 Hors périmètre de cette clôture : marketing, effet réel de la purge (`purged = 0` sur ce tick), certification légale, délivrabilité inbox.
 
-P23 demeure distinct. Le résidu live différé P13 n’est pas déclaré validé ici.
+P23 demeure distinct. Le résidu live différé P13 n’était pas déclaré validé à cette date ; fermé ensuite en P13-R2 (6 septembre 2026).
 
 ---
 
@@ -3071,7 +3071,7 @@ L’audit figé indiquait notamment : fallback `app.log` non borné (`appendFile
 
 ### P21-A — audit de reprise
 
-Audit read-only. P20-D7 avait déjà retiré le DDL runtime de `logs` et versionné le schéma (`2026-09-04_logs_schema_managed.sql`). La purge MySQL ~7 jours était déjà active. `context` / `details` restent volontairement inutilisés par le writer. Aucune nouvelle migration n’était nécessaire. P22, P23, P24 et le résidu live P13 restent hors P21.
+Audit read-only. P20-D7 avait déjà retiré le DDL runtime de `logs` et versionné le schéma (`2026-09-04_logs_schema_managed.sql`). La purge MySQL ~7 jours était déjà active. `context` / `details` restent volontairement inutilisés par le writer. Aucune nouvelle migration n’était nécessaire. P22, P23, P24 et le résidu live P13 restaient hors P21. Le résidu P13 a ensuite été fermé en P13-R2 (6 septembre 2026).
 
 ### P21-B — diagnostics de configuration DB
 
@@ -3137,7 +3137,7 @@ La fermeture P21 n’affirme **pas** que tout logging du repo a été uniformis�
 
 Les risques matériels identifiés pour P21 ont été corrigés avec un périmètre minimal. Cela ne signifie pas : observabilité centralisée complète ; normalisation de chaque `console.*` ; rotation distribuée multi-worker ; validation exhaustive hors logging ; validation production spécifique complète de tous les chemins d’erreur.
 
-P22, P23 et P24 restent distincts. Le résidu live P13 (`upsertStripeEvent` post-`dd9580d`) reste distinct.
+P22, P23 et P24 restent distincts. Le résidu live P13 (`upsertStripeEvent` post-`dd9580d`) était encore distinct à cette date ; fermé ensuite en P13-R2 (6 septembre 2026).
 
 ---
 
@@ -3147,7 +3147,7 @@ Le constat initial d’audit P22 reste figé dans `TECHNICAL_SECURITY_AUDIT.md`.
 
 **P22 est FERMÉ / COMPLET.**
 
-P22 traite les **routes administratives**. Sévérité audit : **FAIBLE**. Ce n’est **pas** P21 (journaux), **pas** P23 (API de vérification du paiement), **pas** P24. Le résidu live différé P13 (`upsertStripeEvent` post-`dd9580d`) reste distinct.
+P22 traite les **routes administratives**. Sévérité audit : **FAIBLE**. Ce n’est **pas** P21 (journaux), **pas** P23 (API de vérification du paiement), **pas** P24. Le résidu live différé P13 (`upsertStripeEvent` post-`dd9580d`) était encore distinct à cette date ; fermé ensuite en P13-R2 (6 septembre 2026).
 
 ### Constat initial figé
 
@@ -3234,7 +3234,7 @@ Audit read-only. Git propre avant / après P22-A. Recherche repo complète des m
 
 Motif : invariants admin respectés ; rôle MySQL demeure la source d’autorité ; aucun bypass actuel trouvé ; aucune projection `*` résiduelle sur ces endpoints ; le seul défaut historique matériel avait déjà été corrigé sous P13-D ; aucun correctif code supplémentaire requis.
 
-P22 n’est **pas** déclaré VALIDÉ EN PRODUCTION. P23 et P24 restent distincts. Le résidu live P13 (`upsertStripeEvent` post-`dd9580d`) reste distinct.
+P22 n’est **pas** déclaré VALIDÉ EN PRODUCTION. P23 et P24 restent distincts. Le résidu live P13 (`upsertStripeEvent` post-`dd9580d`) était encore distinct à cette date ; fermé ensuite en P13-R2 (6 septembre 2026).
 
 ---
 
@@ -3244,7 +3244,7 @@ Le constat initial d’audit P23 reste figé dans `TECHNICAL_SECURITY_AUDIT.md`.
 
 **P23 est FERMÉ / COMPLET et VALIDÉ EN PRODUCTION.**
 
-P23 traite l’**API de vérification du paiement**. Sévérité audit : **FAIBLE**. Ce n’est **pas** P16 (page de succès frontend), **pas** P22 (routes administratives), **pas** P24. Le résidu live différé P13 (`upsertStripeEvent` post-`dd9580d`) reste distinct.
+P23 traite l’**API de vérification du paiement**. Sévérité audit : **FAIBLE**. Ce n’est **pas** P16 (page de succès frontend), **pas** P22 (routes administratives), **pas** P24. Le résidu live différé P13 (`upsertStripeEvent` post-`dd9580d`) était encore distinct à cette date ; fermé ensuite en P13-R2 (6 septembre 2026).
 
 ### Constat initial figé
 
@@ -3350,7 +3350,7 @@ Aucune commande réelle modifiée. Aucune écriture DB. Aucune mutation Stripe. 
 
 Motif : validation serveur ajoutée ; réponse minimisée ; rate limiter fonctionnel en local et en production ; invariants d’intégrité préservés ; endpoint toujours compatible checkout invité ; preuves production obtenues sans mutation.
 
-P24 reste distinct. Le résidu live P13 (`upsertStripeEvent` post-`dd9580d`) reste distinct.
+P24 reste distinct. Le résidu live P13 (`upsertStripeEvent` post-`dd9580d`) était encore distinct à cette date ; fermé ensuite en P13-R2 (6 septembre 2026).
 
 ---
 
@@ -3360,7 +3360,7 @@ Le constat initial d’audit P24 reste figé dans `TECHNICAL_SECURITY_AUDIT.md`.
 
 **P24 est FERMÉ / COMPLET.**
 
-P24 traite l’**interface checkout**. Sévérité audit : **FAIBLE**. C’était le dernier point FAIBLE de l’audit figé. Ce n’est **pas** P3 (protections checkout public), **pas** P7 (auth / JWT), **pas** P16 (page de succès), **pas** P23 (API verify). Le résidu live différé P13 (`upsertStripeEvent` post-`dd9580d`) reste distinct.
+P24 traite l’**interface checkout**. Sévérité audit : **FAIBLE**. C’était le dernier point FAIBLE de l’audit figé. Ce n’est **pas** P3 (protections checkout public), **pas** P7 (auth / JWT), **pas** P16 (page de succès), **pas** P23 (API verify). Le résidu live différé P13 (`upsertStripeEvent` post-`dd9580d`) était encore distinct à cette date ; fermé ensuite en P13-R2 (6 septembre 2026).
 
 ### Constat initial figé
 
@@ -3426,7 +3426,40 @@ Motif : le défaut UI historique n’existe plus ; un seul CTA déclenche le pai
 
 P24 n’est pas déclaré VALIDÉ EN PRODUCTION.
 
-Le résidu live P13 (`upsertStripeEvent` post-`dd9580d`) reste distinct.
+Le résidu live P13 (`upsertStripeEvent` post-`dd9580d`) était encore distinct à cette date ; fermé ensuite en P13-R2 (6 septembre 2026).
+
+---
+
+## 6 septembre 2026 — P13-R2 : validation runtime différée du writer Stripe (FERMÉE)
+
+P13 était déjà **FERMÉ / COMPLET** au sens de la remédiation technique. Seul le writer live `upsertStripeEvent` post-`dd9580d` restait à observer. Aucune nouvelle correction code n’était requise. P13 n’est **pas** reclasé ici comme VALIDÉ EN PRODUCTION dans son ensemble.
+
+### Contexte
+
+Le journal et `DATA_MODEL.md` indiquaient encore qu’aucun `upsertStripeEvent` live post-`dd9580d` n’avait été observé. P13-C avait déjà réécrit les payloads historiques actifs ; cela ne prouvait pas le chemin writer runtime.
+
+### Méthode
+
+SELECT production read-only uniquement sur `u601077843_flippinmaple.stripe_events`, critère `created_at >= '2026-08-20 00:00:00'`. Aucune écriture DB. Aucun webhook provoqué. Aucun replay Stripe. Aucun paiement. Aucune commande modifiée. Aucune donnée client nécessaire. Aucun `event_id` complet ni aucune valeur brute de `payload` n’est reproduite ici. La preuve porte uniquement sur la forme / les clés.
+
+### Résultat
+
+Deux rows pertinentes, toutes deux `checkout.session.*`, payload non NULL, clés `["object_id"]`, aucune clé legacy `data` :
+
+- `checkout.session.completed` — `created_at` 2026-08-20 18:56:34 — `order_id` 108
+- `checkout.session.expired` — `created_at` 2026-08-20 04:05:19 — `order_id` 107
+
+### Attribution
+
+Ces rows sont postérieures au cut-over `dd9580d` (`fix(stripe): minimize persisted webhook payload`) et postérieures à la neutralisation historique P13-C. Elles ne proviennent donc pas de la réécriture P13-C. Elles constituent une observation du format produit par le runtime post-correctif (`minimalStripeEventPayload` pour `checkout.session.*` → `{"object_id":"..."}`).
+
+### Verdict
+
+**Le résidu live différé P13 (`upsertStripeEvent` post-`dd9580d`) est FERMÉ.**
+
+Le writer P13-B est maintenant **VALIDÉ EN PRODUCTION**.
+
+Aucune validation supplémentaire, replay ou mutation n’est requise pour ce résidu.
 
 ---
 

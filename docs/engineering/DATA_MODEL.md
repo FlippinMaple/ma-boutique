@@ -618,7 +618,7 @@ Contrat d’écriture P13-B :
 - `charge.*` : `{"payment_intent_id":"..."}` ;
 - autres événements sans identifiant utile : SQL `NULL` (jamais `{}`).
 
-`reconcileStripeEvents` accepte encore les anciens payloads JSON Stripe complets **et** le nouveau format minimal. Le code runtime déployé après P13 n’utilise plus `payload` comme boîte noire PII ; la première écriture live post-`dd9580d` reste à confirmer lors d’un prochain webhook.
+`reconcileStripeEvents` accepte encore les anciens payloads JSON Stripe complets **et** le nouveau format minimal. Le code runtime déployé après P13 n’utilise plus `payload` comme boîte noire PII. Le format minimal runtime post-`dd9580d` a été observé en production : le 6 septembre 2026, une lecture read-only a confirmé des `checkout.session.*` post-cut-over (`created_at` ≥ 2026-08-20) avec uniquement la clé `object_id`, sans clé legacy `data`. Aucune mutation n’a été nécessaire (P13-R2).
 
 **Note opérationnelle (hors modèle vivant).** Table `stripe_events_p13c_backup_20260818` : backup temporaire créé avant la neutralisation P13-C. **Retirée de production en P20-D9** (`a2f0d56`). Ce n’était **pas** une entité fonctionnelle du modèle applicatif. Ne pas la recréer.
 
