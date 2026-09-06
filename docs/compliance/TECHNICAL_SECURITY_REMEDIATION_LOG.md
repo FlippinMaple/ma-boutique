@@ -1,6 +1,6 @@
 # Journal des correctifs techniques et de sécurité
 
-**Statut :** journal actif — chantiers P3 (checkout public), P4 (webhook Stripe / idempotence), P5 (fallback `order_items`), P6 (gestionnaire d’erreurs), P7 (authentification / sessions / JWT), P8 (inscription / consentement marketing / privacy technique), P9 (consentements email / unsubscribe / webhooks et cycle de révocation), P10 (secret unsubscribe / token hardening), P11 (paniers abandonnés), **P12** (job / cron des paniers abandonnés), P13 (données Stripe conservées / minimisation), P14 (livraison Printful), P15 (inventaire Printful), P16 (page de succès), P17 (produits publics), P18 (wishlist) et P19 (Printful automatique du webhook) : **FERMÉS / COMPLETS**. P12, P15, P16, P17, P18 et P19 sont **VALIDÉS EN PRODUCTION**. **P20** (base de données et migrations) est **FERMÉ / COMPLET**. P20-A à P20-D9 ont été traités selon leur statut documenté (validations production ou analyses sans mutation). Aucun autre défaut de schéma démontré n’exige une mutation. **P21** (journaux / logging) est **FERMÉ / COMPLET**. P21 n’est **pas** déclaré VALIDÉ EN PRODUCTION. **P22** (routes administratives) est **FERMÉ / COMPLET**. P22 n’est **pas** déclaré VALIDÉ EN PRODUCTION. P23 et P24 demeurent distincts. Le résidu live différé P13 (`upsertStripeEvent` post-`dd9580d`) reste distinct et ne bloque pas ces clôtures.
+**Statut :** journal actif — chantiers P3 (checkout public), P4 (webhook Stripe / idempotence), P5 (fallback `order_items`), P6 (gestionnaire d’erreurs), P7 (authentification / sessions / JWT), P8 (inscription / consentement marketing / privacy technique), P9 (consentements email / unsubscribe / webhooks et cycle de révocation), P10 (secret unsubscribe / token hardening), P11 (paniers abandonnés), **P12** (job / cron des paniers abandonnés), P13 (données Stripe conservées / minimisation), P14 (livraison Printful), P15 (inventaire Printful), P16 (page de succès), P17 (produits publics), P18 (wishlist) et P19 (Printful automatique du webhook) : **FERMÉS / COMPLETS**. P12, P15, P16, P17, P18, P19 et P23 sont **VALIDÉS EN PRODUCTION**. **P20** (base de données et migrations) est **FERMÉ / COMPLET**. P20-A à P20-D9 ont été traités selon leur statut documenté (validations production ou analyses sans mutation). Aucun autre défaut de schéma démontré n’exige une mutation. **P21** (journaux / logging) est **FERMÉ / COMPLET**. P21 n’est **pas** déclaré VALIDÉ EN PRODUCTION. **P22** (routes administratives) est **FERMÉ / COMPLET**. P22 n’est **pas** déclaré VALIDÉ EN PRODUCTION. **P23** (API de vérification du paiement) est **FERMÉ / COMPLET**. P23 est **VALIDÉ EN PRODUCTION**. P24 demeure distinct. Le résidu live différé P13 (`upsertStripeEvent` post-`dd9580d`) reste distinct et ne bloque pas ces clôtures.
 
 Ce document complète `docs/compliance/TECHNICAL_SECURITY_AUDIT.md`.
 
@@ -3235,6 +3235,122 @@ Audit read-only. Git propre avant / après P22-A. Recherche repo complète des m
 Motif : invariants admin respectés ; rôle MySQL demeure la source d’autorité ; aucun bypass actuel trouvé ; aucune projection `*` résiduelle sur ces endpoints ; le seul défaut historique matériel avait déjà été corrigé sous P13-D ; aucun correctif code supplémentaire requis.
 
 P22 n’est **pas** déclaré VALIDÉ EN PRODUCTION. P23 et P24 restent distincts. Le résidu live P13 (`upsertStripeEvent` post-`dd9580d`) reste distinct.
+
+---
+
+## 5 septembre 2026 — Clôture P23 : API de vérification du paiement (FERMÉ / COMPLET — VALIDÉ EN PRODUCTION)
+
+Le constat initial d’audit P23 reste figé dans `TECHNICAL_SECURITY_AUDIT.md`. Ce journal documente la remédiation technique et la validation production. Aucune certification de conformité légale n’est revendiquée.
+
+**P23 est FERMÉ / COMPLET et VALIDÉ EN PRODUCTION.**
+
+P23 traite l’**API de vérification du paiement**. Sévérité audit : **FAIBLE**. Ce n’est **pas** P16 (page de succès frontend), **pas** P22 (routes administratives), **pas** P24. Le résidu live différé P13 (`upsertStripeEvent` post-`dd9580d`) reste distinct.
+
+### Constat initial figé
+
+Faits figés dans l’audit (non réécrits) :
+
+- `GET /api/payments/verify` était public ;
+- il exigeait `session_id` ;
+- il cherchait `orders.stripe_session_id` ;
+- il ne contactait pas Stripe ;
+- il retournait `paid`, `found` et `orderId` ;
+- aucune adresse, aucun courriel, aucun panier ;
+- aucune authentification ;
+- aucun rate limiter ;
+- risque de confidentialité limité ;
+- endpoint à réévaluer avec la nouvelle logique de page succès.
+
+L’audit figé n’est pas réécrit.
+
+### P23-A — audit read-only
+
+Audit code / Git read-only. HEAD audité : `3233b5b`. Working tree propre. Aucun fichier modifié pendant P23-A.
+
+Montage unique : `app.use('/api', paymentsRoutes)`. Route runtime : `GET /api/payments/verify`. Aucun second endpoint équivalent.
+
+Le endpoint est volontairement public pour supporter le checkout invité. Aucune auth utilisateur à ajouter. Lecture MySQL seulement ; SQL paramétré ; index UNIQUE sur `orders.stripe_session_id` ; aucune mutation ; aucun appel Stripe.
+
+`Success.jsx` est le seul consommateur runtime. Success n’utilise pas `orderId`. P16 avait déjà durci le frontend : corrélation `sessionStorage` ; jusqu’à 8 retries ; panier vidé seulement si `found === true` **et** `paid === true` ; pas de faux succès sinon. Ces preuves P16 restent attribuées à P16, pas à P23.
+
+Verdict P23-A : correctif minimal requis côté serveur (validation / longueur de `session_id`, rate limiter compatible avec les 8 retries, retrait de `orderId` inutilisé). Pas d’authentification.
+
+### P23-B — correctif technique
+
+**Commit :** `8824320` — `fix(payments): harden payment verification endpoint`
+
+**Fichiers :** `server/controllers/paymentsController.js`, `server/middlewares/rateLimiters.js`, `server/routes/paymentsRoutes.js`
+
+Correctifs :
+
+1. Validation `session_id` avant SQL : absence / chaîne vide → HTTP 400 `missing_session_id` ; non-string ou longueur > 255 → HTTP 400 `invalid_session_id`. Aucun `trim`, aucune regex Stripe, aucune transformation. La string validée est transmise telle quelle au paramètre SQL.
+2. SQL minimisé : `SELECT status FROM orders WHERE stripe_session_id = ? LIMIT 1`. Lecture uniquement.
+3. Réponse publique minimisée : retrait de `orderId`. Inconnue `{ paid: false, found: false }` ; trouvée non paid `{ paid: false, found: true }` ; trouvée paid `{ paid: true, found: true }`.
+4. Nouveau `paymentsVerifyLimiter` : fenêtre 60 secondes ; max 60/IP ; `standardHeaders: true` ; `legacyHeaders: false` ; HTTP 429 `PAYMENTS_VERIFY_RATE_LIMITED`.
+5. Endpoint reste public, sans auth, sans Stripe, sans mutation DB.
+
+### Validations locales P23-B
+
+- `node --check` OK pour les 3 fichiers ;
+- tests faux DB A→J PASS ;
+- absence → 400 `missing_session_id` ;
+- chaîne vide → 400 `missing_session_id` ;
+- tableau → 400 `invalid_session_id` ;
+- 256 caractères → 400 `invalid_session_id` ;
+- 255 caractères → accepté ; valeur SQL strictement identique ;
+- inconnue → 200 `{ paid: false, found: false }` ;
+- `pending` → 200 `{ paid: false, found: true }` ;
+- `cancelled` / autre non-paid → 200 `{ paid: false, found: true }` ;
+- `paid` → 200 `{ paid: true, found: true }` ;
+- erreur DB → 500 `db_error` ;
+- aucun `orderId` dans les réponses ;
+- 8 GET successifs : aucune 429 ;
+- seuil local : 60 acceptées, 61e = 429 `PAYMENTS_VERIFY_RATE_LIMITED` ;
+- `git diff --check` OK.
+
+### P23-C — validation production
+
+Validation runtime production, **distincte** des smoke tests P16 (page succès / toast / `sessionStorage`). Réalisée derrière le Basic Auth temporaire de surface. Aucun identifiant Basic Auth n’est documenté ici.
+
+Preuves production :
+
+1. `/readiness` : réponse OK / true.
+2. Accès derrière Basic Auth : `/` → HTTP 200.
+3. `/api/payments/verify` sans `session_id` → HTTP 400.
+4. `session_id` de 256 caractères → HTTP 400.
+5. Session volontairement inexistante `P23_VALIDATION_NONEXISTENT_20260905` → HTTP 200 ; réponse exacte `{"paid":false,"found":false}` ; aucun `orderId`.
+6. Rate limiter production : attente 65 secondes avant le test ; 60 premières requêtes → HTTP 200 ; 61e → HTTP 429.
+
+Aucune commande réelle modifiée. Aucune écriture DB. Aucune mutation Stripe. Aucune mutation webhook. Aucune donnée client nécessaire. Test non destructif.
+
+### Invariants finaux P23
+
+- Seul le webhook Stripe signé peut rendre une commande `paid`.
+- `/api/payments/verify` reste strictement read-only.
+- Aucune vérification Stripe directe.
+- Le checkout invité reste supporté.
+- Aucune auth utilisateur exigée.
+- Aucune PII retournée.
+- `orderId` n’est plus exposé.
+- `session_id` est borné (string, longueur ≤ 255).
+- L’endpoint est rate-limité (60/min/IP).
+- Success continue de vider le panier seulement après `found === true && paid === true`.
+
+### Résidus acceptés
+
+- L’endpoint reste public volontairement (checkout invité).
+- Un Stripe `session_id` peut toujours circuler via URL, capture ou historique.
+- Risque résiduel de confidentialité faible compte tenu de l’entropie du token et du contrat minimal (`paid` / `found` seulement).
+- Le Basic Auth temporaire n’est **pas** le contrôle de sécurité P23 permanent.
+- P23 ne dépend pas de ce Basic Auth pour être considéré fermé.
+
+### Verdict
+
+**P23 est FERMÉ / COMPLET et VALIDÉ EN PRODUCTION.**
+
+Motif : validation serveur ajoutée ; réponse minimisée ; rate limiter fonctionnel en local et en production ; invariants d’intégrité préservés ; endpoint toujours compatible checkout invité ; preuves production obtenues sans mutation.
+
+P24 reste distinct. Le résidu live P13 (`upsertStripeEvent` post-`dd9580d`) reste distinct.
 
 ---
 
