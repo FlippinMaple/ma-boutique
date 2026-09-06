@@ -23,7 +23,7 @@ Point d’entrée opérationnel du dépôt. Ce n’est ni la Constitution, ni un
 - Le projet n’est pas encore prêt pour un lancement public.
 - La documentation spécialisée existe pour la marque, l’engineering, la conformité, la sécurité et la page d’accueil ; certains documents sont encore des drafts ou des plans de travail internes.
 
-**Constat déduit (pas un statut de phase écrit dans la Constitution) :** les critères de sortie de la Phase 1 — Fondation de marque ne sont pas tous atteints. Exemple observable dans le dépôt : `index.html` expose encore le titre `Vite + React` et le favicon `/vite.svg`.
+**Constat déduit (pas un statut de phase écrit dans la Constitution) :** les critères de sortie de la Phase 1 — Fondation de marque ne sont pas tous atteints. Exemples déjà documentés : logo / wordmark / symbole encore ouverts (`docs/brand/VISUAL_IDENTITY.md`) ; photographies de marque encore absentes (`docs/web/HOMEPAGE_ASSETS.md`).
 
 ### 2.2 Programmes fermés
 
