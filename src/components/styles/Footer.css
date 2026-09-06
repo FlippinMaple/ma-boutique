@@ -1,0 +1,126 @@
+/* Footer — Northern Utility Editorial */
+
+.site-footer {
+  width: 100%;
+  color: var(--color-maple-bone);
+  background-color: var(--color-ink-black);
+  border-top: 1px solid color-mix(in srgb, var(--color-maple-bone) 14%, transparent);
+}
+
+.site-footer__inner {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  width: min(100%, var(--width-content));
+  margin-inline: auto;
+  padding: var(--space-6) var(--gutter) var(--space-5);
+}
+
+.site-footer__brand {
+  max-width: 28rem;
+}
+
+.site-footer__wordmark {
+  display: inline-flex;
+  padding-block: var(--space-1);
+  font-family: var(--font-display);
+  font-stretch: var(--font-display-stretch);
+  font-size: clamp(0.95rem, 2vw, 1.1rem);
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-decoration: none;
+  color: var(--color-maple-bone);
+  transition: color var(--duration-fast) var(--ease-natural);
+}
+
+.site-footer__tag {
+  margin: var(--space-3) 0 0;
+  font-family: var(--font-body);
+  font-size: 0.9375rem;
+  line-height: 1.45;
+  color: color-mix(in srgb, var(--color-maple-bone) 72%, transparent);
+}
+
+.site-footer__nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: var(--space-4);
+  row-gap: var(--space-1);
+  margin: 0;
+}
+
+.site-footer__link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.25rem;
+  padding-block: var(--space-1);
+  font-family: var(--font-display);
+  font-stretch: var(--font-display-stretch);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-decoration: none;
+  color: var(--color-maple-bone);
+  border-bottom: 1px solid transparent;
+  transition:
+    color var(--duration-fast) var(--ease-natural),
+    border-color var(--duration-fast) var(--ease-natural);
+}
+
+.site-footer__legal {
+  margin: 0;
+  padding-top: var(--space-4);
+  border-top: 1px solid color-mix(in srgb, var(--color-maple-bone) 12%, transparent);
+  font-family: var(--font-body);
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  color: var(--color-cold-concrete);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .site-footer__wordmark:hover,
+  .site-footer__link:hover {
+    color: var(--color-weathered-maple);
+  }
+
+  .site-footer__link:hover {
+    border-bottom-color: var(--color-weathered-maple);
+  }
+}
+
+@media (min-width: 48rem) {
+  .site-footer__inner {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      'brand nav'
+      'legal legal';
+    align-items: end;
+    column-gap: var(--space-6);
+    padding-block: var(--space-7) var(--space-6);
+  }
+
+  .site-footer__brand {
+    grid-area: brand;
+  }
+
+  .site-footer__nav {
+    grid-area: nav;
+    justify-content: flex-end;
+  }
+
+  .site-footer__legal {
+    grid-area: legal;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .site-footer__wordmark,
+  .site-footer__link {
+    transition: none;
+  }
+}

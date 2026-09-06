@@ -1,5 +1,5 @@
 // src/components/Header.jsx
-import { Link } from 'react-router-dom';
+import { Link, NavLink } from 'react-router-dom';
 import { useCart } from '../CartContext';
 import { useEffect, useRef, useState } from 'react';
 import './styles/Header.css';
@@ -23,6 +23,7 @@ export default function Header({ isAuthenticated, onLogout, userRole }) {
   return (
     <header className="site-header">
       <div className="site-header__inner">
+        {/* Remplacer par l’actif wordmark M2.5 final lorsqu’il sera livré. */}
         <Link
           to="/"
           className="site-header__brand"
@@ -35,42 +36,42 @@ export default function Header({ isAuthenticated, onLogout, userRole }) {
           className="site-header__primary"
           aria-label="Navigation principale"
         >
-          <Link to="/shop" className="site-header__link">
+          <NavLink to="/shop" className="site-header__link">
             Boutique
-          </Link>
+          </NavLink>
 
           {isAuthenticated && userRole === 'admin' && (
-            <Link to="/admin" className="site-header__link">
+            <NavLink to="/admin" className="site-header__link">
               Admin
-            </Link>
+            </NavLink>
           )}
         </nav>
+
+        <Link
+          to="/checkout"
+          className="site-header__link site-header__cart"
+        >
+          Panier
+          {totalQuantity > 0 && (
+            <span
+              ref={badgeRef}
+              className={`site-header__cart-badge ${animate ? 'bump' : ''}`}
+              aria-label={`${totalQuantity} article(s) dans le panier`}
+            >
+              {totalQuantity}
+            </span>
+          )}
+        </Link>
 
         <nav
           className="site-header__utility"
           aria-label="Navigation utilitaire"
         >
-          <Link
-            to="/checkout"
-            className="site-header__link site-header__cart"
-          >
-            Panier
-            {totalQuantity > 0 && (
-              <span
-                ref={badgeRef}
-                className={`site-header__cart-badge ${animate ? 'bump' : ''}`}
-                aria-label={`${totalQuantity} article(s) dans le panier`}
-              >
-                {totalQuantity}
-              </span>
-            )}
-          </Link>
-
           {isAuthenticated ? (
             <>
-              <Link to="/dashboard" className="site-header__link">
+              <NavLink to="/dashboard" className="site-header__link">
                 Mon compte
-              </Link>
+              </NavLink>
               <button
                 type="button"
                 onClick={onLogout}
@@ -81,12 +82,12 @@ export default function Header({ isAuthenticated, onLogout, userRole }) {
             </>
           ) : (
             <>
-              <Link to="/login" className="site-header__link">
+              <NavLink to="/login" className="site-header__link">
                 Connexion
-              </Link>
-              <Link to="/register" className="site-header__link">
+              </NavLink>
+              <NavLink to="/register" className="site-header__link">
                 Créer un compte
-              </Link>
+              </NavLink>
             </>
           )}
         </nav>

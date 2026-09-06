@@ -5,13 +5,15 @@ import {
   Routes,
   Route,
   Navigate,
-  useNavigate
+  useNavigate,
+  useLocation
 } from 'react-router-dom';
 import api from './utils/api';
 import { Toaster } from 'react-hot-toast';
 import { ModalProvider } from './context/ModalContext';
 
 import Header from './components/Header';
+import Footer from './components/Footer';
 import Home from './pages/Home';
 import Shop from './pages/Shop';
 import Checkout from './pages/Checkout';
@@ -34,6 +36,14 @@ function AppInner() {
 
   const initRanRef = useRef(false);
   const navigate = useNavigate();
+  const { pathname } = useLocation();
+  const isAdminSurface = pathname.startsWith('/admin');
+  const hasMainContentTarget =
+    pathname === '/' ||
+    pathname === '/shop' ||
+    pathname.startsWith('/product/') ||
+    pathname === '/checkout' ||
+    pathname === '/unsubscribe';
 
   const applyUser = useCallback((nextUser) => {
     if (nextUser) {
@@ -101,7 +111,12 @@ function AppInner() {
   if (loading) return <div>Chargement...</div>;
 
   return (
-    <>
+    <div className="site-shell">
+      {hasMainContentTarget && (
+        <a href="#main-content" className="skip-link">
+          Aller au contenu
+        </a>
+      )}
       <Header
         isAuthenticated={isAuthenticated}
         onLogout={handleLogout}
@@ -109,36 +124,39 @@ function AppInner() {
         user={user}
       />
       <Toaster position="top-right" />
-      <Routes>
-        <Route path="/" element={<Home />} />
-        <Route path="/register" element={<Register />} />
-        <Route
-          path="/login"
-          element={<Login onAuthSuccess={handleAuthSuccess} />}
-        />
-        <Route
-          path="/dashboard"
-          element={isAuthenticated ? <Dashboard /> : <Navigate to="/login" />}
-        />
-        <Route path="/shop" element={<Shop />} />
-        <Route
-          path="/checkout"
-          element={
-            <ProtectedCheckoutRoute>
-              <Checkout />
-            </ProtectedCheckoutRoute>
-          }
-        />
-        <Route path="/checkout/success" element={<Success />} />
-        <Route path="/checkout/cancel" element={<Cancel />} />
-        <Route path="/success" element={<Success />} />
-        <Route path="/cancel" element={<Cancel />} />
-        <Route path="/product/:id" element={<ProductDetail />} />
-        <Route path="/unsubscribe" element={<Unsubscribe />} />
-        {adminRoutes}
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </>
+      <div className="site-shell__content">
+        <Routes>
+          <Route path="/" element={<Home />} />
+          <Route path="/register" element={<Register />} />
+          <Route
+            path="/login"
+            element={<Login onAuthSuccess={handleAuthSuccess} />}
+          />
+          <Route
+            path="/dashboard"
+            element={isAuthenticated ? <Dashboard /> : <Navigate to="/login" />}
+          />
+          <Route path="/shop" element={<Shop />} />
+          <Route
+            path="/checkout"
+            element={
+              <ProtectedCheckoutRoute>
+                <Checkout />
+              </ProtectedCheckoutRoute>
+            }
+          />
+          <Route path="/checkout/success" element={<Success />} />
+          <Route path="/checkout/cancel" element={<Cancel />} />
+          <Route path="/success" element={<Success />} />
+          <Route path="/cancel" element={<Cancel />} />
+          <Route path="/product/:id" element={<ProductDetail />} />
+          <Route path="/unsubscribe" element={<Unsubscribe />} />
+          {adminRoutes}
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </div>
+      {!isAdminSurface && <Footer isAuthenticated={isAuthenticated} />}
+    </div>
   );
 }
 

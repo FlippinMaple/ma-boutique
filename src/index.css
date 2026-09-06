@@ -101,8 +101,23 @@ body {
 }
 
 #root {
+  display: flex;
+  flex-direction: column;
   width: 100%;
   min-height: 100vh;
+}
+
+.site-shell {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 100vh;
+}
+
+.site-shell__content {
+  flex: 1 1 auto;
+  width: 100%;
 }
 
 img,
