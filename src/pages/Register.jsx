@@ -92,131 +92,145 @@ const Register = () => {
   const renderStatusIcon = (isValid, isDirty) => {
     if (!isDirty) return null;
     return isValid ? (
-      <CheckCircle size={18} color="green" />
+      <CheckCircle
+        size={18}
+        className="register-status-icon register-status-icon--valid"
+        aria-hidden="true"
+      />
     ) : (
-      <XCircle size={18} color="red" />
+      <XCircle
+        size={18}
+        className="register-status-icon register-status-icon--invalid"
+        aria-hidden="true"
+      />
     );
   };
 
   return (
-    <div className="register-container">
-      <h2 className="form-title">Créer un compte</h2>
-      <form onSubmit={handleSubmit} className="register-form">
-        <label>
-          Prénom
-          <div className="input-icon">
-            <User size={18} />
+    <main className="register-page">
+      <div className="register-page__inner">
+        <h1 className="register-page__title">Créer un compte</h1>
+        <form onSubmit={handleSubmit} className="register-form">
+          <label className="register-field">
+            Prénom
+            <div className="input-icon">
+              <User size={18} className="register-field-icon" aria-hidden="true" />
+              <input
+                type="text"
+                value={firstName}
+                onChange={(e) => setFirstName(e.target.value)}
+                required
+                placeholder="Jean"
+              />
+              {renderStatusIcon(
+                firstName.trim().length > 0,
+                firstName.length > 0
+              )}
+            </div>
+          </label>
+
+          <label className="register-field">
+            Nom
+            <div className="input-icon">
+              <User size={18} className="register-field-icon" aria-hidden="true" />
+              <input
+                type="text"
+                value={lastName}
+                onChange={(e) => setLastName(e.target.value)}
+                required
+                placeholder="Dupont"
+              />
+              {renderStatusIcon(lastName.trim().length > 0, lastName.length > 0)}
+            </div>
+          </label>
+
+          <label className="register-field">
+            Courriel
+            <div className="input-icon">
+              <Mail size={18} className="register-field-icon" aria-hidden="true" />
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                placeholder="exemple@email.com"
+              />
+              {renderStatusIcon(emailValid, email.length > 0)}
+            </div>
+          </label>
+
+          <label className="register-field">
+            Confirmation du courriel
+            <div className="input-icon">
+              <Mail size={18} className="register-field-icon" aria-hidden="true" />
+              <input
+                type="email"
+                value={confirmEmail}
+                onChange={(e) => setConfirmEmail(e.target.value)}
+                required
+                placeholder="Confirmez votre courriel"
+              />
+              {renderStatusIcon(emailMatch, confirmEmail.length > 0)}
+            </div>
+          </label>
+
+          <label className="register-field">
+            Mot de passe
+            <div className="input-icon">
+              <Lock size={18} className="register-field-icon" aria-hidden="true" />
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                placeholder="Mot de passe"
+              />
+              {renderStatusIcon(passwordValid, password.length > 0)}
+            </div>
+          </label>
+
+          <label className="register-field">
+            Confirmation du mot de passe
+            <div className="input-icon">
+              <Lock size={18} className="register-field-icon" aria-hidden="true" />
+              <input
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                required
+                placeholder="Confirmez le mot de passe"
+              />
+              {renderStatusIcon(passwordMatch, confirmPassword.length > 0)}
+            </div>
+          </label>
+
+          <label className="checkbox-container">
             <input
-              type="text"
-              value={firstName}
-              onChange={(e) => setFirstName(e.target.value)}
-              required
-              placeholder="Jean"
+              type="checkbox"
+              checked={marketingConsent}
+              onChange={(e) => setMarketingConsent(e.target.checked)}
             />
-            {renderStatusIcon(
-              firstName.trim().length > 0,
-              firstName.length > 0
+            Je souhaite recevoir par courriel des nouvelles, nouveautés et offres
+            de Flippin’ Maple.
+          </label>
+
+          <button
+            className="register-form__submit"
+            type="submit"
+            disabled={isSubmitting}
+          >
+            {isSubmitting ? (
+              <span className="spinner">
+                <Loader2 size={18} className="spin" />
+                &nbsp; Inscription...
+              </span>
+            ) : (
+              "S'inscrire"
             )}
-          </div>
-        </label>
-
-        <label>
-          Nom
-          <div className="input-icon">
-            <User size={18} />
-            <input
-              type="text"
-              value={lastName}
-              onChange={(e) => setLastName(e.target.value)}
-              required
-              placeholder="Dupont"
-            />
-            {renderStatusIcon(lastName.trim().length > 0, lastName.length > 0)}
-          </div>
-        </label>
-
-        <label>
-          Courriel
-          <div className="input-icon">
-            <Mail size={18} />
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              placeholder="exemple@email.com"
-            />
-            {renderStatusIcon(emailValid, email.length > 0)}
-          </div>
-        </label>
-
-        <label>
-          Confirmation du courriel
-          <div className="input-icon">
-            <Mail size={18} />
-            <input
-              type="email"
-              value={confirmEmail}
-              onChange={(e) => setConfirmEmail(e.target.value)}
-              required
-              placeholder="Confirmez votre courriel"
-            />
-            {renderStatusIcon(emailMatch, confirmEmail.length > 0)}
-          </div>
-        </label>
-
-        <label>
-          Mot de passe
-          <div className="input-icon">
-            <Lock size={18} />
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              placeholder="Mot de passe"
-            />
-            {renderStatusIcon(passwordValid, password.length > 0)}
-          </div>
-        </label>
-
-        <label>
-          Confirmation du mot de passe
-          <div className="input-icon">
-            <Lock size={18} />
-            <input
-              type="password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              required
-              placeholder="Confirmez le mot de passe"
-            />
-            {renderStatusIcon(passwordMatch, confirmPassword.length > 0)}
-          </div>
-        </label>
-
-        <label className="checkbox-container">
-          <input
-            type="checkbox"
-            checked={marketingConsent}
-            onChange={(e) => setMarketingConsent(e.target.checked)}
-          />
-          Je souhaite recevoir par courriel des nouvelles, nouveautés et offres
-          de Flippin’ Maple.
-        </label>
-
-        <button type="submit" disabled={isSubmitting}>
-          {isSubmitting ? (
-            <span className="spinner">
-              <Loader2 size={18} className="spin" />
-              &nbsp; Inscription...
-            </span>
-          ) : (
-            "S'inscrire"
-          )}
-        </button>
-      </form>
-    </div>
+          </button>
+        </form>
+      </div>
+    </main>
   );
 };
 

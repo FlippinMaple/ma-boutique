@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import api from '../utils/api';
 import { formatEmail } from '../utils/textHelpers';
 import toast from 'react-hot-toast';
+import './styles/Login.css';
 
 const Login = ({ onAuthSuccess }) => {
   const [email, setEmail] = useState('');
@@ -53,34 +54,48 @@ const Login = ({ onAuthSuccess }) => {
   };
 
   return (
-    <div className="login-container">
-      <h2>Se connecter</h2>
-      <form onSubmit={handleSubmit}>
-        <div>
-          <label>Email</label>
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
+    <main className="login-page">
+      <div className="login-page__inner">
+        <h1 className="login-page__title">Se connecter</h1>
+        <form className="login-form" onSubmit={handleSubmit}>
+          <div className="login-field">
+            <label className="login-field__label" htmlFor="login-email">
+              Email
+            </label>
+            <input
+              className="login-field__control"
+              id="login-email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              disabled={loading}
+            />
+          </div>
+          <div className="login-field">
+            <label className="login-field__label" htmlFor="login-password">
+              Mot de passe
+            </label>
+            <input
+              className="login-field__control"
+              id="login-password"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              disabled={loading}
+            />
+          </div>
+          <button
+            className="login-form__submit"
+            type="submit"
             disabled={loading}
-          />
-        </div>
-        <div>
-          <label>Mot de passe</label>
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            disabled={loading}
-          />
-        </div>
-        <button type="submit" disabled={loading}>
-          {loading ? 'Connexion en cours...' : 'Se connecter'}
-        </button>
-      </form>
-    </div>
+          >
+            {loading ? 'Connexion en cours...' : 'Se connecter'}
+          </button>
+        </form>
+      </div>
+    </main>
   );
 };
 

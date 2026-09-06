@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import api from '../utils/api';
 import { capitalizeSmart } from '../utils/textHelpers';
 import { toast } from 'react-hot-toast';
+import './styles/Dashboard.css';
 
 const Dashboard = () => {
   const [user, setUser] = useState(null);
@@ -42,20 +43,36 @@ const Dashboard = () => {
     }
   };
 
-  if (loading) return <div>Chargement…</div>;
+  if (loading) {
+    return (
+      <main className="dashboard-page">
+        <div className="dashboard-page__inner">
+          <p className="dashboard-page__state">Chargement…</p>
+        </div>
+      </main>
+    );
+  }
   if (!user) return null;
 
   const displayFirst = capitalizeSmart(user.first_name || '');
   const displayLast = capitalizeSmart(user.last_name || '');
 
   return (
-    <div>
-      <h2>
-        Bienvenue {displayFirst} {displayLast}
-      </h2>
-      <p>{user.email}</p>
-      <button onClick={handleLogout}>Se déconnecter</button>
-    </div>
+    <main className="dashboard-page">
+      <div className="dashboard-page__inner">
+        <h1 className="dashboard-page__title">
+          Bienvenue {displayFirst} {displayLast}
+        </h1>
+        <p className="dashboard-page__email">{user.email}</p>
+        <button
+          className="dashboard-page__logout"
+          type="button"
+          onClick={handleLogout}
+        >
+          Se déconnecter
+        </button>
+      </div>
+    </main>
   );
 };
 
