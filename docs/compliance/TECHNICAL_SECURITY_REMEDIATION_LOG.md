@@ -1,6 +1,6 @@
 # Journal des correctifs techniques et de sécurité
 
-**Statut :** journal actif — chantiers P3 (checkout public), P4 (webhook Stripe / idempotence), P5 (fallback `order_items`), P6 (gestionnaire d’erreurs), P7 (authentification / sessions / JWT), P8 (inscription / consentement marketing / privacy technique), P9 (consentements email / unsubscribe / webhooks et cycle de révocation), P10 (secret unsubscribe / token hardening), P11 (paniers abandonnés), **P12** (job / cron des paniers abandonnés), P13 (données Stripe conservées / minimisation), P14 (livraison Printful), P15 (inventaire Printful), P16 (page de succès), P17 (produits publics), P18 (wishlist) et P19 (Printful automatique du webhook) : **FERMÉS / COMPLETS**. P12, P15, P16, P17, P18, P19 et P23 sont **VALIDÉS EN PRODUCTION**. **P20** (base de données et migrations) est **FERMÉ / COMPLET**. P20-A à P20-D9 ont été traités selon leur statut documenté (validations production ou analyses sans mutation). Aucun autre défaut de schéma démontré n’exige une mutation. **P21** (journaux / logging) est **FERMÉ / COMPLET**. P21 n’est **pas** déclaré VALIDÉ EN PRODUCTION. **P22** (routes administratives) est **FERMÉ / COMPLET**. P22 n’est **pas** déclaré VALIDÉ EN PRODUCTION. **P23** (API de vérification du paiement) est **FERMÉ / COMPLET**. P23 est **VALIDÉ EN PRODUCTION**. P24 demeure distinct. Le résidu live différé P13 (`upsertStripeEvent` post-`dd9580d`) reste distinct et ne bloque pas ces clôtures.
+**Statut :** journal actif — chantiers P3 (checkout public), P4 (webhook Stripe / idempotence), P5 (fallback `order_items`), P6 (gestionnaire d’erreurs), P7 (authentification / sessions / JWT), P8 (inscription / consentement marketing / privacy technique), P9 (consentements email / unsubscribe / webhooks et cycle de révocation), P10 (secret unsubscribe / token hardening), P11 (paniers abandonnés), **P12** (job / cron des paniers abandonnés), P13 (données Stripe conservées / minimisation), P14 (livraison Printful), P15 (inventaire Printful), P16 (page de succès), P17 (produits publics), P18 (wishlist) et P19 (Printful automatique du webhook) : **FERMÉS / COMPLETS**. P12, P15, P16, P17, P18, P19 et P23 sont **VALIDÉS EN PRODUCTION**. **P20** (base de données et migrations) est **FERMÉ / COMPLET**. P20-A à P20-D9 ont été traités selon leur statut documenté (validations production ou analyses sans mutation). Aucun autre défaut de schéma démontré n’exige une mutation. **P21** (journaux / logging) est **FERMÉ / COMPLET**. P21 n’est **pas** déclaré VALIDÉ EN PRODUCTION. **P22** (routes administratives) est **FERMÉ / COMPLET**. P22 n’est **pas** déclaré VALIDÉ EN PRODUCTION. **P23** (API de vérification du paiement) est **FERMÉ / COMPLET**. P23 est **VALIDÉ EN PRODUCTION**. **P24** (interface checkout) est **FERMÉ / COMPLET**. P24 n’est **pas** déclaré VALIDÉ EN PRODUCTION. Le résidu live différé P13 (`upsertStripeEvent` post-`dd9580d`) reste distinct et ne bloque pas ces clôtures.
 
 Ce document complète `docs/compliance/TECHNICAL_SECURITY_AUDIT.md`.
 
@@ -3351,6 +3351,82 @@ Aucune commande réelle modifiée. Aucune écriture DB. Aucune mutation Stripe. 
 Motif : validation serveur ajoutée ; réponse minimisée ; rate limiter fonctionnel en local et en production ; invariants d’intégrité préservés ; endpoint toujours compatible checkout invité ; preuves production obtenues sans mutation.
 
 P24 reste distinct. Le résidu live P13 (`upsertStripeEvent` post-`dd9580d`) reste distinct.
+
+---
+
+## 5 septembre 2026 — Clôture P24 : interface checkout (FERMÉ / COMPLET)
+
+Le constat initial d’audit P24 reste figé dans `TECHNICAL_SECURITY_AUDIT.md`. Ce journal documente la reprise et la clôture. Aucune certification de conformité légale n’est revendiquée. P24 n’est **pas** déclaré VALIDÉ EN PRODUCTION.
+
+**P24 est FERMÉ / COMPLET.**
+
+P24 traite l’**interface checkout**. Sévérité audit : **FAIBLE**. C’était le dernier point FAIBLE de l’audit figé. Ce n’est **pas** P3 (protections checkout public), **pas** P7 (auth / JWT), **pas** P16 (page de succès), **pas** P23 (API verify). Le résidu live différé P13 (`upsertStripeEvent` post-`dd9580d`) reste distinct.
+
+### Constat initial figé
+
+Faits figés dans l’audit (non réécrits) :
+
+- historiquement, « Payer maintenant » et « Continuer comme invité » appelaient le même `handleCheckout` ;
+- le bouton « Continuer comme invité » était marqué TEMP ;
+- l’interface proposait donc deux choix sans différence fonctionnelle ;
+- le nettoyage devait conserver le checkout invité sans confusion ;
+- l’audit figé indiquait que le bouton TEMP avait pu être retiré dans des travaux UI ultérieurs.
+
+`TECHNICAL_SECURITY_AUDIT.md` reste figé et n’est pas réécrit.
+
+### P24-A — audit read-only
+
+Audit code / Git read-only. HEAD audité : `b119fed`. Working tree propre. Aucun fichier modifié pendant P24-A.
+
+Fichier principal inspecté : `src/pages/Checkout.jsx`.
+
+Inventaire actuel : boutons de quantité (diminuer / augmenter) ; suppression d’article ; vider le panier ; **un seul** CTA paiement.
+
+CTA paiement actuel : libellé `Passer au paiement` ; état loading `Redirection...` ; handler `handleCheckout` ; disabled `loading || !shippingRate`.
+
+Une seule référence JSX `onClick={handleCheckout}`. Aucun second CTA équivalent. Aucun « Payer maintenant » runtime. Aucun « Continuer comme invité » runtime. Aucun marqueur TEMP runtime. Aucun CTA paiement caché, conditionnel ou responsive.
+
+### Checkout invité
+
+Distinction : le **checkout invité** est le comportement métier (payer sans compte). L’ancien bouton « Continuer comme invité » était un **doublon UI** du même `handleCheckout`.
+
+Le comportement invité demeure actif : `/checkout` n’exige pas d’authentification utilisateur ; `ProtectedCheckoutRoute` vérifie le panier, pas un compte ; `handleCheckout` n’exige pas de user / JWT ; email + adresse + mode de livraison suffisent côté frontend. Le retrait du bouton guest n’a pas supprimé le checkout invité. P3 et P7 ne sont pas rouverts ici.
+
+### Flow UI actuel
+
+Flux unique : validation frontend → confirmation utilisateur → création de session checkout → réception URL + session ID → stockage de la session attendue → flag checkout → redirection Stripe. Il n’existe pas deux flows UI concurrents. P1 / P3 / P4 / P16 / P23 ne sont pas réaudités ici.
+
+### CSS / responsive
+
+`.checkout-actions` reste en une seule colonne. Aucune duplication responsive du CTA. Aucun ancien style guest / TEMP. Aucun bouton caché. Un seul CTA paiement quelle que soit la largeur.
+
+### Routage
+
+`/checkout` → `ProtectedCheckoutRoute` → `Checkout`. Pas de route `guest-checkout`. Aucune route parallèle reproduisant l’ancien choix.
+
+### Correctif historique
+
+**Commit :** `106c4ac` — `feat(checkout): apply branded checkout flow`
+
+Ce commit a retiré les anciens libellés de paiement, le bouton temporaire « Continuer comme invité » et le marqueur TEMP, puis a consolidé l’interface autour d’un CTA unique : `Passer au paiement`. C’était un **redesign UI historique** (23 juillet 2026), pas un correctif créé spécifiquement sous P24. Aucune attribution P-number n’est inventée pour ce commit.
+
+Origine du bouton TEMP : `cb1f142` — `chore(checkout): add temporary guest checkout button` (20 juillet 2026). Même `handleCheckout` que « Payer maintenant ».
+
+### Preuves production historiques
+
+Des checkouts production ont été validés sous P3, P7, P16 et P23. Ces validations ont exercé le flow actuel (déjà single-CTA depuis `106c4ac`). Elles restent attribuées à ces chantiers. Elles ne constituent **pas** une campagne de validation production P24.
+
+P24 n’est **pas** déclaré VALIDÉ EN PRODUCTION.
+
+### Verdict
+
+**P24 est FERMÉ / COMPLET.**
+
+Motif : le défaut UI historique n’existe plus ; un seul CTA déclenche le paiement ; le checkout invité reste supporté ; aucune confusion fonctionnelle résiduelle trouvée ; aucun correctif code supplémentaire requis.
+
+P24 n’est pas déclaré VALIDÉ EN PRODUCTION.
+
+Le résidu live P13 (`upsertStripeEvent` post-`dd9580d`) reste distinct.
 
 ---
 
