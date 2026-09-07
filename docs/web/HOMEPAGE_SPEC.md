@@ -35,7 +35,7 @@ Ce fichier définit, pour la future page d’accueil de Flippin’ Maple :
 
 Ce n’est **pas** une implémentation technique. Aucun composant, aucune feuille de style et aucun actif graphique ne sont fournis ici.
 
-> **Note de gouvernance (2026-09-06).** Une intégration visuelle partielle de l’accueil existe maintenant dans le code. Ce document reste la **spécification cible**, pas un journal d’implémentation. L’écart spec ↔ page actuelle n’est pas refermé. Ce document n’autorise pas les actifs, le logo, ni une nouvelle phase.
+> **Note de gouvernance (2026-09-06).** Une intégration visuelle partielle de l’accueil existe maintenant dans le code. Ce document reste la **spécification cible**, pas un journal d’implémentation. L’écart spec ↔ page actuelle n’est pas refermé pour la photographie et plusieurs sections. Le système graphique (Wordmark principal FLIPPIN’M, Compact F’M, Mark M) est livré séparément ; ce document n’autorise pas une nouvelle phase.
 
 La page d’accueil doit être une **application de la marque**, pas la marque elle-même. Elle suit la direction de travail **Northern Utility Editorial** (`VISUAL_IDENTITY.md`) et le positionnement de `VISION_AND_POSITIONING.md`.
 
@@ -80,7 +80,6 @@ La page ne doit pas tenter de présenter tout le catalogue.
 
 ### Ouvert
 
-- logo et wordmark définitifs ;
 - collection de lancement ;
 - produits permanents ;
 - photos finales ;
@@ -200,6 +199,8 @@ Ces libellés ne sont **pas** définitifs.
 
 ### Placeholder wordmark
 
+> **État actuel.** Le Wordmark principal FLIPPIN’M est livré (`src/assets/brand/wordmark-black.svg` / `wordmark-white.svg`) et utilisé au Header / Footer. Compact F’M et Mark M sont livrés, non affichés dans ces composants. Le bloc ci-dessous décrit le traitement temporaire historique.
+
 ```
 [PLACEHOLDER — WORDMARK FLIPPIN’ MAPLE]
 
@@ -242,7 +243,7 @@ Le Hero est le **principal moment de marque**.
 - contenu lisible sur mobile ;
 - composition **séparée / split** par défaut ; **pas d’overlay photographique par défaut** ;
 - aucune feuille d’érable visible dans l’actif Hero ;
-- la signature **`NO FIXED LINE.`** ne doit pas être soudée graphiquement au logo.
+- la signature **`NO FIXED LINE.`** ne doit pas être soudée graphiquement au système graphique officiel.
 
 ### Contenu de travail
 
@@ -738,7 +739,7 @@ Versions attendues : **française source** (tutoiement) et **anglaise adaptée**
 
 Ne pas ajouter de liens fictifs.
 
-Le wordmark utilise le même placeholder que le header jusqu’à la disponibilité du logo final.
+Le Footer utilise le même Wordmark principal FLIPPIN’M que le Header (variante blanche).
 
 ---
 
@@ -835,7 +836,7 @@ Les noms de couleurs renvoient à la palette de travail de `VISUAL_IDENTITY.md` 
 | Catégories non validées / sans destination réelle | Section **réduite ou retirée** ; aucune fausse catégorie |
 | Inscription courriel non fonctionnelle | Section **supprimée** (repli normal) ; aucun formulaire factice |
 | Motif non produit | Aplat de couleur ; aucun faux bois temporaire ; aucune feuille figurative |
-| Logo non finalisé | Placeholder typographique neutre (mêmes règles que le header) ; aucun faux symbole |
+| SVG de marque indisponible | Capitales historiques (mêmes règles que l’ancien header) ; aucun faux symbole |
 | Contenu éditorial non disponible | Section retirée ou réduite à un titre + lien `À propos` si le texte est prêt |
 
 ---
@@ -880,7 +881,7 @@ Avant le code final de la page d’accueil, disposer ou décider de :
 
 - maquette bureau ;
 - maquette mobile ;
-- logo ou placeholder final confirmé ;
+- Wordmark principal FLIPPIN’M livré ;
 - polices et licences vérifiées ;
 - produits à mettre en avant ;
 - images ou fallbacks ;

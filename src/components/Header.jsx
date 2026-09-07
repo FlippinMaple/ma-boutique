@@ -2,6 +2,7 @@
 import { Link, NavLink } from 'react-router-dom';
 import { useCart } from '../CartContext';
 import { useEffect, useRef, useState } from 'react';
+import wordmarkBlack from '../assets/brand/wordmark-black.svg';
 import './styles/Header.css';
 
 export default function Header({ isAuthenticated, onLogout, userRole }) {
@@ -23,13 +24,16 @@ export default function Header({ isAuthenticated, onLogout, userRole }) {
   return (
     <header className="site-header">
       <div className="site-header__inner">
-        {/* Remplacer par l’actif wordmark M2.5 final lorsqu’il sera livré. */}
         <Link
           to="/"
           className="site-header__brand"
           aria-label="Flippin’ Maple — Accueil"
         >
-          FLIPPIN’ MAPLE
+          <img
+            className="site-header__wordmark"
+            src={wordmarkBlack}
+            alt=""
+          />
         </Link>
 
         <nav

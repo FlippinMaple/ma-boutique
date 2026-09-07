@@ -32,16 +32,16 @@
   max-width: 100%;
   min-height: 2.25rem;
   padding-block: var(--space-1);
-  font-family: var(--font-display);
-  font-stretch: var(--font-display-stretch);
-  font-size: clamp(0.95rem, 2.1vw, 1.1rem);
-  font-weight: 700;
-  line-height: 1;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
   text-decoration: none;
-  color: var(--color-ink-black);
-  transition: color var(--duration-fast) var(--ease-natural);
+}
+
+.site-header__wordmark {
+  display: block;
+  height: clamp(1.125rem, 3.2vw, 1.5rem);
+  width: auto;
+  max-width: min(12.5rem, 100%);
+  object-fit: contain;
+  object-position: left center;
 }
 
 .site-header__primary,
@@ -158,10 +158,6 @@
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .site-header__brand:hover {
-    color: var(--color-deep-forest);
-  }
-
   .site-header__link:hover {
     color: var(--color-deep-forest);
     border-bottom-color: var(--color-deep-forest);
@@ -193,7 +189,6 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .site-header__brand,
   .site-header__link,
   .site-header__logout {
     transition: none;

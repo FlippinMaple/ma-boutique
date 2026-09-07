@@ -7,16 +7,16 @@
 | **Titre** | Homepage Assets |
 | **Chemin** | `docs/web/HOMEPAGE_ASSETS.md` |
 | **Statut** | **Draft — Homepage Assets v1** |
-| **Nature** | Plan d’actifs visuels soumis à validation — **aucun actif n’est approuvé définitivement** |
+| **Nature** | Plan d’actifs visuels — le système graphique (Wordmark principal FLIPPIN’M, Compact F’M, Mark M + favicons) est livré ; les photographies de marque ne sont pas approuvées définitivement |
 | **Date** | 2026-07-22 |
 | **Portée** | Page d’accueil uniquement |
 | **Langue du document** | Français |
 | **Documents sources** | `docs/00_PROJECT_MASTER.md` · `docs/brand/VISION_AND_POSITIONING.md` · `docs/brand/VISUAL_IDENTITY.md` · `docs/brand/VOICE.md` · `docs/web/HOMEPAGE_SPEC.md` · `docs/web/HOMEPAGE_WIREFRAME.md` · `docs/web/HOMEPAGE_VISUAL_DESIGN.md` · `docs/web/HOMEPAGE_COPY.md` |
-| **État du logo** | Final **absent** |
+| **État du logo** | Système graphique officiel **livré** (Wordmark principal FLIPPIN’M, Compact F’M, Mark M) |
 | **État de la photographie** | Aucune photographie de marque locale dans le dépôt |
 | **État de l’inventaire existant** | Quasi vide localement ; produits = URL distantes Printful (hors page d’accueil actuelle) |
 | **Exclusions** | Intégration React · création/téléchargement d’images · i18n · routes · backend · validation juridique de `NO FIXED LINE.` |
-| **Principe de validation** | Aucune autorisation d’intégration implicite ; aucun actif présenté comme final |
+| **Principe de validation** | Aucune autorisation d’intégration implicite ; aucun actif photographique présenté comme final |
 
 Les identifiants `HOME-*` sont **documentaires**, pas des noms de fichiers définitifs.
 
@@ -30,17 +30,17 @@ Les actifs servent la hiérarchie éditoriale de la page d’accueil : installer
 
 | Classe | Exemples | Rôle |
 |---|---|---|
-| Actif de marque | Wordmark, futur logo, motif érable abstrait | Identité |
+| Actif de marque | Wordmark principal FLIPPIN’M, Compact F’M, Mark M, motif érable abstrait | Identité |
 | Actif produit | Cartes sélection, tuiles catégorie | Commerce crédible |
 | Actif éditorial / campagne | Hero, éditorial, capsule | Attitude et territoire |
 | Actif décoratif | Grain, texture, séparateurs | Atmosphère secondaire |
 | Actif utilitaire | Icônes nav, compte, panier, sociaux | Fonction |
 
-**Absolument requis (MVP crédible) :** wordmark typographique ou SVG mono provisoire · stratégie Hero (photo **ou** fallback couleur) · 2–3 images produit cohérentes · tuiles catégorie seulement si destinations réelles.
+**Absolument requis (MVP crédible) :** Wordmark principal FLIPPIN’M (SVG mono livré) · stratégie Hero (photo **ou** fallback couleur) · 2–3 images produit cohérentes · tuiles catégorie seulement si destinations réelles.
 
 **Conditionnels :** éditorial · capsule · motif déclaration · texture courriel · icônes sociales · vidéo Hero.
 
-**Peuvent attendre :** shooting idéal · portraits secondaires · détails matière · campagnes futures · logo final · favicon marque.
+**Peuvent attendre :** shooting idéal · portraits secondaires · détails matière · campagnes futures.
 
 **Risques principaux :** Hero générique · folklore canadien · mockups POD comme seule identité · confusion « marque canadienne » = fabrication · recadrage mobile impossible · provenance inconnue · faux contenu.
 
@@ -50,7 +50,9 @@ Les actifs servent la hiérarchie éditoriale de la page d’accueil : installer
 
 Audit en lecture seule (2026-07-22). Aucun fichier déplacé, renommé ou téléchargé.
 
-> **Note de gouvernance (2026-09-06).** Les §3.1–3.5 sont un **instantané du 2026-07-22**. Ils n’ont pas été refaits. Depuis, une passe storefront de session (R2–R10, fermée à `b80e408` — voir `README.md` §2) a notamment remplacé le stub texte de `Home.jsx` par une accueil éditoriale réduite. Les actifs de marque (logo, photographies, favicon marque) restent absents ou scaffold. Ne plus lire « `Home.jsx` = stub » comme l’état actuel.
+> **Note de gouvernance (2026-09-06).** Les §3.1–3.5 sont un **instantané du 2026-07-22**. Ils n’ont pas été refaits. Depuis, une passe storefront de session (R2–R10, fermée à `b80e408` — voir `README.md` §2) a notamment remplacé le stub texte de `Home.jsx` par une accueil éditoriale réduite. Ne plus lire « `Home.jsx` = stub » comme l’état actuel.
+>
+> **Note de gouvernance (2026-09-07).** Le système graphique officiel (Wordmark principal FLIPPIN’M, Compact F’M, Mark M) est maintenant dans le dépôt (`src/assets/brand/`, favicons `public/`). L’instantané §3.1–3.5 ci-dessous (dont `vite.svg`) reste historique. Les photographies de marque locales restent absentes.
 
 ### 3.1 Emplacements observés
 
@@ -103,7 +105,7 @@ Ratios et pixels = **Provisoires** · `Cible de production — à confirmer à l
 
 | ID | Section | Nom fonctionnel | Rôle | Priorité | Statut | Format principal | Ratio principal | Variantes | Contenu attendu | Dépendance | Repli | Validation |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
-| HOME-BRAND-01 | Header / Footer | Wordmark Flippin’ Maple | Identification | P1 | À produire (typo OK) | SVG | Adaptatif | Clair / sombre éventuel | Wordmark mono | Logo final absent | Texte typographique | Contraste + accessibilité |
+| HOME-BRAND-01 | Header / Footer | Wordmark principal FLIPPIN’M | Identification | P1 | Livré | SVG | Adaptatif | Noir / blanc | Wordmark principal FLIPPIN’M | — | Capitales historiques | Contraste + accessibilité |
 | HOME-ICON-01 | Header | Icônes compte / panier / menu | Navigation | P1 | À produire ou système | SVG | — | États hover/focus | Symboles sobres | UI | Texte + aria | Accessibilité |
 | HOME-ICON-02 | Header | Sélecteur de langue | Futur | P3 | Conditionnel / Ouvert | SVG ou texte | — | FR / EN | Discret | i18n technique | Texte `FR`/`EN` | Hors portée actuelle |
 | HOME-HERO-01 | Hero | Photo campagne principale | Moment de marque | P1 | À produire / sélectionner | AVIF/WebP | 16:9 ou 3:2 | Desktop / tablette / mobile | Urbain nordique, mature | Texte COPY · zone lecture | Deep Forest / Charcoal | DA + droits + juridique signature |
@@ -114,9 +116,9 @@ Ratios et pixels = **Provisoires** · `Cible de production — à confirmer à l
 | HOME-CAT-01…02 | Catégories | Tuiles catégorie | Entrée catalogue | P1 | À produire si catégories réelles | AVIF/WebP | 4:5 ou 3:4 | 2 (3 si réel) | Univers proche Hero | Destinations réelles | Retirer / limiter | Pas de fausse catégorie |
 | HOME-CAP-01 | Capsule | Bannière capsule | Campagne 2 | P3 | Conditionnel | AVIF/WebP | 2:1 bureau | Mobile 4:5/3:4 | Capsule réelle | Titre + destination | **Retrait complet** | Pas de faux lancement |
 | HOME-MAIL-01 | Courriel | Texture optionnelle | Atmosphère légère | P3 | Optionnel | SVG/WebP | — | Très bas contraste | Motif discret | Formulaire fonctionnel | Aucune image | Lisibilité formulaire |
-| HOME-FOOT-01 | Footer | Wordmark + sociaux | Navigation secondaire | P1 / P3 | Wordmark P1 ; sociaux si réels | SVG | — | — | Comptes réels seulement | Réseaux existants | Omettre icônes | Pas de faux réseaux |
+| HOME-FOOT-01 | Footer | Wordmark principal FLIPPIN’M + sociaux | Navigation secondaire | P1 / P3 | Wordmark livré ; sociaux si réels | SVG | — | Blanc | Comptes réels seulement | Réseaux existants | Omettre icônes | Pas de faux réseaux |
 | HOME-TEX-01 | Global | Textures / grain | Décoratif | P3 | Provisoire | SVG/CSS | — | Mobile plus discret | Northern Utility | Performance | Sans texture | Une section max typique |
-| HOME-FAV-01 | Site | Favicon / symbole | Navigateur | P2 | À produire | SVG/ICO | 1:1 | Multi-tailles | Futur symbole | Logo | Garder scaffold temporairement | Ne pas simuler logo final |
+| HOME-FAV-01 | Site | Favicon (Mark M) | Navigateur | P2 | Livré | ICO/PNG | 1:1 | 16 / 32 / 180 | Mark M | Mark M | — | Ne pas inventer un autre favicon |
 
 ---
 
@@ -124,18 +126,18 @@ Ratios et pixels = **Provisoires** · `Cible de production — à confirmer à l
 
 | Besoin | Direction |
 |---|---|
-| Wordmark temporaire | Typographique **ou** SVG monochrome provisoire `[PLACEHOLDER — WORDMARK FLIPPIN’ MAPLE]` |
-| Logo final | **Absent** — ne pas inventer de symbole, feuille, flip, miroir |
+| Wordmark principal FLIPPIN’M | SVG officiel `wordmark-black.svg` |
+| Compact F’M / Mark M | Livrés dans `src/assets/brand/` ; non affichés dans le Header de cette intégration |
 | Icônes compte / panier / menu | SVG sobres, traits fins, contraste Ink Black sur Maple Bone |
 | Sélecteur de langue | Futur, discret, fonctionnel — **conception détaillée hors portée** |
-| Favicon | Remplacer `vite.svg` plus tard ; pas de faux logo |
+| Favicon | Livré (Mark M : `favicon.ico`, PNG 16/32, apple-touch-icon) |
 | Clair / foncé | Header clair par défaut (Maple Bone) ; variante sticky sombre = **Provisoire** |
 | Accessibilité | Lien accessible `Flippin’ Maple — Accueil` / `Home` ; focus visible ; pas d’info uniquement dans l’icône |
 
-**Peut rester typographique :** nom de marque entier.
-**Ne pas recréer :** faux logo, effet flip, feuille d’érable décorative collée au wordmark.
+**Repli historique :** capitales typographiques si le SVG n’est pas disponible.
+**Ne pas recréer :** faux logo, effet flip, feuille d’érable générique collée au wordmark.
 
-Formats vectoriels futurs recommandés : **SVG** (wordmark, icônes).
+Formats vectoriels recommandés : **SVG** (wordmark, icônes).
 
 ---
 
@@ -198,7 +200,7 @@ Split de travail ~40 % texte / 60 % image (**Provisoire**). Overlay texte sur ph
 | Situation | Repli |
 |---|---|
 | Pas de photo adéquate | Fond **Deep Forest** ou **Charcoal** + texte Maple Bone — **jamais** image générique temporaire |
-| Logo absent | Wordmark typographique ; signature **distincte** du logo |
+| SVG de marque indisponible | Capitales historiques ; signature **distincte** du système graphique officiel |
 | Signature non validée juridiquement | Rester Draft / prévoir titre de campagne réel alternatif (COPY prop. B) |
 
 ### 6.6 Risque « marque canadienne »
@@ -342,8 +344,8 @@ Libellés COPY de travail (non verrouillés) : `T-shirts` / `Cotons ouatés` · 
 
 | Élément | Direction |
 |---|---|
-| Wordmark | Même stratégie que Header (typo ou SVG provisoire) |
-| Logo final | Futur remplacement sans casser la structure |
+| Wordmark principal FLIPPIN’M | SVG officiel `wordmark-white.svg` |
+| Compact F’M / Mark M | Livrés ; non affichés dans le Footer de cette intégration |
 | Sociaux | Icônes **uniquement** pour comptes réels |
 | Contraste | Fond Ink Black / Charcoal · texte Maple Bone |
 | Signature `NO FIXED LINE.` | **Ne pas** répéter |
@@ -507,7 +509,7 @@ Budget pro **non présumé**. Licence / sélection existante / shooting léger =
 
 | Requis | Peut utiliser un repli | Retirer si absent | Plus tard | Ne jamais simuler |
 |---|---|---|---|---|
-| Wordmark typo | SVG provisoire | — | Logo final | Faux logo |
+| Wordmark principal FLIPPIN’M | Capitales historiques | — | — | Faux logo |
 | Hero lisible | Fond Deep Forest / Charcoal | — | Photo idéale | Image générique stock non pertinente |
 | 2–3 produits cohérents | Mockups Printful **traités** de façon uniforme | Cartes individuelles | Photos éditoriales | Faux SKU / faux prix |
 | Catégories | — | Section entière | 3e catégorie | Fausse catégorie |
@@ -525,8 +527,6 @@ Le MVP reste cohérent **sans** grand shooting complet.
 - 2–3 catégories distinctes ;
 - éditorial matière/territoire ;
 - motif veinage SVG soigné ;
-- wordmark / logo final ;
-- favicon marque ;
 - capsule réelle le cas échéant ;
 - optimisation AVIF/WebP + `srcset` ;
 - éventuelle vidéo courte **non obligatoire**.
@@ -556,7 +556,7 @@ Proposition documentaire — **ne créer aucun dossier maintenant** :
 
 ```
 src/assets/
-  brand/          # wordmark, futur logo, favicon source
+  brand/          # Wordmark principal FLIPPIN’M, Compact F’M, Mark M
   home/
     hero/
     products/
@@ -604,7 +604,7 @@ Critères : cohérence marque · crédibilité · utilité · qualité · résol
 | Poids trop lourd | Moyenne | Fort | Compression · formats modernes | JPEG optimisé | Technique |
 | Provenance inconnue | Haute | Critique | Checklist §19 | Ne pas publier | Légal / marque |
 | Sur-texture | Moyenne | Moyen | Max ~1 section | Sans texture | DA |
-| Logo absent | Haute | Moyen | Wordmark typo | — | Marque |
+| SVG de marque indisponible | Faible | Moyen | Wordmark principal FLIPPIN’M versionné | Capitales historiques | Marque |
 | Fausse capsule | Faible | Fort | Conditionnel strict | Retrait | Contenu |
 | Confusion fabrication CA | Moyenne | Critique | Pas d’atelier dans l’image ; nuance COPY | Reformuler / autre image | Marque + juridique |
 | Mauvaise représentation produit | Moyenne | Fort | Sélection curation | Moins de cartes | Catalogue |
@@ -649,7 +649,6 @@ Responsable nommé : **non défini** — décisions à assigner.
 
 ### Ouvert
 
-- logo final ;
 - actifs photographiques définitifs ;
 - modèles / lieux / droits / budget / calendrier ;
 - produits et catégories réels mis de l’avant ;
@@ -685,7 +684,7 @@ Responsable nommé : **non défini** — décisions à assigner.
 - [ ] Aucune fausse campagne
 - [ ] Aucune affirmation non prouvée
 - [ ] Aucune confusion fabrication canadienne
-- [ ] Aucun logo final simulé
+- [ ] Aucun faux symbole / faux logo
 - [ ] Aucun actif obsolète conservé par facilité
 - [ ] Sections conditionnelles retirées si vides
 - [ ] `NO FIXED LINE.` : statut juridique vérifié avant usage public final

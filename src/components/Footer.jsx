@@ -1,5 +1,6 @@
 // src/components/Footer.jsx
 import { Link } from 'react-router-dom';
+import wordmarkWhite from '../assets/brand/wordmark-white.svg';
 import './styles/Footer.css';
 
 export default function Footer({ isAuthenticated }) {
@@ -7,13 +8,16 @@ export default function Footer({ isAuthenticated }) {
     <footer className="site-footer">
       <div className="site-footer__inner">
         <div className="site-footer__brand">
-          {/* Remplacer par l’actif wordmark M2.5 final lorsqu’il sera livré. */}
           <Link
             to="/"
             className="site-footer__wordmark"
             aria-label="Flippin’ Maple — Accueil"
           >
-            FLIPPIN’ MAPLE
+            <img
+              className="site-footer__wordmark-image"
+              src={wordmarkWhite}
+              alt=""
+            />
           </Link>
           <p className="site-footer__tag">
             Une marque canadienne indépendante.

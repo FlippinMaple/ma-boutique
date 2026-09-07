@@ -7,7 +7,7 @@
 | **Date** | 2026-07-21 |
 | **Portée** | direction visuelle de travail, fondations de design, règles d’usage provisoire pour maquettes et futurs actifs |
 | **Documents supérieurs** | `docs/00_PROJECT_MASTER.md` · `docs/brand/VISION_AND_POSITIONING.md` |
-| **Hors portée** | logo / wordmark / symbole finalisés · actifs graphiques définitifs · architecture CSS · code frontend · collections produit |
+| **Hors portée** | architecture CSS · code frontend · collections produit |
 
 Ce document ne remplace ni la Constitution ni le document de vision et positionnement.
 En cas de conflit sur une décision structurante, **`docs/00_PROJECT_MASTER.md` demeure prioritaire**.
@@ -25,9 +25,9 @@ Il complète :
 - `docs/00_PROJECT_MASTER.md` — Pourquoi, règles fondamentales, décisions structurantes ;
 - `docs/brand/VISION_AND_POSITIONING.md` — vision, positionnement, ADN, territoires émotionnels et interdits stratégiques.
 
-Il ne crée pas un second Brand Blueprint concurrent. Il traduit le territoire stratégique en règles visuelles utilisables pour les maquettes, les placeholders et, plus tard, l’intégration.
+Il ne crée pas un second Brand Blueprint concurrent. Il traduit le territoire stratégique en règles visuelles utilisables pour les maquettes, les placeholders et l’usage du système graphique livré.
 
-**Non finalisé à ce stade :** le logo principal, le wordmark et le symbole. Aucun symbole temporaire ne doit être inventé pour « remplir » les maquettes.
+**Système graphique livré (2026-09-06, package final corrigé) :** Wordmark principal FLIPPIN’M, Compact F’M, Mark M. Fichiers dans `src/assets/brand/` ; favicons (Mark M) dans `public/`. Ce document n’est pas la source des tracés. Aucun symbole temporaire ne doit être inventé pour « remplir » les maquettes.
 
 ---
 
@@ -38,9 +38,10 @@ Il ne crée pas un second Brand Blueprint concurrent. Il traduit le territoire s
 - la marque doit précéder et guider le site ;
 - la direction générale doit être mature, calme, indépendante et tactile ;
 - le site ne doit pas ressembler à une boutique Print-on-Demand générique ;
-- le logo principal devra fonctionner en monochrome ;
+- le système graphique officiel fonctionne en monochrome ;
+- le système graphique retenu est **Wordmark principal FLIPPIN’M**, **Compact F’M**, **Mark M** ;
 - la signature verbale de travail est **« NO FIXED LINE. »** ;
-- la signature doit rester distincte du logo principal ;
+- la signature doit rester distincte du système graphique officiel ;
 - le bois d’érable peut devenir une matière graphique secondaire ;
 - le bois ne doit jamais créer une esthétique rustique, chalet ou boutique souvenir ;
 - les images, motifs ou textures manquants devront être représentés par des placeholders descriptifs précis.
@@ -55,13 +56,10 @@ Il ne crée pas un second Brand Blueprint concurrent. Il traduit le territoire s
 
 ### Ouvert
 
-- logo final ;
-- wordmark final ;
-- symbole final ;
-- couleur éventuelle du logo secondaire ;
+- couleur éventuelle hors du système monochrome livré ;
 - ajustements de palette après les premières maquettes ;
 - direction photographique finale ;
-- actifs graphiques définitifs ;
+- actifs photographiques définitifs ;
 - système de motifs complet ;
 - validation juridique de **« NO FIXED LINE. »**.
 
@@ -113,7 +111,7 @@ Ces interdits rejoignent le positionnement de `VISION_AND_POSITIONING.md` (skate
 
 | Nom | Hex | Rôle | Usages autorisés | Usages à éviter |
 |---|---|---|---|---|
-| **Ink Black** | `#11110F` | Texte et structure sombres | Texte principal, logo monochrome, boutons principaux, séparateurs | Éviter les grandes surfaces sombres monotones sans respiration ; ne pas utiliser Ink Black pour remplacer systématiquement Deep Forest dans son rôle d’accent identitaire |
+| **Ink Black** | `#11110F` | Texte et structure sombres | Texte principal, Wordmark / Mark M monochrome, boutons principaux, séparateurs | Éviter les grandes surfaces sombres monotones sans respiration ; ne pas utiliser Ink Black pour remplacer systématiquement Deep Forest dans son rôle d’accent identitaire |
 | **Maple Bone** | `#F1ECE2` | Fond clair principal | Surfaces claires, texte sur fonds sombres, alternative chaude au blanc pur | Blanc pur comme fond par défaut ; teinte « crème souvenir » saturée |
 | **Charcoal** | `#292A27` | Surfaces sombres secondaires | Footer, sections sombres, blocs secondaires | Remplacer Ink Black pour le texte long sur fond clair |
 | **Deep Forest** | `#304238` | Accent identitaire | Fonds choisis, certains états actifs ou CTA | Couleur dominante permanente ; confondre avec « green outdoor générique » |
@@ -146,12 +144,18 @@ Le système visuel **ne doit pas dépendre d’un logo coloré**.
 
 ### Règles
 
-- le logo principal devra fonctionner en **monochrome** ;
-- **« NO FIXED LINE. »** ne doit pas être soudé automatiquement au logo ;
-- la palette doit soutenir le logo, pas compenser un logo faible ;
+- le système graphique officiel fonctionne en **monochrome** ;
+- **« NO FIXED LINE. »** ne doit pas être soudé automatiquement au système graphique officiel ;
+- la palette doit soutenir le système graphique officiel, pas compenser un signe faible ;
 - **aucun symbole temporaire** ne doit être inventé pour remplir les maquettes.
 
-### Placeholder wordmark
+### Wordmark principal FLIPPIN’M
+
+Le Wordmark principal FLIPPIN’M est le SVG livré (`src/assets/brand/wordmark-black.svg` / `wordmark-white.svg`). Header et Footer l’utilisent directement. Ne pas le reconstruire en CSS. Ne pas inventer de symbole collé au wordmark.
+
+Le Compact F’M et le Mark M sont livrés dans `src/assets/brand/` ; ils ne sont pas affichés dans le Header / Footer de l’intégration actuelle. Le Mark M est le symbole des favicons.
+
+Le bloc ci-dessous documente le **traitement temporaire historique** (texte capitales), conservé comme référence de repli, plus comme source d’identité.
 
 ```
 [PLACEHOLDER — WORDMARK FLIPPIN’ MAPLE]
@@ -431,9 +435,10 @@ Le bois est un **actif secondaire**. Il ne définit pas seul la marque.
 ### Feuille d’érable figurative vs veinage abstrait
 
 - **Veinage / fibre abstraite** (non figurative, non reconnaissable comme une feuille, contemporaine, subtile) : permise avec retenue comme texture secondaire.
-- **Feuille d’érable visible** (générique, rouge canadienne, motif répété, pictogramme, badge, faux logo) : **interdite** dans les actifs visibles de la page d’accueil actuelle (Hero, Déclaration, Éditorial, Catégories, Capsule, Courriel, Footer, textures, icônes provisoires).
-- Une **future exploration propriétaire** d’un symbole inspiré de l’érable (original, mature, non folklorique) demeure une décision de marque **distincte et ouverte** — elle n’autorise **pas** l’usage d’une feuille visible sur la page d’accueil actuelle.
-- **Aucun faux logo** ni symbole provisoire ne doit être fabriqué pour combler l’absence du logo final.
+- **Feuille d’érable visible** (générique, rouge canadienne, motif répété, pictogramme, badge, faux logo) : **interdite** dans les actifs visibles de la page d’accueil actuelle (Hero, Déclaration, Éditorial, Catégories, Capsule, Courriel, Footer, textures, icônes), **sauf** la feuille déjà intégrée au tracé officiel du Mark M.
+- Le **Mark M** livré est le symbole propriétaire officiel retenu. Sa feuille intégrée fait partie du tracé officiel.
+- Cette feuille propriétaire du Mark M **n’autorise pas** l’usage d’une feuille d’érable générique, rouge canadienne, décorative, répétée, en badge, ou d’un faux symbole ailleurs.
+- **Aucun autre symbole temporaire** ne doit être inventé.
 
 ---
 
@@ -556,7 +561,7 @@ Avant chaque décision visuelle importante :
 - Est-ce canadien sans devenir touristique ?
 - Est-ce inspiré des board sports sans devenir caricatural ?
 - Est-ce cohérent avec « NO FIXED LINE. » ?
-- Est-ce compatible avec un logo monochrome ?
+- Est-ce compatible avec le système graphique officiel monochrome ?
 - Est-ce que cela ressemble trop à un template e-commerce ?
 - Est-ce que cela renforce la marque ou ajoute seulement de la décoration ?
 

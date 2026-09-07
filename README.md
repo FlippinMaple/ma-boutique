@@ -19,11 +19,11 @@ Point d’entrée opérationnel du dépôt. Ce n’est ni la Constitution, ni un
 ### 2.1 Constats
 
 - Le socle technique e-commerce existe (catalogue, panier, paiement, fulfillment).
-- L’identité de marque est en cours de refondation. Logo / wordmark / symbole : encore **ouverts** (`docs/brand/VISUAL_IDENTITY.md`).
+- L’identité de marque est en cours de refondation. Le système graphique officiel (Wordmark principal FLIPPIN’M, Compact F’M, Mark M) est livré dans `src/assets/brand/` ; les photographies de marque restent absentes.
 - Le projet n’est pas encore prêt pour un lancement public.
 - La documentation spécialisée existe pour la marque, l’engineering, la conformité, la sécurité et la page d’accueil ; certains documents sont encore des drafts ou des plans de travail internes.
 
-**Constat déduit (pas un statut de phase écrit dans la Constitution) :** les critères de sortie de la Phase 1 — Fondation de marque ne sont pas tous atteints. Exemples déjà documentés : logo / wordmark / symbole encore ouverts (`docs/brand/VISUAL_IDENTITY.md`) ; photographies de marque encore absentes (`docs/web/HOMEPAGE_ASSETS.md`).
+**Constat déduit (pas un statut de phase écrit dans la Constitution) :** les critères de sortie de la Phase 1 — Fondation de marque ne sont pas tous atteints. Exemple déjà documenté : photographies de marque encore absentes (`docs/web/HOMEPAGE_ASSETS.md`).
 
 ### 2.2 Programmes fermés
 
@@ -47,8 +47,7 @@ Il n’existe pas de phase « R11 ». Ne pas en inventer une.
 
 Candidats déjà documentés — **décision humaine requise** avant ouverture, sans ordre imposé :
 
-- chrome public restant (exemple : titre et favicon scaffold dans `index.html`) ;
-- actifs / logo / homepage, seulement lorsqu’un document spécialisé les autorise explicitement (`docs/brand/VISUAL_IDENTITY.md` ; `docs/web/HOMEPAGE_ASSETS.md` §29 n’autorise aucune étape) ;
+- photographie / homepage, seulement lorsqu’un document spécialisé les autorise explicitement (`docs/web/HOMEPAGE_ASSETS.md` §29 n’autorise aucune étape) ;
 - reprise ou revalidation de l’audit décrit dans `docs/compliance/PRIVACY_COOKIES_CHATBOT_PLAN.md` §23 (texte antérieur à P8–P24 ; ne plus le traiter comme prochaine action automatique) ;
 - dette / résidus déjà identifiés (inventaire héritage ; éléments signalés en session, non priorisés ici).
 

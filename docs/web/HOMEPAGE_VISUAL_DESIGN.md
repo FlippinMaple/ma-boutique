@@ -52,10 +52,10 @@ Ce fichier traduit la fondation de marque, la spécification fonctionnelle et le
 - un seul grand usage de **`NO FIXED LINE.`** ;
 - produit visible tôt ;
 - capsule conditionnelle ;
-- placeholders descriptifs obligatoires ;
+- placeholders descriptifs obligatoires pour les actifs visuels manquants ;
 - aucun actif fictif présenté comme réel ;
 - priorité mobile ;
-- logo final encore absent ;
+- système graphique officiel livré (Wordmark principal FLIPPIN’M, Compact F’M, Mark M) ;
 - **une seule langue affichée à la fois** ;
 - longueurs de texte adaptées **séparément** en français et en anglais ;
 - aucun empilement français / anglais dans les mêmes composants ;
@@ -65,7 +65,7 @@ Ce fichier traduit la fondation de marque, la spécification fonctionnelle et le
 - CTA Hero : `Voir la boutique` / `Shop all` ;
 - section homepage nommée **Catégories** ;
 - composition Hero **split / séparée** par défaut ; **pas d’overlay photographique par défaut** ;
-- feuille d’érable **visible** interdite dans les actifs homepage ;
+- feuille d’érable **générique / visible hors Mark M** interdite dans les actifs homepage ;
 - veinage abstrait non figuratif permis avec retenue ;
 - Courriel **retiré** si formulaire non fonctionnel ;
 - aucun faux logo / symbole provisoire.
@@ -88,8 +88,6 @@ Ce fichier traduit la fondation de marque, la spécification fonctionnelle et le
 
 ### Ouvert
 
-- logo final ;
-- wordmark final ;
 - photographies ;
 - motifs finaux ;
 - textes approuvés (FR et EN) ;
@@ -99,8 +97,7 @@ Ce fichier traduit la fondation de marque, la spécification fonctionnelle et le
 - mécanisme technique bilingue (mémorisation, routes, SEO) ;
 - mécanisme technique des produits vedettes ;
 - validation juridique de **`NO FIXED LINE.`** ;
-- mécanisme technique d’inscription courriel ;
-- future exploration propriétaire d’un symbole inspiré de l’érable (distincte de la page d’accueil actuelle).
+- mécanisme technique d’inscription courriel.
 
 ---
 
@@ -123,7 +120,7 @@ Combinaison à rendre visible :
 
 Par la chaleur contenue des fonds (Maple Bone), les matières (textile, bois abstrait), la retenue canadienne, et un vert profond discret (Deep Forest) — jamais par folklore souvenir.
 
-**Page d’accueil :** toute **feuille d’érable visible** (générique, rouge, motif répété, pictogramme, faux logo) est **interdite** dans les actifs visibles. Un veinage / fibre **abstrait, non figuratif et subtil** reste permis avec retenue. Une future exploration propriétaire de symbole reste **ouverte** et **distincte** — elle n’autorise pas une feuille visible ici.
+**Page d’accueil :** toute **feuille d’érable visible** (générique, rouge, motif répété, pictogramme, faux logo) est **interdite** dans les actifs visibles, **sauf** la feuille déjà intégrée au tracé officiel du **Mark M**. Un veinage / fibre **abstrait, non figuratif et subtil** reste permis avec retenue. Le Mark M est le symbole propriétaire retenu ; il n’autorise pas une feuille générique ailleurs.
 
 ### Veinage d’érable
 
@@ -182,7 +179,7 @@ Capitales : réservées aux textes courts. Pas de capitales intégrales dans les
 - grand, franc, compact, lisible ;
 - **une seule occurrence dominante** ;
 - aucun effet décoratif complexe, aucune déformation, aucune texture qui compromet la lecture ;
-- distinct du logo ;
+- distinct du système graphique officiel ;
 - forme anglaise inchangée en FR et EN (**Validé**) ;
 - placement Hero = **Provisoire** (si au Hero, déclaration = titre complémentaire).
 
@@ -245,7 +242,7 @@ Pas de conversion CSS définitive ici.
 ```
 ┌────────────────────────────────────────────────────────────┐
 │ Maple Bone                                                 │
-│ [WORDMARK placeholder]   Nav    Compte   Panier            │
+│ [Wordmark principal FLIPPIN’M]   Nav    Compte   Panier    │
 └────────────────────────────────────────────────────────────┘
 ```
 
@@ -253,14 +250,13 @@ Pas de conversion CSS définitive ici.
 |---|---|
 | Fond | Maple Bone |
 | Hauteur | Compacte |
-| Wordmark | Gauche (recommandation de travail) ou centré (**Provisoire**) ; monochrome |
+| Wordmark | Gauche (recommandation de travail) ou centré (**Provisoire**) ; **actuel :** Wordmark principal FLIPPIN’M (SVG officiel) ; **repli historique :** capitales neutres |
 | Navigation | Archivo SC, libellés courts, hover = Deep Forest ou soulignement discret |
 | Compte / panier | Icônes ou texte sobres ; pas de badges promo |
 | Séparation | Ligne 1 px Cold Concrete / Ink Black faible, ou aucune |
-| Sur Hero clair/sombre | Header reste Maple Bone par défaut ; variante sticky sur sombre = **Provisoire** |
+| Sur Hero clair/sombre | Header reste Maple Bone par défaut ; variante sticky sombre = **Provisoire** |
 | Sticky | **Provisoire** |
 | Hover / focus | Contraste clair ; focus visible |
-| Fallback wordmark | Capitales neutres, typo d’interface ; aucun symbole inventé |
 
 ### Mobile
 
@@ -289,7 +285,7 @@ Pas de conversion CSS définitive ici.
 | Fermeture | Contrôle explicite « Fermer » ou ≡ basculable ; focus visible |
 | Focus | Visible sur ≡, liens, panier, fermeture |
 | Barre promo | Absente |
-| Fallback wordmark | Capitales neutres, typo d’interface ; aucun symbole inventé |
+| Wordmark | **Actuel :** Wordmark principal FLIPPIN’M (SVG officiel). **Repli historique :** capitales neutres. |
 
 ---
 
@@ -438,12 +434,12 @@ Fond Weathered Maple pâle ou Maple Bone contrasté.
 
 ## 16. Footer
 
-Fond Ink Black ou Charcoal ; texte Maple Bone ; wordmark placeholder.
+Fond Ink Black ou Charcoal ; texte Maple Bone ; Wordmark principal FLIPPIN’M (variante blanche).
 
 - groupes : boutique, service, légal, réseaux **réels uniquement** ;
 - densités compactes ; séparations fines ;
 - bureau : groupes en colonnes ; mobile : empilé ;
-- fallback typographique wordmark ;
+- repli historique : capitales typographiques ;
 - contraste et focus élevés ;
 - aucune colonne vide ni lien factice.
 
@@ -506,20 +502,19 @@ Direction commune : lumière naturelle, tons froids, matières visibles, cadrage
 
 ### Placeholders (précision conservée depuis SPEC / WIREFRAME)
 
-Aucun de ces actifs n’est présenté comme déjà produit.
+Aucun de ces actifs photographiques n’est présenté comme déjà produit. Le Wordmark principal FLIPPIN’M, le Compact F’M et le Mark M sont livrés.
 
-#### WORDMARK FLIPPIN’ MAPLE
+#### WORDMARK PRINCIPAL FLIPPIN’M
 
 | Champ | Spécification |
 |---|---|
-| Statut | Actif définitif **non disponible** |
+| Statut | Livré (`wordmark-black.svg` / `wordmark-white.svg`) |
 | Rôle | Identifier la marque (header et footer) |
-| Traitement temporaire | Capitales, typographie d’interface prévue |
-| Format final | SVG monochrome |
+| Traitement actuel | SVG officiel, monochrome |
+| Repli historique | Capitales, typographie d’interface |
 | Contraste | Fonctionne sur Maple Bone, Ink Black, Deep Forest |
-| Alt / accessibilité | Lien texte accessible (ex. « Flippin’ Maple — Accueil ») |
-| Fallback | Wordmark typographique monochrome en capitales |
-| Interdictions | Aucun symbole inventé ; aucune feuille ; aucun effet flip |
+| Alt / accessibilité | Lien accessible via `aria-label` (ex. « Flippin’ Maple — Accueil ») ; image `alt=""` |
+| Interdictions | Aucun symbole inventé collé au wordmark ; aucune feuille générique ; aucun effet flip |
 | Remplacement | Sans modifier la structure du header / footer |
 
 #### IMAGE HERO CAMPAGNE PRINCIPALE
@@ -639,8 +634,8 @@ Aucun de ces actifs n’est présenté comme déjà produit.
 | Fréquence / densité | Faible ; une section max typiquement |
 | Contraste / échelle | Très bas ; échelle large seamless |
 | Placement autorisé | Déclaration ; ponctuellement courriel / manifeste |
-| Homepage | Feuille visible **interdite** ; veinage abstrait seulement avec retenue |
-| Futur symbole propriétaire | Décision **ouverte et distincte** — n’autorise pas une feuille sur la page actuelle |
+| Homepage | Feuille générique visible **interdite** ; veinage abstrait seulement avec retenue |
+| Mark M | Symbole propriétaire officiel retenu ; sa feuille intégrée fait partie du tracé ; n’autorise pas une feuille générique ailleurs |
 | Interdit | Produits toutes cartes, fond global permanent, derrière logo, derrière petit texte, chalet, feuille générique / rouge / répétée, faux logo |
 | Mobile | Plus discret |
 | Fallback | Aplat |
@@ -716,7 +711,7 @@ Mobile = composition complète, pas bureau compressé.
 
 | État | Traitement visuel | Conservée / retirée | Minimum acceptable | Interdit |
 |---|---|---|---|---|
-| Logo absent | Wordmark typographique monochrome en capitales | Conservée | Wordmark typographique monochrome en capitales | Symbole inventé |
+| SVG de marque indisponible | Capitales historiques | Conservée | Wordmark principal FLIPPIN’M (SVG) ou capitales | Symbole inventé |
 | Hero sans image | Deep Forest / Charcoal + Maple Bone | Conservée | Sur-titre, H1, appui, CTA | Image générique |
 | Produits incohérents | Grille réduite cohérente | Conservée réduite | Sélection curatée | Ajout automatique de mockups Printful bruts |
 | Seulement deux produits | Deux cartes 4:5 | Conservée | Deux pièces fortes | Remplissage artificiel |
@@ -757,7 +752,7 @@ Mobile = composition complète, pas bureau compressé.
 
 ### Bureau
 
-Entrer sur Maple Bone : header compact, wordmark placeholder gauche, nav sobre. Hero split 40/60 : à gauche `FLIPPIN’ MAPLE` + `NO FIXED LINE.` + appui court + CTA Ink Black ; à droite photographie urbaine froide (placeholder) ou Deep Forest. Descendre vers trois produits 4:5 cohérents, lien boutique. Moment sombre : déclaration avec titre complémentaire et motif discret ou aplat. Bloc éditorial asymétrique matière/territoire. Deux grandes catégories. Pas de capsule si absente. Courriel sobre sur Weathered Maple pâle si activé. Footer sombre, liens réels, wordmark placeholder.
+Entrer sur Maple Bone : header compact, Wordmark principal FLIPPIN’M à gauche, nav sobre. Hero split 40/60 : à gauche `FLIPPIN’ MAPLE` + `NO FIXED LINE.` + appui court + CTA Ink Black ; à droite photographie urbaine froide (placeholder) ou Deep Forest. Descendre vers trois produits 4:5 cohérents, lien boutique. Moment sombre : déclaration avec titre complémentaire et motif discret ou aplat. Bloc éditorial asymétrique matière/territoire. Deux grandes catégories. Pas de capsule si absente. Courriel sobre sur Weathered Maple pâle si activé. Footer sombre, liens réels, Wordmark principal FLIPPIN’M (variante blanche).
 
 ### Mobile
 
@@ -765,7 +760,7 @@ Même récit empilé : header ≡ / wordmark / panier ; Hero 4:5 + texte + CTA ;
 
 Composition pensée pour le pouce, pas compressée depuis le bureau. Aucune compression directe du mise en page bureau.
 
-Images, textes et logo restent **à produire / à approuver** — la structure ne dépend pas de leur existence finale grâce aux fallbacks.
+Images et textes restent **à produire / à approuver** — le Wordmark principal FLIPPIN’M, le Compact F’M et le Mark M sont livrés. La structure photographique ne dépend pas de leur existence grâce aux fallbacks.
 
 ---
 
@@ -809,7 +804,7 @@ Rejeter si :
 
 Valider si :
 
-- marque reconnaissable avant logo final ;
+- marque reconnaissable (Wordmark principal FLIPPIN’M) ;
 - Hero fort sans pub générique ;
 - produits tôt ;
 - palette maîtrisée ;
@@ -825,20 +820,19 @@ Valider si :
 
 ## 30. Décisions nécessaires avant la maquette finale
 
-1. wordmark ou fallback typographique ;
-2. position finale de `NO FIXED LINE.` ;
-3. Hero split ou overlay ;
-4. image Hero réelle ou fallback ;
-5. sélection produits ;
-6. trois ou quatre produits ;
-7. deux ou trois catégories ;
-8. maintien du bloc éditorial ;
-9. maintien du formulaire courriel ;
-10. capsule réelle ou absente ;
-11. textes approuvés ;
-12. conception détaillée du sélecteur de langue (hors portée actuelle) ;
-13. intensité du motif ;
-14. Header sticky ou statique.
+1. position finale de `NO FIXED LINE.` ;
+2. Hero split ou overlay ;
+3. image Hero réelle ou fallback ;
+4. sélection produits ;
+5. trois ou quatre produits ;
+6. deux ou trois catégories ;
+7. maintien du bloc éditorial ;
+8. maintien du formulaire courriel ;
+9. capsule réelle ou absente ;
+10. textes approuvés ;
+11. conception détaillée du sélecteur de langue (hors portée actuelle) ;
+12. intensité du motif ;
+13. Header sticky ou statique.
 
 ---
 
