@@ -1,5 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="565" height="338" viewBox="0 0 565 338">
-  <path d="M 168,48 L 0,48 L 0,313 L 82,313 L 82,208 L 158,206 L 157,149 L 83,149 L 82,113 L 168,112 Z" fill="#FFFFFF" fill-rule="evenodd" clip-rule="evenodd"/>
+  <!-- Compact F'M synchronized 2026-09-08 from official wordmark geometry; no raster embedded. -->
+  <path d="M 168,48 L 0,48 L 0,313 L 82,313 L 82,207 L 157.5,207 L 157.5,149 L 82.5,149 L 82.5,112.5 L 168,112.5 Z" fill="#FFFFFF" fill-rule="evenodd" clip-rule="evenodd"/>
   <path d="M 196,91 C 190,74 191,50 203,24 C 211,11 225,0 234,0 C 248,0 253,9 252,20 C 251,32 236,42 219,54 C 208,62 200,76 196,91 Z" fill="#FFFFFF" fill-rule="evenodd" clip-rule="evenodd"/>
   <path d="M 231,69 L 231,337 L 309,337 L 309,316 L 329,312 L 299,280 L 312,274 L 302,242 L 329,251 L 332,237 L 360,264 L 346,207 L 371,217 L 390,178 L 411,217 L 437,207 L 423,264 L 451,238 L 454,251 L 483,242 L 472,273 L 487,279 L 454,312 L 478,316 L 478,337 L 564,337 L 564,69 L 444,69 L 390,161 L 335,69 Z" fill="#FFFFFF" fill-rule="evenodd" clip-rule="evenodd"/>
 </svg>
