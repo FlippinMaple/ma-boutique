@@ -380,7 +380,7 @@ Rôle :
 Présenter une sélection de vêtements dans un langage visuel uniforme.
 
 Sujet :
-Chaque produit isolé ou porté, selon la stratégie photo retenue.
+Chaque produit porté, dans un langage visuel cohérent avec la direction photographique Flippin’ Maple.
 
 Direction :
 Fond Maple Bone, gris très clair ou environnement sobre commun.

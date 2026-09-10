@@ -39,19 +39,23 @@ Sa nomenclature de travail R2–R10 était une nomenclature de chantier/session.
 
 L’historique détaillé des commits reste dans Git.
 
-### 2.3 Prochaine phase produit
+### 2.3 Chantier produit
 
-**Aucun chantier produit suivant n’est officiellement choisi.**
+**Décision humaine (2026-09-09).** Le prochain chantier produit a été choisi.
 
-Il n’existe pas de phase « R11 ». Ne pas en inventer une.
+- Chantier actif : photographie produit propriétaire.
+- Direction retenue : **produit porté**.
+- Aucune photographie n’est encore produite ou intégrée.
+- Aucun changement storefront n’est encore autorisé.
+- Le travail commence par la définition et la production contrôlée des actifs.
 
-Candidats déjà documentés — **décision humaine requise** avant ouverture, sans ordre imposé :
+Cette ouverture n’est pas une phase Constitution. Elle ne ferme pas la Phase 1 — Fondation de marque. Il n’existe pas de phase « R11 ». Ne pas en inventer une.
 
-- photographie / homepage, seulement lorsqu’un document spécialisé les autorise explicitement (`docs/web/HOMEPAGE_ASSETS.md` §29 n’autorise aucune étape) ;
+Autres sujets documentés — **non ouverts** par cette décision, toujours soumis à décision humaine, sans ordre imposé :
+
+- photographie Hero / homepage au-delà du set produit (`docs/web/HOMEPAGE_ASSETS.md` §29 n’autorise aucune étape d’intégration) ;
 - reprise ou revalidation de l’audit décrit dans `docs/compliance/PRIVACY_COOKIES_CHATBOT_PLAN.md` §23 (texte antérieur à P8–P24 ; ne plus le traiter comme prochaine action automatique) ;
 - dette / résidus déjà identifiés (inventaire héritage ; éléments signalés en session, non priorisés ici).
-
-Cette liste n’ouvre aucun chantier.
 
 ---
 

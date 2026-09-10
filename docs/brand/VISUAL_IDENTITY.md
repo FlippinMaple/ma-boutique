@@ -368,6 +368,8 @@ Direction :
 - espace négatif prévu pour le texte ;
 - aucune autre marque visible.
 
+**Photographie produit propriétaire (décision humaine — 2026-09-09) :** stratégie **portée** — adulte, naturel, éditorial, non théâtral, set cohérent. Le mockup POD n’est pas le langage visuel final. La stratégie principale « produit isolé » est écartée pour la direction de marque courante. Aucune photographie n’est encore livrée.
+
 ### Ratios de travail
 
 | Usage | Ratio |

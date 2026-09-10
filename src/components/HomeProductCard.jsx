@@ -50,7 +50,7 @@ const HomeProductCard = ({ product }) => {
                 présenter les pièces avec cohérence.
 
                 Sujet :
-                produit porté ou isolé selon direction finale.
+                produit porté ; adulte ; posture naturelle ; vêtement lisible.
 
                 Ratio :
                 4:5.

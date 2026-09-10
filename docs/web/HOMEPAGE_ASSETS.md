@@ -230,10 +230,10 @@ Pas de faux alt précis tant que l’image n’existe pas.
 | **Placeholder** | `[PLACEHOLDER — PHOTOGRAPHIES PRODUITS COHÉRENTES]` |
 | **Ratio** | **4:5** (Validé dans les specs homepage) |
 | **Cible** | ≥ 1600 × 2000 px — `Cible de production — à confirmer à l’intégration` |
-| **Nombre visible** | 3 recommandés · 4 si curation forte · **2** si seulement 2 pièces fortes |
+| **Nombre visible** | **2** = minimum de départ acceptable · **3** = cible recommandée · 4 si curation forte |
 | **Cohérence** | Même fond, échelle, lumière, cadrage |
 | **Fond** | Maple Bone, gris très clair, ou environnement sobre partagé |
-| **Porté vs à plat** | Choisir **une** stratégie par set |
+| **Direction retenue** | Produit **porté** (décision humaine 2026-09-09) |
 | **Mockups Printful** | Utilisables **provisoirement** si cohérents ; ne portent pas l’identité de la page ; à remplacer progressivement |
 | **Hover** | Dépendance future éventuelle — non obligatoire |
 | **Image manquante** | Ne pas inventer ; retirer la carte ou réduire la grille |
@@ -250,6 +250,11 @@ Pas de faux alt précis tant que l’image n’existe pas.
 | Image fiche produit | Hors scope homepage (peut différer) |
 
 **Règle :** ne jamais remplir la section avec des produits faibles pour atteindre un nombre.
+
+> **Décision humaine — 2026-09-09.**
+> La photographie produit propriétaire adopte une stratégie **portée**.
+> La stratégie principale « produit isolé » est écartée pour la direction de marque courante.
+> Aucune photographie produit propriétaire n’est encore livrée. Les images Printful restent provisoires. Cette note n’autorise aucune intégration React.
 
 ---
 
@@ -487,7 +492,7 @@ Si inconnue : `Provenance ou droits à confirmer`.
 | Famille | Objectif | Sujet / plan | Orientation | Vêtements | Lieu | Lumière | Ratio | Mobile | Qté min | Dépendance |
 |---|---|---|---|---|---|---|---|---|---|---|
 | Hero | Attitude + zone texte | 1–2 personnes, marche/attente | H + V | Pièces sobres marque ou neutres | Urbain froid | Couverte | 16:9/3:2 + 4:5 | Variante | 1 set utilisable | COPY Hero |
-| Produits | Curation | Produits réels | V 4:5 | Sélection validée | Fond cohérent | Soft uniforme | 4:5 | Même | 2–3 | Catalogue |
+| Produits | Curation | Produits réels **portés** | V 4:5 | Sélection validée | Fond cohérent | Soft uniforme | 4:5 | Même | 2 min. / 3 cible | Catalogue |
 | Catégories | Entrée shop | 2 sujets distincts | V | Liés catégories réelles | Même univers | Cohérente | 4:5/3:4 | Même | 2 | Destinations |
 
 ### Priorité 2 — enrichissement
@@ -523,7 +528,7 @@ Le MVP reste cohérent **sans** grand shooting complet.
 ## 22. Plan idéal (moyen terme)
 
 - Hero photo + variante mobile dédiée ;
-- set produit photographié (porté ou studio cohérent) ;
+- set produit photographié (**porté**) ;
 - 2–3 catégories distinctes ;
 - éditorial matière/territoire ;
 - motif veinage SVG soigné ;

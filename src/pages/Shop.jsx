@@ -243,7 +243,7 @@ const Shop = () => {
                             présenter les produits de façon cohérente dans le catalogue.
 
                             Sujet :
-                            produit porté ou isolé selon direction finale.
+                            produit porté ; adulte ; posture naturelle ; vêtement lisible.
 
                             Ratio :
                             4:5.

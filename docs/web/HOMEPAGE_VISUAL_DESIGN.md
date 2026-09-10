@@ -542,7 +542,7 @@ Aucun de ces actifs photographiques n’est présenté comme déjà produit. Le 
 |---|---|
 | Statut | À produire |
 | Rôle | Commercial (achat) et éditorial (cohérence de marque) |
-| Sujet | Produit isolé ou porté, selon stratégie photo |
+| Sujet | Produit porté ; adulte ; posture naturelle ; vêtement lisible |
 | Direction | Fond Maple Bone / gris clair / environnement sobre ; éclairage cohérent |
 | Ratio bureau / mobile | 4:5 constant |
 | Résolution min. | 1600×2000 |

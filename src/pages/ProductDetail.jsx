@@ -162,7 +162,7 @@ const ProductDetail = () => {
                   présenter la pièce principale et permettre l’évaluation du produit.
 
                   Sujet :
-                  produit porté ou isolé selon la direction photographique finale.
+                  produit porté ; adulte ; posture naturelle ; vêtement lisible.
 
                   Ratio :
                   4:5.
