@@ -450,7 +450,13 @@ Le bois est un **actif secondaire**. Il ne définit pas seul la marque.
 
 Lorsqu’une maquette ou une spécification prévoit une image, une image de fond, une texture, un motif ou un autre actif qui n’existe pas encore, un **placeholder descriptif** doit être placé exactement à l’endroit prévu.
 
-Chaque placeholder doit préciser au besoin :
+**Rendu public (storefront) :** le placeholder de développement doit avoir une vraie présence graphique (palette, Mark M / Compact F’M officiels si pertinent, lignes, matières simulées, crops, structure éditoriale) afin d’évaluer le design. Il doit se lire comme un **choix graphique intentionnel**, pas comme une zone de chantier.
+
+**Interdit dans le rendu public :** mentions du type `[PLACEHOLDER]`, « visuel provisoire », « image à venir », brief de génération, instructions internes, identifiant technique d’asset.
+
+Les briefs détaillés restent dans les **commentaires de code** ou la **documentation**.
+
+Chaque placeholder (docs / commentaires) doit préciser au besoin :
 
 - rôle ;
 - sujet ;
