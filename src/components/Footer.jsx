@@ -19,9 +19,6 @@ export default function Footer({ isAuthenticated }) {
               alt=""
             />
           </Link>
-          <p className="site-footer__tag">
-            Une marque canadienne indépendante.
-          </p>
         </div>
 
         <nav className="site-footer__nav" aria-label="Pied de page">

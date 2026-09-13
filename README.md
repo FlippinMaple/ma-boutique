@@ -44,7 +44,7 @@ L’historique détaillé des commits reste dans Git.
 **Décision humaine (2026-09-10).** Le chantier actif est le **redesign du storefront** Flippin’ Maple.
 
 - Périmètre : fondations visuelles, Header, Home, Footer, Shop, Product Detail, responsive, placeholders visuels riches, intégration future d’actifs de marque.
-- **PASS 1 n’est pas encore implémentée.** Cette entrée n’autorise pas le code React/CSS.
+- **PASS 1 Header / Home / Footer est implémentée et validée visuellement (desktop + mobile) dans le working tree. Les Hero campagne desktop/mobile sont intégrés. Shop et Product Detail restent aux passes suivantes ; checkout, auth, APIs, Printful et Stripe sont hors périmètre et inchangés.**
 - Photographie produit propriétaire **portée** : direction **validée** (2026-09-09) ; production **différée** jusqu’au catalogue réel de lancement. Les SKU / mockups Printful restent des données de développement. Aucun chantier catalogue n’est ouvert.
 - Cette ouverture n’est pas une phase Constitution. Elle ne ferme pas la Phase 1 — Fondation de marque. Il n’existe pas de phase « R11 ». Ne pas en inventer une. Les programmes sécurité P3–P24 restent fermés.
 

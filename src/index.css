@@ -42,7 +42,8 @@
   /* Largeurs */
   --width-content: 80rem;
   --width-prose: 42rem;
-  --gutter: clamp(1rem, 4vw, 3rem);
+  --gutter: clamp(1rem, 0.65rem + 2.2vw, 3rem);
+  --grid-gap: clamp(0.75rem, 1.6vw, 1.5rem);
 
   /* Rayons (sobres) */
   --radius-sm: 0.125rem;
