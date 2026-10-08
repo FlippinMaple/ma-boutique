@@ -742,4 +742,46 @@ Validation juridique et éthique obligatoire avant tout usage commercial.
 
 ---
 
+## 32. Campagne Montréal hiver — checkpoint A–F
+
+**2026-10-08**
+
+A à E sont maintenant **verrouillés provisoirement**. Ce verrouillage signifie : ne plus les retoucher pendant la production de F sauf découverte d’un défaut majeur. Les imperfections mineures sont volontairement consignées pour une passe finale. Une image peut rester telle quelle si le défaut n’est plus perceptible ou pertinent dans son usage réel sur la Home. La passe finale doit être effectuée sur la série complète et en contexte d’intégration, pas image par image de manière isolée.
+
+| Actif | Fonction | État actuel | Retouches / vérifications différées |
+|---|---|---|---|
+| **A — Hero / Territoire** | Installer le monde Flippin’ Maple : deux adultes, Montréal en hiver, skate discret, territoire de campagne. | Verrouillé provisoirement. Actifs Hero desktop et mobile présents dans le dépôt : `src/assets/campaign/brand-hero-montreal.webp` (et `.png`) ; `src/assets/campaign/brand-hero-montreal-mobile.webp` (et `.png`). | Revoir le traitement du Hero dans la Home finale, particulièrement en mobile ; revoir cadrage, rapport photo / contenu, position du panneau éditorial et relation avec les sections suivantes ; vérifier si le traitement desktop est suffisamment distinctif ou encore trop ordinaire ; ne pas régénérer automatiquement la photographie : distinguer problème d’asset et problème de composition UI. |
+| **B — Street / Movement** | Introduire le déplacement, l’autonomie et le mouvement réel dans la campagne. | Verrouillé provisoirement. Présent dans le dépôt : `src/assets/campaign/brand-street-movement-4x5.webp` (et `.png`). | Vérifier en contexte réel que le mouvement reste suffisamment lisible ; vérifier la cohérence du branding visible avec les assets officiels ; vérifier le réalisme du sol / humidité à taille d’affichage ; ne rouvrir l’image que si un défaut devient réellement perceptible dans la composition finale. |
+| **C — Maple / Material** | Changer d’échelle et introduire l’érable, l’abrasion, le métal, l’humidité, la slush et l’usage réel. | Verrouillé provisoirement. Aucun fichier d’actif final correspondant n’est présent dans `src/assets/campaign/` au moment de ce checkpoint. | Vérifier le Mark M à taille réelle ; vérifier son contraste et sa présence visuelle ; confirmer qu’il reste un détail de marque et non le point focal ; vérifier que l’usure et les textures restent organiques après compression / intégration ; ne pas retoucher le cadrage ou la matière sans nécessité visible. |
+| **D — Hoodie / Worn Detail** | Mettre en valeur le hoodie Flippin’ Maple comme produit réellement porté, avec la veste vert olive tenue en main comme élément secondaire. | Verrouillé provisoirement. Aucun fichier d’actif final correspondant n’est présent dans `src/assets/campaign/` au moment de ce checkpoint. | Vérifier une dernière fois la géométrie du Compact F’M ; vérifier sa taille, son placement et son intégration physique dans le textile ; vérifier que la matière noire du hoodie conserve suffisamment de texture sans devenir feutrée ou artificiellement fibreuse ; maintenir la veste verte comme élément secondaire ; ne plus modifier cadrage, pose ou décor sauf défaut majeur. |
+| **E — Urban Texture / Montréal** | Faire de Montréal le territoire de la campagne sans personnage principal, produit ou monument emblématique. | Verrouillé provisoirement. Version retenue : escalier extérieur noir crédible au premier plan, façade de brique, trottoir humide, profondeur résidentielle montréalaise. Aucun fichier d’actif final correspondant n’est présent dans `src/assets/campaign/` au moment de ce checkpoint. | Vérifier le niveau de brillance du trottoir en contexte réel ; vérifier l’irrégularité de la slush et de la neige ; vérifier que les petits points lumineux chauds de l’arrière-plan restent suffisamment discrets ; préserver absolument la géométrie réussie de l’escalier et des garde-corps ; éviter toute nouvelle génération architecturale complète sauf défaut majeur découvert. |
+| **F — Street Film 01** | Mettre la campagne en mouvement et relier visuellement les thèmes territoire / humain / matière / produit / Montréal. | À produire. | Aucune pour le moment ; à définir après production et Gate A. |
+
+### Règle de verrouillage pendant la production de F
+
+> Ne pas rouvrir A–E pendant la production de F sauf défaut majeur nouvellement découvert. Les corrections mineures sont reportées à une passe finale d’harmonisation après assemblage de la série complète A–F et première intégration dans la Home.
+
+### Passe finale A–F
+
+La passe finale devra vérifier la série comme un ensemble :
+
+- cohérence du grading ;
+- niveau de froid / chaleur ;
+- contraste ;
+- réalisme de la neige, slush et humidité ;
+- cohérence des personnages ;
+- cohérence des logos officiels ;
+- présence relative du branding ;
+- variété des échelles de plans ;
+- rythme A → B → C → D → E → F ;
+- recadrages desktop / mobile ;
+- performance et compression ;
+- comportement réel dans la Home ;
+- éviter les retouches invisibles ou sans bénéfice réel.
+
+La passe finale ne doit pas chercher la perfection isolée de chaque image.
+Elle doit chercher la cohérence de la campagne complète et son efficacité dans la Home.
+
+---
+
 **Fin du Draft — Homepage Assets v1.**
