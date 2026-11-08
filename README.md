@@ -182,6 +182,17 @@ L’audit et le journal ne sont pas interchangeables : l’audit conserve les co
 
 L’inventaire et `NOTES.md` ne sont **pas** des sources stratégiques. Pour le schéma, utiliser DATA_MODEL, pas l’inventaire.
 
+### Reprise de session (2026-11-08)
+
+Index opérationnel pour rouvrir le dépôt. Ces fichiers ne remplacent pas la Constitution ni les documents spécialisés. En cas de contradiction, la source spécialisée citée prime.
+
+| Document | Rôle |
+|---|---|
+| [docs/ETAT_DU_PROJET.md](docs/ETAT_DU_PROJET.md) | Architecture, fonctionnalités et état observé |
+| [docs/TRAVAUX_EN_COURS.md](docs/TRAVAUX_EN_COURS.md) | Chantier actif, inachevés identifiables, dettes à revalider |
+| [docs/GUIDE_REPRISE.md](docs/GUIDE_REPRISE.md) | Installation, lancement, tests existants, suite du travail |
+| [AGENTS.md](AGENTS.md) | Instructions persistantes pour un assistant IA |
+
 ---
 
 ## 7. Règles de contribution

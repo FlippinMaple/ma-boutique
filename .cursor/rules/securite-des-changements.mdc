@@ -1,0 +1,19 @@
+---
+description: Garde-fous de modification pour Flippin’ Maple. Ne remplace pas la Constitution.
+alwaysApply: true
+---
+
+# Sécurité des changements
+
+Lire `docs/00_PROJECT_MASTER.md` et `AGENTS.md` avant une modification importante. La Constitution et le document spécialisé du domaine priment sur cette règle.
+
+- Ne pas modifier du code stable sans justification liée à la demande.
+- Avant d’éditer, repérer appelants, routes, services, tables et jobs concernés.
+- Garder le monolithe actuel et les conventions du fichier touché. Pas de refactor Stripe, Printful ou checkout sans mandat explicite.
+- Livrer un changement complet, limité aux fichiers nécessaires, puis nommer ces fichiers et ce qui a changé.
+- Retour arrière d’un travail non commité : `git diff`, puis `git restore -- chemin`. Pas de `git clean` ni de `git reset --hard` sans demande explicite.
+- Ne pas supprimer ni déplacer des fichiers sans autorisation explicite.
+- Ne pas committer, pousser, exécuter `npm run migrate`, importer Printful, ni déployer sans autorisation explicite.
+- Ne jamais écrire de secret, de `.env`, d’identifiant API ou de donnée client dans un document, un commit ou le chat.
+
+Exemple : une demande sur `src/pages/Shop.jsx` ne justifie pas d’éditer `server/controllers/checkoutController.js`. Si le correctif l’exige vraiment, s’arrêter et le dire avant d’éditer.
